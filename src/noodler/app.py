@@ -2,7 +2,6 @@
 
 import argparse
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
 from enum import StrEnum
 import math
 import sys
@@ -52,15 +51,11 @@ from .history import Edit, EditHistory
 from .desktop import default_window, name_the_process, visible_screen
 from .macos_gestures import MacCursor, MacMagnifyMonitor, MacScrollMonitor
 from .motion import (
-    Glide,
-    KnobDrag,
     MeterBallistics,
     RAIL_HALF_LIFE,
     Spring,
-    ZOOM_HALF_LIFE,
     clamp_timestep,
     pixel_spring,
-    unit_spring,
 )
 from .patch import (
     Cable,
@@ -93,6 +88,184 @@ from .transport import (
     clock_kind,
     is_rate_field,
 )
+from .ui.formatting import (
+    control_label_and_unit as _control_label_and_unit,
+    decibels as _decibels,
+    fit_column as _fit_column,
+    format_duration as _format_duration,
+    format_dynamic_value as _format_dynamic_value,
+    format_frequency as _format_frequency,
+    library_slug as _module_library_slug,
+    strip_title as _strip_title,
+)
+from .ui.console import (
+    CONSOLE_CABLE_HOVER_PX,
+    CONSOLE_CABLE_ITEMS,
+    CONSOLE_CABLES,
+    CONSOLE_GAP,
+    CONSOLE_LEVEL,
+    CONSOLE_LINK_HIDDEN_THEME,
+    CONSOLE_MARGIN,
+    CONSOLE_MASTER,
+    CONSOLE_MASTER_LEVEL,
+    CONSOLE_MASTER_METER,
+    CONSOLE_MASTER_READOUT,
+    CONSOLE_METER,
+    CONSOLE_MUTE,
+    CONSOLE_POST,
+    CONSOLE_PREFIX,
+    CONSOLE_READOUT,
+    CONSOLE_RETURN,
+    CONSOLE_RETURN_LEVEL,
+    CONSOLE_RETURN_MUTE,
+    CONSOLE_RETURN_READOUT,
+    CONSOLE_RETURN_THEME,
+    CONSOLE_SOLO,
+    CONSOLE_STRIP,
+    CONSOLE_STRIP_THEME,
+    CONSOLE_THEME,
+    CONSOLE_TITLE_HEIGHT,
+    CONSOLE_TOGGLE_LAYER,
+    CONSOLE_TOGGLE_SIZE,
+    JACK_POST_LIFT,
+    JACK_POST_THEME,
+    LEVEL_DIAL_INSET,
+    LEVEL_DIAL_SIZE,
+    MUTE_ON_THEME,
+    OUTPUT_METER,
+    OUTPUT_NODE,
+    PINNED_NODES,
+    POST_ANCHORS,
+    POST_OUTPUTS,
+    POST_TEXTS,
+    RETURN_JACK_INSET,
+    SOLO_ON_THEME,
+    STRIP_JACK_INSET,
+    STRIP_KNOB_LABELS,
+    STRIP_KNOB_SIZE,
+    TOGGLE_OFF_THEME,
+    ConsoleHooks,
+    _add_level_dial,
+    _add_master_control,
+    _add_strip_knob_labels,
+    _build_console,
+    _build_jack_post,
+    _build_return_strip,
+    _build_strip,
+    _channel_level_changed,
+    _console_titles,
+    _console_toggle_at,
+    _console_toggle_boxes,
+    _fader_readout,
+    _format_pan,
+    _master_level_changed,
+    _meter_colour,
+    _meter_ring_points,
+    _paint_mute_solo,
+    _paint_return_mute,
+    _press_console_toggle,
+    _refresh_console_toggles,
+    _return_level_changed,
+    _toggle_mute,
+    _toggle_return_mute,
+    _toggle_solo,
+    configure_console,
+)
+from .ui.geometry import (
+    CABLE_SAG_MAX,
+    CABLE_SAG_MIN,
+    CABLE_SAG_PER_PX,
+    CABLE_SEGMENTS,
+    bezier_point as _bezier_point,
+    cable_sag as _cable_sag,
+    clip_segment as _clip_segment,
+    clipped_cable_runs as _clipped_cable_runs,
+    console_cable_points as _console_cable_points,
+    hanging_cable_points as _hanging_cable_points,
+    keybed_geometry as _keybed_layout,
+    knob_track_points as _knob_track_layout,
+)
+from .ui.recent import recent_documents, remember_recent
+from .ui.state import (
+    CANVAS_INTERACTION,
+    KNOB_INTERACTION,
+    MODULE_COLLAPSE,
+    PATCH_BAYS,
+    RATE_SYNCS,
+    AppRuntime,
+    KnobArt,
+    KnobBinding,
+    NodeRegistration,
+    PatchBayBinding,
+    RateSync,
+    ResolvedJack,
+)
+from .ui.style import (
+    APP_FONT,
+    APP_THEME,
+    AUDIO_LINK_THEME,
+    BOX_SELECTOR_FILL,
+    BOX_SELECTOR_FILL_COLOR,
+    BOX_SELECTOR_HIDDEN,
+    BOX_SELECTOR_OUTLINE,
+    BOX_SELECTOR_OUTLINE_COLOR,
+    CV_LINK_THEME,
+    DEFAULT_CONTROL_STATUS,
+    FONT_REGISTRY,
+    FRAME_MARGIN,
+    GATE_LINK_THEME,
+    KEYS_DISPLAY_SIZE,
+    KEY_BLACK,
+    KEY_BLACK_HELD,
+    KEY_WHITE,
+    KEY_WHITE_HELD,
+    KNOB_ARC,
+    KNOB_BODY,
+    KNOB_COLUMN_CHARS,
+    KNOB_SIZE,
+    KNOB_SIZE_LARGE,
+    KNOB_SIZE_MINIMUM,
+    KNOB_SWEEP_END,
+    KNOB_SWEEP_START,
+    KNOB_TRACK,
+    LABEL_ABBREVIATIONS,
+    LPG_ACCENT,
+    LPG_THEME,
+    MAX_RACK_ZOOM,
+    METER_CLIP,
+    METER_HOT,
+    METER_QUIET,
+    METER_THEME,
+    MIN_RACK_ZOOM,
+    MIXER_ACCENT,
+    MIXER_THEME,
+    MUSICAL_LINK_THEME,
+    MUTED_TEXT,
+    OUTPUT_ACCENT,
+    OUTPUT_THEME,
+    RACK_BOX_SELECTOR,
+    RACK_FONT_PREFIX,
+    RACK_FONT_SIZES,
+    RACK_THEME,
+    RACK_ZOOM_STEP,
+    REVERB_ACCENT,
+    REVERB_THEME,
+    SCALE_ACCENT,
+    SCALE_THEME,
+    SCOPE_BACKGROUND,
+    SCOPE_DISPLAY_SIZE,
+    SCOPE_RULE,
+    SIGNAL_COLORS,
+    SYSTEM_MONO_FONT,
+    TEXT,
+    UNIT_SUFFIXES,
+    UTILITY_ACCENT,
+    UTILITY_THEME,
+    VCO_ACCENT,
+    VCO_THEME,
+    WOGGLE_ACCENT,
+    WOGGLE_THEME,
+)
 
 
 PRIMARY_WINDOW = "noodler.primary_window"
@@ -100,98 +273,11 @@ RACK = "noodler.rack"
 VCO_NODE = "noodler.complex_vco"
 MIXER_NODE = "noodler.polarizing_mixer"
 FUNCTION_NODE = "noodler.function_utility"
-OUTPUT_NODE = "noodler.system_output"
 MASTER_ID = "master"
 """The instance every rack has. It is a module like any other -- real channels,
 real levels, real DSP -- and the only things special about it are that it is
 always present and that its bus reaches the speakers without being asked."""
 
-CONSOLE_PREFIX = "noodler.console."
-"""Every strip, fader, meter and knob of the console carries this prefix, which
-is how the zoom knows to leave them alone."""
-
-CONSOLE_STRIP = CONSOLE_PREFIX + "strip_{channel}"
-CONSOLE_MARGIN = 14.0
-"""The gap between the console and the bottom-left corner of the canvas."""
-CONSOLE_GAP = 4.0
-"""Between one strip and the next."""
-
-LEVEL_DIAL_SIZE = 32
-LEVEL_DIAL_INSET = 4.0
-STRIP_KNOB_SIZE = 20
-STRIP_KNOB_LABELS = ("L/R", "FXA", "FXB")
-STRIP_LABEL_FONT_SIZE = 10
-STRIP_LABEL_CHAR_PX = 6
-"""The knob labels' face is ten pixels; its glyphs are six wide."""
-CONSOLE_TOGGLE_SIZE = 15.0
-CONSOLE_TITLE_HEIGHT = 24.0
-"""A strip's title bar, which its M and S are drawn on: sixteen-pixel text and
-the console's padding."""
-CONSOLE_TOGGLE_LAYER = "noodler.console_toggle_layer"
-"""Pan and the sends on a strip: a little smaller than a module's knobs."""
-"""A strip's level is a dial, and its meter is a ring drawn around that dial in
-the margin the inset leaves -- so the meter costs no space at all."""
-
-CONSOLE_LEVEL = CONSOLE_PREFIX + "level_{channel}"
-CONSOLE_METER = CONSOLE_PREFIX + "meter_{channel}"
-CONSOLE_READOUT = CONSOLE_PREFIX + "readout_{channel}"
-CONSOLE_MASTER_LEVEL = CONSOLE_PREFIX + "master_level"
-CONSOLE_MASTER_METER = CONSOLE_PREFIX + "master_meter"
-CONSOLE_MASTER_READOUT = CONSOLE_PREFIX + "master_readout"
-CONSOLE_THEME = "noodler.theme.console"
-CONSOLE_STRIP_THEME = "noodler.theme.console_strip"
-STRIP_JACK_INSET = 0.0
-RETURN_JACK_INSET = 0.0
-CONSOLE_RETURN_THEME = "noodler.theme.console_return"
-CONSOLE_POST = CONSOLE_PREFIX + "post_{name}"
-JACK_POST_THEME = "noodler.theme.jack_post"
-JACK_POST_LIFT = 30.0
-"""How far above a strip's top its jack posts stand.
-
-The pin lands about fourteen pixels below a post's top, so this puts it just
-above the strip's edge -- touching it, not on it. That matters: clicking a
-node brings it to the front, and a pin drawn over the strip would go under
-the strip the moment the strip was clicked. Nothing can cover what stands
-above the top edge."""
-POST_ANCHORS: dict[str, tuple[str, float]] = {}
-POST_TEXTS: dict[str, int | str] = {}
-"""Each post's one text item, whose centre is where its pin is drawn."""
-CONSOLE_CABLES = "noodler.console_cables"
-CONSOLE_CABLE_ITEMS: dict[int | str, int | str] = {}
-"""Drawn console cables, by the link they stand in for."""
-CONSOLE_LINK_HIDDEN_THEME = "noodler.theme.link.console_hidden"
-CONSOLE_CABLE_HOVER_PX = 7.0
-"""Each jack post and where it stands: which strip, and how far across it.
-
-A jack post is a node that is nothing but a pin. Dear PyGui draws a pin on a
-node's left edge and nowhere else, and offsets set on a node's theme are read
-after the node's styles are gone, so the only way to put a jack at the top
-centre of a strip is to stand a separate, invisible node there whose left edge
-is the strip's middle. The cable lands on the post; the strip has no jack of
-its own."""
-"""How far a strip's jack is pulled in from its edge, to sit at the top centre.
-
-Dear PyGui draws a pin on a node's left or right edge, and nowhere else. But
-imnodes lets a pin be offset from that edge, and pulled in by half a strip's
-width the input jack sits at the top of the strip, in the middle, where a
-cable expects to land -- as on a desk, where the input is at the top of the
-channel and not on its side."""
-CONSOLE_MUTE = CONSOLE_PREFIX + "mute_{channel}"
-CONSOLE_SOLO = CONSOLE_PREFIX + "solo_{channel}"
-CONSOLE_RETURN = CONSOLE_PREFIX + "return_{bus}"
-CONSOLE_RETURN_LEVEL = CONSOLE_PREFIX + "return_level_{bus}"
-CONSOLE_RETURN_READOUT = CONSOLE_PREFIX + "return_readout_{bus}"
-CONSOLE_RETURN_MUTE = CONSOLE_PREFIX + "return_mute_{bus}"
-TOGGLE_OFF_THEME = "noodler.theme.toggle_off"
-MUTE_ON_THEME = "noodler.theme.mute_on"
-SOLO_ON_THEME = "noodler.theme.solo_on"
-
-PINNED_NODES: list[int | str] = []
-"""Nodes the camera does not carry: the console strips, left to right.
-
-The rack pans and zooms underneath them; they stay along the bottom edge of
-the canvas, in this order, so there is always somewhere to drag a cable to.
-"""
 WOGGLE_NODE = "noodler.wogglebug"
 SCALE_NODE = "noodler.scale_generator"
 LPG_NODE = "noodler.low_pass_gate"
@@ -287,7 +373,6 @@ MODULE_LIBRARY_SECTIONS = (
 ZOOM_OUT_BUTTON = "noodler.zoom_out"
 ZOOM_RESET_BUTTON = "noodler.zoom_reset"
 ZOOM_IN_BUTTON = "noodler.zoom_in"
-OUTPUT_METER = "noodler.output_meter"
 OUTPUT_SCOPE = "noodler.output_scope"
 BAR_SCOPE = "noodler.bar_scope"
 BAR_SCOPE_TRACE = "noodler.bar_scope.trace"
@@ -313,49 +398,10 @@ LPG_REVERB_LINK = "noodler.link.lpg_reverb"
 WOGGLE_REVERB_LINK = "noodler.link.woggle_reverb"
 REVERB_LEFT_OUTPUT_LINK = "noodler.link.reverb_left_output"
 REVERB_RIGHT_OUTPUT_LINK = "noodler.link.reverb_right_output"
-APP_FONT = "noodler.font"
-FONT_REGISTRY = "noodler.font_registry"
-SYSTEM_MONO_FONT = Path("/System/Library/Fonts/SFNSMono.ttf")
-APP_THEME = "noodler.theme.app"
-UTILITY_THEME = "noodler.theme.utility"
-VCO_THEME = "noodler.theme.vco"
-MIXER_THEME = "noodler.theme.mixer"
-OUTPUT_THEME = "noodler.theme.output"
-WOGGLE_THEME = "noodler.theme.wogglebug"
-SCALE_THEME = "noodler.theme.scale_generator"
-LPG_THEME = "noodler.theme.low_pass_gate"
-REVERB_THEME = "noodler.theme.reverb"
-CV_LINK_THEME = "noodler.theme.link.cv"
-AUDIO_LINK_THEME = "noodler.theme.link.audio"
-GATE_LINK_THEME = "noodler.theme.link.gate"
-MUSICAL_LINK_THEME = "noodler.theme.link.musical"
-METER_THEME = "noodler.theme.meter"
-RACK_THEME = "noodler.theme.rack"
-RACK_BOX_SELECTOR = "noodler.theme.rack.box_selector"
-BOX_SELECTOR_FILL = f"{RACK_BOX_SELECTOR}.fill"
-BOX_SELECTOR_OUTLINE = f"{RACK_BOX_SELECTOR}.outline"
-BOX_SELECTOR_HIDDEN = (0, 0, 0, 0)
-"""Dragging empty canvas pans, so the marquee stays out of the way."""
-BOX_SELECTOR_FILL_COLOR = (211, 145, 57, 38)
-BOX_SELECTOR_OUTLINE_COLOR = (211, 145, 57, 170)
 SCALE_SYSTEM_CONTROL = "noodler.scale_generator.control.system"
 SCALE_NAME_CONTROL = "noodler.scale_generator.control.scale"
 SCALE_NOTE_STATUS = "noodler.scale_generator.note_status"
 
-TEXT = (235, 230, 216, 255)
-MUTED_TEXT = (157, 153, 142, 255)
-UTILITY_ACCENT = (211, 145, 57, 255)
-VCO_ACCENT = (63, 153, 161, 255)
-MIXER_ACCENT = (103, 151, 108, 255)
-OUTPUT_ACCENT = (191, 91, 73, 255)
-METER_QUIET = (98, 168, 112, 255)
-METER_HOT = (214, 164, 72, 255)
-METER_CLIP = OUTPUT_ACCENT
-"""Green, amber, red: the three things a meter has ever needed to say."""
-WOGGLE_ACCENT = (191, 102, 159, 255)
-SCALE_ACCENT = (135, 119, 211, 255)
-LPG_ACCENT = (194, 154, 79, 255)
-REVERB_ACCENT = (92, 129, 184, 255)
 MODULE_ACCENTS = {
     FUNCTION_NODE: UTILITY_ACCENT,
     WOGGLE_NODE: WOGGLE_ACCENT,
@@ -367,97 +413,6 @@ MODULE_ACCENTS = {
     OUTPUT_NODE: OUTPUT_ACCENT,
 }
 BASE_MODULE_ACCENTS = dict(MODULE_ACCENTS)
-SIGNAL_COLORS = {
-    "audio": (91, 196, 191, 255),
-    "cv": (226, 174, 78, 255),
-    "gate": (221, 111, 82, 255),
-    "trigger": (221, 111, 82, 255),
-    "musical": (163, 126, 205, 255),
-}
-DEFAULT_CONTROL_STATUS = (
-    "DRAG JACKS TO PATCH  ·  DOUBLE-CLICK A CABLE TO UNPATCH  ·  "
-    "⌘K ADD MODULE  ·  ⌘Z UNDO"
-)
-"""What the status line says when it has nothing to report.
-
-It listed eleven gestures because eleven gestures existed, which made it a
-reference card that ran off the edge of the window. Actions and the keys
-that reach them belong in the menu; this line is for what just happened,
-and for the two gestures that have nowhere else to be discovered.
-"""
-
-
-
-
-
-KNOB_COLUMN_CHARS = 8
-"""Width of one control column, in characters of the rack's monospace font.
-
-Panels are laid out in a monospace face, so a fixed character count is a fixed
-pixel width: padding a label and its readout to the same count is what makes
-columns line up under one another instead of running together. Kept narrow
-because a rack is read by scanning across it, and a panel that will not fit
-beside its neighbour is a panel nobody can see in context.
-"""
-
-KNOB_SIZE_MINIMUM = 12
-"""Smallest a rotary control is allowed to be drawn."""
-
-KNOB_SIZE = 24
-"""Diameter of a rotary control. Small enough to read a panel at a glance,
-big enough to be a target.
-
-Drawn by hand, because Dear PyGui's knob is forty pixels whatever it is asked:
-its width, its height and its font all change nothing about the picture. Every
-"knobs are too big" fix before this one changed a number that was never read.
-"""
-
-KNOB_SIZE_LARGE = 30
-"""For the one control on a panel that deserves the eye first."""
-
-KNOB_SWEEP_START = 0.75 * math.pi
-KNOB_SWEEP_END = 2.25 * math.pi
-"""A knob turns through 270 degrees, from seven o'clock round to five."""
-
-KNOB_TRACK = (58, 56, 50, 255)
-KNOB_BODY = (34, 35, 32, 255)
-KNOB_ARC = SCALE_ACCENT
-
-UNIT_SUFFIXES = (
-    ("_hz", " Hz"),
-    ("_seconds", " s"),
-    ("_ms", " ms"),
-    ("_cents", " ct"),
-    ("_db", " dB"),
-)
-"""Field-name endings that name a unit, which belongs on the value."""
-
-LABEL_ABBREVIATIONS = {
-    "frequency": "freq",
-    "modulation": "mod",
-    # Long field names that ended in an ellipsis on every panel: the readout
-    # under the knob says the rest, and the tooltip says everything.
-    "reference": "ref",
-    "instrument": "instr",
-    "octaves": "oct",
-    "transposition": "transp",
-    "progression": "prog",
-    "chance": "%",
-    "length": "len",
-    "brightness": "bright",
-    "distortion": "dist",
-    "diffusion": "diffuse",
-    "resonance": "reso",
-    "threshold": "thresh",
-}
-
-MIN_RACK_ZOOM = 0.55
-MAX_RACK_ZOOM = 1.65
-RACK_ZOOM_STEP = 1.12
-FRAME_MARGIN = 56.0
-"""Breathing room left around the rack when the camera frames it."""
-RACK_FONT_PREFIX = "noodler.font.rack"
-RACK_FONT_SIZES = tuple(range(9, 27))
 
 UTILITY_PORT_ORDER = (
     "channel_1",
@@ -486,177 +441,6 @@ UTILITY_PORT_ORDER = (
     "inverse",
     "or",
 )
-@dataclass(slots=True)
-class AppRuntime:
-    """Live modules, patch graph, and audio device owned by the app."""
-
-    patch: PatchGraph
-    audio: SystemAudioEngine
-    vco: ComplexVCO | None = None
-    mixer: PolarizingMixer | None = None
-    utility: FunctionUtility | None = None
-    wogglebug: Wogglebug | None = None
-    scale_generator: ScaleGenerator | None = None
-    low_pass_gate: LowPassGate | None = None
-    reverb: Reverb | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class KnobBinding:
-    """Translate a knob position into a parameter and its value readout."""
-
-    setter: Callable[[float], None]
-    label: str
-    value_label: int | str
-    minimum: float
-    maximum: float
-    formatter: Callable[[float], str]
-    logarithmic: bool = False
-    size: int = KNOB_SIZE
-    default_value: float | None = None
-    """The value the module was built with, restored by double-clicking."""
-    inset: float = 0.0
-    """Margin left around the dial, for something else to be drawn in."""
-
-
-@dataclass(slots=True)
-class KnobArt:
-    """The drawn parts of one knob, kept so a change can repaint just them."""
-
-    size: int
-    body: int | str
-    track: int | str
-    arc: int | str
-    pointer: int | str
-
-
-@dataclass(slots=True)
-class KnobInteraction:
-    """State shared by the global Ableton-style vertical knob gesture."""
-
-    bindings: dict[int | str, KnobBinding] = field(default_factory=dict)
-    positions: dict[int | str, float] = field(default_factory=dict)
-    drag_start: float = 0.0
-    """Where the knob was when the drag began, so the whole turn is one edit."""
-    """Where each knob is, in its own units. The picture has no value of its own."""
-    art: dict[int | str, KnobArt] = field(default_factory=dict)
-    active_knob: int | str | None = None
-    drag_position: float = 0.0
-    drag: KnobDrag = field(default_factory=KnobDrag)
-    last_mouse_y: float = 0.0
-
-    def reset(self) -> None:
-        self.bindings.clear()
-        self.positions.clear()
-        self.art.clear()
-        self.active_knob = None
-        self.drag_position = 0.0
-        self.drag = KnobDrag()
-        self.last_mouse_y = 0.0
-
-
-KNOB_INTERACTION = KnobInteraction()
-
-
-@dataclass(slots=True)
-class CanvasInteraction:
-    """Pan and zoom state for the rack camera."""
-
-    panning: bool = False
-    pan_candidate: bool = False
-    pan_moved: bool = False
-    """Whether the current pan has actually moved the rack yet."""
-    press_x: float = 0.0
-    press_y: float = 0.0
-    last_mouse_x: float = 0.0
-    last_mouse_y: float = 0.0
-    zoom: float = 1.0
-    zoom_target: float = 1.0
-    zoom_anchor: tuple[float, float] | None = None
-    pending_magnification: float = 0.0
-    pending_scroll_x: float = 0.0
-    pending_scroll_y: float = 0.0
-    native_scroll: bool = False
-    rail_y: dict[str, float] = field(default_factory=dict)
-    zoom_spring: Spring = field(
-        default_factory=lambda: unit_spring(1.0, ZOOM_HALF_LIFE)
-    )
-    glide_x: Glide = field(default_factory=Glide)
-    glide_y: Glide = field(default_factory=Glide)
-    pan_velocity_x: float = 0.0
-    pan_velocity_y: float = 0.0
-    press_consumed: bool = False
-    press_classified: bool = False
-    """The current press has been looked at once; the held-button repeats of
-    the mouse-down callback are not fresh presses."""
-    drag_classified: bool = False
-    drag_pans: bool = False
-    pending_reveal: bool = True
-    reveal_attempts: int = 0
-    """The rack has not been put in front of the user yet."""
-    marquee_origin: tuple[float, float] | None = None
-    """Where a shift-drag began, while it lasts: the marquee is drawn from here."""
-    """A press already answered by a one-shot control, held until release."""
-    recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
-    recenter_y: Spring = field(default_factory=lambda: pixel_spring(0.0))
-    translate_residue_x: float = 0.0
-    translate_residue_y: float = 0.0
-
-    def reset(self) -> None:
-        self.forget_gesture()
-        self.panning = False
-        self.pan_candidate = False
-        self.press_x = 0.0
-        self.press_y = 0.0
-        self.last_mouse_x = 0.0
-        self.last_mouse_y = 0.0
-        self.zoom = 1.0
-        self.zoom_target = 1.0
-        self.zoom_anchor = None
-        self.pending_magnification = 0.0
-        self.pending_scroll_x = 0.0
-        self.pending_scroll_y = 0.0
-        self.rail_y.clear()
-        self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
-        self.press_consumed = False
-        self.press_classified = False
-        self.pending_reveal = True
-        self.reveal_attempts = 0
-        self.stop_glide()
-
-    def stop_glide(self) -> None:
-        """Cancel camera motion, as any fresh press on the rack should."""
-        self.glide_x.stop()
-        self.glide_y.stop()
-        self.pan_velocity_x = 0.0
-        self.pan_velocity_y = 0.0
-        self.recenter_x.snap(0.0)
-        self.recenter_y.snap(0.0)
-        self.translate_residue_x = 0.0
-        self.translate_residue_y = 0.0
-
-    def arm_pan(self, screen_position: tuple[float, float]) -> None:
-        self.pan_candidate = True
-        self.press_x = float(screen_position[0])
-        self.press_y = float(screen_position[1])
-
-    def forget_gesture(self) -> None:
-        """Forget how the current press was classified, once it has ended."""
-        self.drag_classified = False
-        self.drag_pans = False
-
-    def stop_panning(self) -> None:
-        self.forget_gesture()
-        self.panning = False
-        self.pan_candidate = False
-        self.press_x = 0.0
-        self.press_y = 0.0
-        self.last_mouse_x = 0.0
-        self.last_mouse_y = 0.0
-
-
-CANVAS_INTERACTION = CanvasInteraction()
-
 TIDY_TARGETS: dict[int | str, tuple[float, float]] = {}
 """Where TIDY asked each module to go, until it gets there or is dragged."""
 
@@ -684,31 +468,13 @@ RECENT_MENU = "noodler.menu.recent"
 
 def _recent_documents() -> list[Path]:
     """The last few patches opened or saved, most recent first, that still exist."""
-    try:
-        import json
-
-        listed = json.loads(RECENT_FILE.read_text())
-    except (OSError, ValueError):
-        return []
-    found: list[Path] = []
-    for entry in listed if isinstance(listed, list) else []:
-        try:
-            path = Path(str(entry))
-        except (TypeError, ValueError):
-            continue
-        if path.is_file() and path not in found:
-            found.append(path)
-    return found[:RECENT_LIMIT]
+    return recent_documents(RECENT_FILE, RECENT_LIMIT)
 
 
 def _remember_recent(path: Path) -> None:
     """Put a document at the top of the recent list, on disk."""
     try:
-        import json
-
-        recent = [path.resolve()] + [p for p in _recent_documents() if p != path.resolve()]
-        RECENT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        RECENT_FILE.write_text(json.dumps([str(p) for p in recent[:RECENT_LIMIT]], indent=2))
+        remember_recent(path, RECENT_FILE, RECENT_LIMIT)
     except OSError:
         return
     _refresh_recent_menu()
@@ -1134,25 +900,6 @@ TRANSPORT_BUTTON = "noodler.transport.button"
 """The rack's tempo, shared by every module that repeats."""
 
 
-@dataclass(slots=True)
-class RateSync:
-    """A control the transport may drive, and the division it follows.
-
-    ``kind`` says what the clock writes: hertz for a rate, seconds or
-    milliseconds for a length. Either way it is written through the same
-    validated model a hand on the knob would write through.
-    """
-
-    module: object
-    path: tuple[str | int, ...]
-    binding: KnobBinding
-    division: str = FREE
-    kind: str = "rate"
-
-
-RATE_SYNCS: dict[int | str, RateSync] = {}
-"""Keyed by the knob that shows the rate."""
-
 WORD_CONTROLS: dict[int | str, tuple[object, tuple[str | int, ...], str]] = {}
 """Combos over words a module recognises, keyed by the combo."""
 
@@ -1331,26 +1078,6 @@ def _rail_springs(
     return springs
 
 
-@dataclass(slots=True)
-class ModuleCollapseInteraction:
-    """Visibility snapshots for modules folded down to their title bars."""
-
-    attributes: dict[int | str, dict[int | str, bool]] = field(
-        default_factory=dict
-    )
-    labels: dict[int | str, str] = field(default_factory=dict)
-
-    def reset(self) -> None:
-        self.attributes.clear()
-        self.labels.clear()
-
-    def is_collapsed(self, node: int | str) -> bool:
-        return node in self.attributes
-
-
-MODULE_COLLAPSE = ModuleCollapseInteraction()
-
-
 def ensure_master(patch: PatchGraph) -> MasterMixer:
     """Give a patch its master mixer, and wire that mixer to the speakers.
 
@@ -1446,33 +1173,6 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
         MODULE_ACCENTS.update(BASE_MODULE_ACCENTS)
     else:
         pass
-
-
-@dataclass(frozen=True, slots=True)
-class PatchBayBinding:
-    """UI state for one module's compact, graph-aware jack list."""
-
-    patch: PatchGraph
-    module_id: str
-    node_tag: str
-    port_ids: tuple[str, ...]
-    toggle_tag: str
-    status_tag: str
-
-
-PATCH_BAYS: dict[str, PatchBayBinding] = {}
-
-
-@dataclass(frozen=True, slots=True)
-class ResolvedJack:
-    """A node-editor attribute resolved to its runtime patch endpoint."""
-
-    attribute: int | str
-    endpoint: Endpoint | None
-    direction: PortDirection
-    signal: str
-    name: str
-    output_channel: OutputChannel | None = None
 
 
 def _configure_font() -> None:
@@ -1960,18 +1660,6 @@ def _default_cable(
 
 RACK_HISTORY = EditHistory()
 """Reversible rack edits, newest last."""
-
-
-@dataclass(frozen=True, slots=True)
-class NodeRegistration:
-    """Everything the registries knew about a module, for putting it back."""
-
-    node: int | str
-    instance_id: str
-    rail: str | None
-    rail_index: int
-    accent: tuple[int, int, int, int] | None
-    patch_bay: PatchBayBinding | None
 
 
 def _capture_node_registration(
@@ -2483,10 +2171,6 @@ def _show_export_messages() -> None:
         _set_patch_status(message, error=error)
 
 
-def _decibels(level: float) -> str:
-    return "-∞" if level <= 0.00001 else f"{20.0 * math.log10(level):.0f}"
-
-
 def _add_bar_scope() -> None:
     """A trace of the output along the bottom bar, where it is always in view."""
     if dpg.does_item_exist(BAR_SCOPE):
@@ -2776,127 +2460,6 @@ def _target_pin_position(module_id: str, port_id: str) -> tuple[float, float] | 
 
 CABLE_ALPHA = 178
 CABLE_THICKNESS = 2.6
-CABLE_SAG_PER_PX = 0.16
-CABLE_SAG_MIN = 10.0
-CABLE_SAG_MAX = 110.0
-"""How far a cable hangs below the line between its jacks: with its length,
-as a cable does, but never nothing and never a curtain."""
-
-
-def _cable_sag(length: float) -> float:
-    return min(CABLE_SAG_MAX, max(CABLE_SAG_MIN, CABLE_SAG_PER_PX * length + 8.0))
-
-
-def _hanging_cable_points(
-    start: tuple[float, float], end: tuple[float, float]
-) -> tuple[tuple[float, float], ...]:
-    """A cable between two modules, hanging.
-
-    It leaves the output to the right and arrives at the input from the left,
-    as a cable plugged into a jack does, and between the two it drops -- the
-    control points sit below the jacks by the sag, so the middle hangs and
-    the ends lift out of it. A longer cable hangs lower; a short one barely.
-    """
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    length = max(1.0, math.hypot(dx, dy))
-    reach = min(120.0, max(24.0, 0.25 * length))
-    sag = _cable_sag(length)
-    return (
-        start,
-        (start[0] + reach, start[1] + sag),
-        (end[0] - reach, end[1] + sag),
-        end,
-    )
-
-
-def _console_cable_points(
-    start: tuple[float, float], end: tuple[float, float]
-) -> tuple[tuple[float, float], ...]:
-    """A cable that leaves a module to the right and drops into a jack from above."""
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    length = max(1.0, math.hypot(dx, dy))
-    # A short reach to the right, as every cable leaves an output -- drooping
-    # a little under its own weight -- then a drop that arrives vertically:
-    # the drop is most of the vertical distance so the last stretch into the
-    # jack is straight down.
-    reach = min(80.0, max(30.0, 0.2 * length))
-    drop = max(50.0, 0.6 * abs(dy))
-    droop = min(40.0, 0.4 * _cable_sag(length))
-    return (
-        start,
-        (start[0] + reach, start[1] + droop),
-        (end[0], end[1] - drop),
-        end,
-    )
-
-
-def _bezier_point(points: tuple[tuple[float, float], ...], t: float) -> tuple[float, float]:
-    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = points
-    u = 1.0 - t
-    return (
-        u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
-        u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3,
-    )
-
-
-CABLE_SEGMENTS = 28
-"""A drawn cable is a polyline of this many segments along its bezier, so it
-can be clipped to the editor: the layer it is drawn on covers the window."""
-
-
-def _clip_segment(
-    a: tuple[float, float], b: tuple[float, float], rect: tuple[float, float, float, float]
-) -> tuple[tuple[float, float], tuple[float, float]] | None:
-    """The part of segment a-b inside rect (Liang-Barsky), or None."""
-    left, top, right, bottom = rect
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    t0, t1 = 0.0, 1.0
-    for p, q in ((-dx, a[0] - left), (dx, right - a[0]), (-dy, a[1] - top), (dy, bottom - a[1])):
-        if p == 0.0:
-            if q < 0.0:
-                return None
-            continue
-        r = q / p
-        if p < 0.0:
-            if r > t1:
-                return None
-            if r > t0:
-                t0 = r
-        else:
-            if r < t0:
-                return None
-            if r < t1:
-                t1 = r
-    return (a[0] + t0 * dx, a[1] + t0 * dy), (a[0] + t1 * dx, a[1] + t1 * dy)
-
-
-def _clipped_cable_runs(
-    points: tuple[tuple[float, float], ...], rect: tuple[float, float, float, float]
-) -> list[list[tuple[float, float]]]:
-    """The cable's bezier as polyline runs, each wholly inside the editor."""
-    samples = [_bezier_point(points, i / CABLE_SEGMENTS) for i in range(CABLE_SEGMENTS + 1)]
-    runs: list[list[tuple[float, float]]] = []
-    current: list[tuple[float, float]] = []
-    for a, b in zip(samples, samples[1:]):
-        clipped = _clip_segment(a, b, rect)
-        if clipped is None:
-            if current:
-                runs.append(current)
-                current = []
-            continue
-        start, end = clipped
-        if not current or current[-1] != start:
-            if current:
-                runs.append(current)
-            current = [start]
-        current.append(end)
-    if current:
-        runs.append(current)
-    return [run for run in runs if len(run) >= 2]
-
-
 CONSOLE_CABLE_PATHS: dict[int | str, tuple[tuple[float, float], ...]] = {}
 
 
@@ -3664,24 +3227,6 @@ def _add_patch_bay_toggle(
     # as wide as the editor -- imnodes measures the attribute by it.
     dpg.add_separator()
     dpg.add_spacer(height=1)
-
-
-def _format_duration(seconds: float) -> str:
-    if seconds < 0.001:
-        return f"{seconds * 1_000_000:.0f} us"
-    if seconds < 1.0:
-        return f"{seconds * 1_000:.1f} ms"
-    if seconds < 60.0:
-        return f"{seconds:.2f} s"
-    return f"{seconds / 60.0:.2f} min"
-
-
-def _format_frequency(frequency: float) -> str:
-    if frequency < 1.0:
-        return f"{frequency:.2f} Hz"
-    if frequency < 1_000.0:
-        return f"{frequency:.1f} Hz"
-    return f"{frequency / 1_000.0:.2f} kHz"
 
 
 def _control_position(
@@ -6093,6 +5638,16 @@ def _add_knob(
     return knob
 
 
+configure_console(
+    ConsoleHooks(
+        add_knob=_add_knob,
+        set_patch_status=_set_patch_status,
+        rack_tag=RACK,
+        master_id=MASTER_ID,
+    )
+)
+
+
 def _knob_geometry(
     knob: int | str, size: int
 ) -> tuple[tuple[float, float], float, float, list[tuple[float, float]]]:
@@ -6127,18 +5682,7 @@ def _knob_geometry(
 
 
 def _knob_track_points(size: int, inset: float = 0.0) -> list[tuple[float, float]]:
-    centre = size * 0.5
-    radius = size * 0.5 - 1.0 - inset
-    return [
-        (
-            centre + radius * math.cos(theta),
-            centre + radius * math.sin(theta),
-        )
-        for theta in (
-            KNOB_SWEEP_START + (KNOB_SWEEP_END - KNOB_SWEEP_START) * step / 32
-            for step in range(33)
-        )
-    ]
+    return _knob_track_layout(size, KNOB_SWEEP_START, KNOB_SWEEP_END, inset)
 
 
 def _paint_knob(knob: int | str, size: int) -> None:
@@ -6328,44 +5872,6 @@ def _write_dynamic_parameter(
         configure(**{str(path[0]): value})
     else:
         module.parameters = type(parameters).model_validate(values)
-
-
-def _fit_column(text: str, width: int = KNOB_COLUMN_CHARS) -> str:
-    """Pad or trim one cell so control columns align down the panel."""
-    if len(text) > width:
-        return text[: max(1, width - 1)] + "…"
-    return text.ljust(width)
-
-
-def _control_label_and_unit(field_name: str) -> tuple[str, str]:
-    """Turn a parameter name into a short label and the unit it implies.
-
-    A generated panel took its labels straight from the field names, so a row
-    of three knobs read "FREQUENCY FINE TUNE CENTS AMPLITUDE" — three labels
-    with nothing between them and their values somewhere underneath. Units move
-    to the readout, where the number they describe actually is.
-    """
-    name = field_name
-    unit = ""
-    for suffix, symbol in UNIT_SUFFIXES:
-        if name.endswith(suffix):
-            name = name[: -len(suffix)]
-            unit = symbol
-            break
-    name = name.removesuffix("_amount")
-    words = [
-        LABEL_ABBREVIATIONS.get(word, word) for word in name.split("_") if word
-    ]
-    return " ".join(words).title(), unit
-
-
-def _format_dynamic_value(value: float) -> str:
-    magnitude = abs(value)
-    if magnitude >= 1_000.0:
-        return f"{value:,.0f}"
-    if magnitude >= 10.0:
-        return f"{value:.1f}"
-    return f"{value:.3f}"
 
 
 def _control_tag(module: object, field_path: tuple[str | int, ...]) -> int | str:
@@ -6580,14 +6086,6 @@ def _add_dynamic_parameter_controls(
 MODULE_DISPLAYS: dict[int | str, dict[str, object]] = {}
 """Panels with something live drawn on them -- a scope's trace, a keybed --
 by node: what kind, the module, and the drawn items."""
-SCOPE_DISPLAY_SIZE = (200, 72)
-KEYS_DISPLAY_SIZE = (216, 50)
-SCOPE_BACKGROUND = (18, 19, 17, 255)
-SCOPE_RULE = (58, 56, 50, 255)
-KEY_WHITE = (78, 74, 66, 255)
-KEY_WHITE_HELD = (224, 208, 169, 255)
-KEY_BLACK = (30, 29, 27, 255)
-KEY_BLACK_HELD = (211, 145, 57, 255)
 KEYS_ARMED: list[tuple[object, int | str]] = []
 """The Keys module the typing keyboard is playing, if one is armed: at most one."""
 KEYBED_MOUSE_NOTE: list[tuple[object, int]] = []
@@ -6725,20 +6223,7 @@ def _keybed_geometry(w: int, h: int) -> list[tuple[int, bool, float, float, floa
     """(semitone, is_black, left, top, right, bottom) for the eighteen keys."""
     from .module_providers.builtin.keys import BLACK_SEMITONES, KEY_ROW
 
-    whites = [s for s in range(len(KEY_ROW)) if s not in BLACK_SEMITONES]
-    white_width = w / len(whites)
-    keys = []
-    white_index = {s: i for i, s in enumerate(whites)}
-    for semitone in range(len(KEY_ROW)):
-        if semitone in BLACK_SEMITONES:
-            # A black key sits astride the line between its white neighbours.
-            below = white_index[semitone - 1]
-            left = (below + 1) * white_width - white_width * 0.3
-            keys.append((semitone, True, left, 0.0, left + white_width * 0.6, h * 0.6))
-        else:
-            index = white_index[semitone]
-            keys.append((semitone, False, index * white_width, 0.0, (index + 1) * white_width, float(h)))
-    return keys
+    return _keybed_layout(w, h, len(KEY_ROW), BLACK_SEMITONES)
 
 
 def _draw_keybed(node: int | str, display: dict[str, object]) -> None:
@@ -7688,496 +7173,8 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                 )
 
 
-def _format_pan(value: float) -> str:
-    if abs(value) < 0.005:
-        return "C"
-    return f"{'L' if value < 0 else 'R'}{abs(value) * 100:.0f}"
-
-
-def _fader_readout(level: float) -> str:
-    """The level in decibels, the unit understood: "-6", "0", "-∞"."""
-    return _decibels(level)
-
-
-def _add_level_dial(
-    tag: str, value: float, label: str, setter: Callable[[float], None]
-) -> None:
-    """A level dial with a meter ring drawn around it in its own margin."""
-    _add_knob(
-        value,
-        label,
-        0.0,
-        1.0,
-        lambda level: _fader_readout(level),
-        setter,
-        size=LEVEL_DIAL_SIZE,
-        tag=tag,
-        compact=True,
-        inset=LEVEL_DIAL_INSET,
-    )
-    dpg.draw_polyline(
-        _meter_ring_points(0.0),
-        color=METER_QUIET,
-        thickness=2.0,
-        parent=tag,
-        tag=f"{tag}.meter",
-    )
-
-
-def _meter_ring_points(fraction: float) -> list[tuple[float, float]]:
-    """The outer ring of a level dial, lit as far round as the signal reaches."""
-    fraction = min(1.0, max(0.0, fraction))
-    centre = LEVEL_DIAL_SIZE * 0.5
-    radius = LEVEL_DIAL_SIZE * 0.5 - 1.0
-    steps = max(1, int(28 * fraction))
-    return [
-        (
-            centre + radius * math.cos(theta),
-            centre + radius * math.sin(theta),
-        )
-        for theta in (
-            KNOB_SWEEP_START
-            + (KNOB_SWEEP_END - KNOB_SWEEP_START) * fraction * step / steps
-            for step in range(steps + 1)
-        )
-    ]
-
-
-def _meter_colour(level: float) -> tuple[int, int, int, int]:
-    if level >= 0.98:
-        return METER_CLIP
-    if level >= 0.7:
-        return METER_HOT
-    return METER_QUIET
-
-
-def _build_strip(channel: int, master: MasterMixer) -> None:
-    """One console strip: the jack at the top, then level, then pan, A, B."""
-    with dpg.node(tag=CONSOLE_STRIP.format(channel=channel), label=f"{channel}"):
-        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            level = master.parameters.levels[channel - 1]
-            # Stacked narrow -- dial and readout, then M S, then pan A B -- so
-            # eleven strips fit across the rack of a default-sized window.
-            with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
-                _add_level_dial(
-                    CONSOLE_LEVEL.format(channel=channel),
-                    level,
-                    f"Ch {channel} level",
-                    lambda value, channel=channel: _channel_level_changed(
-                        master, channel, value
-                    ),
-                )
-                dpg.add_text(
-                    _fader_readout(level),
-                    tag=CONSOLE_READOUT.format(channel=channel),
-                    color=MUTED_TEXT,
-                )
-            # M and S are on the number row above -- drawn there, over the
-            # title bar, and pressed there -- so the body is level and knobs.
-            with dpg.group(horizontal=True, horizontal_spacing=4) as knob_row:
-                _add_knob(
-                    master.parameters.pans[channel - 1],
-                    f"Ch {channel} pan",
-                    -1.0,
-                    1.0,
-                    _format_pan,
-                    lambda value, channel=channel: master.set_pan(channel, value),
-                    tag=CONSOLE_PREFIX + f"pan_{channel}",
-                    compact=True,
-                    size=STRIP_KNOB_SIZE,
-                )
-                for bus in SENDS:
-                    _add_knob(
-                        getattr(master.parameters, f"sends_{bus}")[channel - 1],
-                        f"Ch {channel} send {bus.upper()}",
-                        0.0,
-                        1.0,
-                        lambda value: f"{value:.2f}",
-                        lambda value, channel=channel, bus=bus: master.set_send(
-                            bus, channel, value
-                        ),
-                        tag=CONSOLE_PREFIX + f"send_{bus}_{channel}",
-                        compact=True,
-                        size=STRIP_KNOB_SIZE,
-                    )
-            _add_strip_knob_labels()
-
-
-def _add_strip_knob_labels() -> None:
-    """Under the three knobs, what they are: L/R, FXA, FXB -- in a small face,
-    one label per knob column, so the strip says it without a tooltip."""
-    with dpg.group(horizontal=True, horizontal_spacing=0) as labels:
-        last = len(STRIP_KNOB_LABELS) - 1
-        for index, label in enumerate(STRIP_KNOB_LABELS):
-            text_width = len(label) * STRIP_LABEL_CHAR_PX
-            lead = max(0, (STRIP_KNOB_SIZE - text_width) // 2)
-            trail = max(0, STRIP_KNOB_SIZE - text_width - lead) + (4 if index < last else 0)
-            if lead:
-                dpg.add_spacer(width=lead)
-            dpg.add_text(label, color=MUTED_TEXT)
-            if trail:
-                dpg.add_spacer(width=trail)
-    small = f"{RACK_FONT_PREFIX}.{STRIP_LABEL_FONT_SIZE}"
-    if dpg.does_item_exist(small):
-        dpg.bind_item_font(labels, small)
-
-
-CONSOLE_MASTER: list[MasterMixer] = []
-"""The console's mixer, for the toggles drawn on the strips' title rows."""
-
-
-def _console_toggle_boxes() -> list[tuple[tuple[float, float, float, float], str, str | int]]:
-    """Every M and S on the console, as (screen box, kind, channel or bus).
-
-    On a channel strip's number row, M then S at the right end; on an effect
-    strip's, its M. Drawn on the title bar, where a strip has room it does not
-    have below, and where a desk keeps them.
-    """
-    boxes = []
-    size = CONSOLE_TOGGLE_SIZE
-    gap = 3.0
-
-    def title_boxes(node: str, kinds: tuple[str, ...], who: str | int) -> None:
-        if not dpg.does_item_exist(node):
-            return
-        try:
-            _left, top = (float(v) for v in dpg.get_item_rect_min(node))
-            right, _bottom = (float(v) for v in dpg.get_item_rect_max(node))
-        except (KeyError, SystemError):
-            return
-        if right <= _left:
-            return
-        # The content box; the panel's edge is the padding further out.
-        right += 6.0
-        y = top + (CONSOLE_TITLE_HEIGHT - size) * 0.5 - 1.0
-        x = right - 5.0
-        for kind in reversed(kinds):
-            boxes.append(((x - size, y, x, y + size), kind, who))
-            x -= size + gap
-
-    for channel in range(1, MASTER_CHANNELS + 1):
-        title_boxes(CONSOLE_STRIP.format(channel=channel), ("mute", "solo"), channel)
-    for bus in SENDS:
-        title_boxes(CONSOLE_RETURN.format(bus=bus), ("return_mute",), bus)
-    return boxes
-
-
-def _console_toggle_at(
-    screen_position: tuple[float, float],
-) -> tuple[str, str | int] | None:
-    """The M or S under a point, as (kind, channel or bus), or None."""
-    x, y = screen_position
-    for (left, top, right, bottom), kind, who in _console_toggle_boxes():
-        if left <= x <= right and top <= y <= bottom:
-            return kind, who
-    return None
-
-
-def _press_console_toggle(kind: str, who: str | int) -> None:
-    if not CONSOLE_MASTER:
-        return
-    master = CONSOLE_MASTER[0]
-    if kind == "mute":
-        _toggle_mute(0, None, (master, int(who)))
-    elif kind == "solo":
-        _toggle_solo(0, None, (master, int(who)))
-    elif kind == "return_mute":
-        _toggle_return_mute(0, None, (master, str(who)))
-
-
-def _refresh_console_toggles() -> None:
-    """Draw every strip's M and S on its title row, lit for what it is doing."""
-    if not dpg.does_item_exist(CONSOLE_TOGGLE_LAYER):
-        dpg.add_viewport_drawlist(tag=CONSOLE_TOGGLE_LAYER, front=True)
-    dpg.delete_item(CONSOLE_TOGGLE_LAYER, children_only=True)
-    if not CONSOLE_MASTER or not dpg.does_item_exist(RACK):
-        return
-    master = CONSOLE_MASTER[0]
-    hovered = _console_toggle_at(tuple(float(v) for v in dpg.get_mouse_pos(local=False)))
-    for (left, top, right, bottom), kind, who in _console_toggle_boxes():
-        if kind == "mute":
-            on = bool(master.parameters.mutes[int(who) - 1])
-            lit, letter = METER_HOT, "M"
-        elif kind == "solo":
-            on = bool(master.parameters.solos[int(who) - 1])
-            lit, letter = METER_QUIET, "S"
-        else:
-            on = bool(master.parameters.return_mutes[SENDS.index(str(who))])
-            lit, letter = METER_HOT, "M"
-        is_hovered = hovered == (kind, who)
-        if on:
-            fill = lit
-            ink = (28, 26, 22, 255)
-        else:
-            fill = (52, 50, 46, 255) if is_hovered else (36, 36, 34, 255)
-            ink = TEXT if is_hovered else MUTED_TEXT
-        dpg.draw_rectangle(
-            (left, top), (right, bottom), fill=fill, color=(0, 0, 0, 0),
-            rounding=3.0, parent=CONSOLE_TOGGLE_LAYER,
-        )
-        dpg.draw_text(
-            (left + 3.5, top + 0.5), letter, size=13, color=ink, parent=CONSOLE_TOGGLE_LAYER,
-        )
-
-
-def _paint_mute_solo(master: MasterMixer, channel: int) -> None:
-    """Colour a strip's M and S for what they are doing."""
-    mute = CONSOLE_MUTE.format(channel=channel)
-    solo = CONSOLE_SOLO.format(channel=channel)
-    if dpg.does_item_exist(mute):
-        dpg.bind_item_theme(
-            mute, MUTE_ON_THEME if master.parameters.mutes[channel - 1] else TOGGLE_OFF_THEME
-        )
-    if dpg.does_item_exist(solo):
-        dpg.bind_item_theme(
-            solo, SOLO_ON_THEME if master.parameters.solos[channel - 1] else TOGGLE_OFF_THEME
-        )
-
-
-def _toggle_mute(_sender: int | str, _app_data: object, data: tuple[MasterMixer, int]) -> None:
-    master, channel = data
-    master.set_mute(channel, not master.parameters.mutes[channel - 1])
-    _paint_mute_solo(master, channel)
-    _set_patch_status(
-        f"CHANNEL {channel}  {'MUTED' if master.parameters.mutes[channel - 1] else 'UNMUTED'}"
-    )
-
-
-def _toggle_solo(_sender: int | str, _app_data: object, data: tuple[MasterMixer, int]) -> None:
-    master, channel = data
-    master.set_solo(channel, not master.parameters.solos[channel - 1])
-    _paint_mute_solo(master, channel)
-    soloed = [index + 1 for index, on in enumerate(master.parameters.solos) if on]
-    _set_patch_status(
-        "SOLO  " + "  ".join(str(c) for c in soloed) if soloed else "SOLO OFF"
-    )
-
-
-def _channel_level_changed(master: MasterMixer, channel: int, level: float) -> None:
-    master.set_level(channel, float(level))
-    readout = CONSOLE_READOUT.format(channel=channel)
-    if dpg.does_item_exist(readout):
-        dpg.set_value(readout, _fader_readout(float(level)))
-
-
-def _master_level_changed(master: MasterMixer, level: float) -> None:
-    master.parameters.master = float(level)
-    if dpg.does_item_exist(CONSOLE_MASTER_READOUT):
-        dpg.set_value(CONSOLE_MASTER_READOUT, _fader_readout(float(level)))
-
-
-def _paint_return_mute(master: MasterMixer, bus: str) -> None:
-    mute = CONSOLE_RETURN_MUTE.format(bus=bus)
-    if dpg.does_item_exist(mute):
-        on = master.parameters.return_mutes[SENDS.index(bus)]
-        dpg.bind_item_theme(mute, MUTE_ON_THEME if on else TOGGLE_OFF_THEME)
-
-
-def _toggle_return_mute(_sender: int | str, _app_data: object, data: tuple[MasterMixer, str]) -> None:
-    master, bus = data
-    on = not master.parameters.return_mutes[SENDS.index(bus)]
-    master.set_return_mute(bus, on)
-    _paint_return_mute(master, bus)
-    _set_patch_status(f"RETURN {bus.upper()}  {'MUTED' if on else 'UNMUTED'}")
-
-
-def _return_level_changed(master: MasterMixer, bus: str, level: float) -> None:
-    master.set_return_level(bus, float(level))
-    readout = CONSOLE_RETURN_READOUT.format(bus=bus)
-    if dpg.does_item_exist(readout):
-        dpg.set_value(readout, _fader_readout(float(level)))
-
-
-def _build_return_strip(bus: str, master: MasterMixer) -> None:
-    """A return: what came back from a send, in stereo, with a level and a mute."""
-    left_port, right_port = RETURN_PORTS[bus]
-    with dpg.node(tag=CONSOLE_RETURN.format(bus=bus), label=f"FX {bus.upper()}"):
-        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            # Three jacks stand on posts above -- the send out, then the
-            # return's left and right in; this row only says which is which.
-            with dpg.group(horizontal=True, horizontal_spacing=0):
-                dpg.add_spacer(width=2)
-                dpg.add_text("OUT", color=MUTED_TEXT)
-                dpg.add_spacer(width=10)
-                dpg.add_text("L", color=SIGNAL_COLORS["audio"])
-                dpg.add_spacer(width=14)
-                dpg.add_text("R", color=SIGNAL_COLORS["audio"])
-        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            level = master.parameters.return_levels[SENDS.index(bus)]
-            with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
-                _add_level_dial(
-                    CONSOLE_RETURN_LEVEL.format(bus=bus),
-                    level,
-                    f"Return {bus.upper()} level",
-                    lambda value, bus=bus: _return_level_changed(master, bus, value),
-                )
-                dpg.add_text(
-                    _fader_readout(level),
-                    tag=CONSOLE_RETURN_READOUT.format(bus=bus),
-                    color=MUTED_TEXT,
-                )
-            # Its M is on the title row, drawn and pressed there.
-
-
-POST_OUTPUTS: set[str] = set()
-"""Posts whose jack is an output: the pin is drawn at the right edge."""
-
-
-def _build_jack_post(
-    name: str, attribute_tag: str, strip: str, across: float, *, output: bool = False
-) -> None:
-    """Stand a jack at a point along the top of a strip.
-
-    The post is a node with an empty title and one row holding nothing,
-    themed invisible, so all that shows is its pin -- drawn at the left edge
-    for an input and the right for an output -- and the console's settle puts
-    that edge where the jack should be.
-    """
-    post = CONSOLE_POST.format(name=name)
-    kind = dpg.mvNode_Attr_Output if output else dpg.mvNode_Attr_Input
-    with dpg.node(tag=post, label=""):
-        with dpg.node_attribute(tag=attribute_tag, attribute_type=kind):
-            # A text rather than a spacer: a text reports where it is, and the
-            # pin is drawn at the centre of this row.
-            POST_TEXTS[post] = dpg.add_text(" ")
-    dpg.bind_item_theme(post, JACK_POST_THEME)
-    POST_ANCHORS[post] = (strip, across)
-    if output:
-        POST_OUTPUTS.add(post)
-
-
-def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
-    """Build the console: eight strips and the master, pinned along the bottom.
-
-    The mixer used to be one panel of knobs pinned in a corner, and it looked
-    tacked on because it was. A mixer is a row of strips: each channel has its
-    jack at the top -- so a cable can be dropped straight onto the slot it
-    should play through -- a level dial with its meter drawn as a ring around
-    it, and pan and two sends under that. The strips live inside the node
-    editor because that is the only place a cable can land, and they are
-    pinned so the rack pans and zooms underneath them.
-    """
-    POST_ANCHORS.clear()
-    POST_TEXTS.clear()
-    POST_OUTPUTS.clear()
-    CONSOLE_MASTER[:] = [master]
-    for channel in range(1, MASTER_CHANNELS + 1):
-        _build_strip(channel, master)
-    for bus in SENDS:
-        _build_return_strip(bus, master)
-    for node in PINNED_NODES:
-        if not dpg.does_item_exist(node) or node in POST_ANCHORS:
-            continue
-        if str(node).startswith(CONSOLE_PREFIX + "return_"):
-            theme = CONSOLE_RETURN_THEME
-        else:
-            theme = CONSOLE_STRIP_THEME
-        dpg.bind_item_theme(node, theme)
-    # The jacks: one post at the top centre of each strip, two on each return.
-    # Built last so they draw above the strips.
-    for channel in range(1, MASTER_CHANNELS + 1):
-        _build_jack_post(
-            f"channel_{channel}",
-            f"{OUTPUT_NODE}.channel_{channel}",
-            CONSOLE_STRIP.format(channel=channel),
-            0.5,
-        )
-    for bus in SENDS:
-        left_port, right_port = RETURN_PORTS[bus]
-        strip = CONSOLE_RETURN.format(bus=bus)
-        _build_jack_post(f"send_{bus}", f"{OUTPUT_NODE}.send_{bus}", strip, 0.2, output=True)
-        _build_jack_post(left_port, f"{OUTPUT_NODE}.{left_port}", strip, 0.5)
-        _build_jack_post(right_port, f"{OUTPUT_NODE}.{right_port}", strip, 0.78)
-
-
-def _add_master_control(master: MasterMixer) -> None:
-    """The master level, in the status bar: a dial with its ring meter.
-
-    There is no master strip. What a master strip held was a level and a
-    meter, and the bottom bar has room for both beside the scope, where the
-    output is already being watched.
-    """
-    dpg.add_spacer(width=14)
-    dpg.add_text("MASTER", color=MUTED_TEXT)
-    level = master.parameters.master
-    _add_level_dial(
-        CONSOLE_MASTER_LEVEL,
-        level,
-        "Master",
-        lambda value: _master_level_changed(master, value),
-    )
-    dpg.add_text(_fader_readout(level), tag=CONSOLE_MASTER_READOUT, color=MUTED_TEXT)
-    # The peak-programme meter the tests read; the ring is what is seen.
-    dpg.add_progress_bar(
-        tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
-    )
-
-
-def _console_titles(patch: PatchGraph) -> None:
-    """Name each strip after what is patched into it.
-
-    A row of numbers is a mixer nobody has used yet. Once a cable lands the
-    strip says what it is playing -- the module's own instance name, cut to
-    fit -- and goes back to its number when the cable is pulled.
-    """
-    feeding: dict[int, str] = {}
-    for cable in patch.cables:
-        if cable.target.module_id != MASTER_ID:
-            continue
-        if not cable.target.port_id.startswith("channel_"):
-            continue
-        try:
-            channel = int(cable.target.port_id.rsplit("_", 1)[1])
-        except ValueError:
-            continue
-        feeding.setdefault(channel, cable.source.module_id)
-    for channel in range(1, MASTER_CHANNELS + 1):
-        strip = CONSOLE_STRIP.format(channel=channel)
-        if not dpg.does_item_exist(strip):
-            continue
-        source = feeding.get(channel)
-        label = f"{channel}" if source is None else _strip_title(source, patch.modules.get(source))
-        if dpg.get_item_configuration(strip)["label"] != label:
-            dpg.configure_item(strip, label=label)
-
-
-STRIP_TITLE_CHARS = 4
-"""What fits on a strip's title row beside its M and S."""
-
-
-def _strip_title(instance_id: str, module: object = None, width: int = STRIP_TITLE_CHARS) -> str:
-    """A name short enough for a strip's title row: "BEAT", "HARM", "VOI2".
-
-    A module may say what to call it -- a voice, its instrument -- through a
-    ``strip_name``; otherwise the last word of its instance name, with the
-    copy number kept if it has one, cut to what fits beside M and S.
-    """
-    said = getattr(module, "strip_name", None)
-    if isinstance(said, str) and said.strip():
-        return said.strip().upper()[:width]
-    words = [word for word in instance_id.replace("-", "_").split("_") if word]
-    if not words:
-        return instance_id.upper()[:width]
-    number = ""
-    if words[-1].isdigit() and len(words) > 1:
-        number = words[-1]
-        words = words[:-1]
-    stem = words[-1].upper()
-    room = max(1, width - len(number))
-    return f"{stem[:room]}{number}"
-
-
 def _module_selector_button_tag(module_id: str) -> str:
     return f"noodler.module_selector.item.{module_id}"
-
-
-def _module_library_slug(label: str) -> str:
-    """Return a stable Dear PyGui tag fragment for a library heading."""
-    normalized = "".join(
-        character.lower() if character.isalnum() else " "
-        for character in label
-    )
-    return "_".join(normalized.split())
 
 
 def _module_library_section_tag(section: str) -> str:
