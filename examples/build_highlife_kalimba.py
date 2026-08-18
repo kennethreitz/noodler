@@ -117,9 +117,9 @@ routes = [
     ("marimba", "audio", MASTER_ID, "channel_4"),
     (MASTER_ID, "send_a", "space", "audio"),
     (MASTER_ID, "send_b", "echo", "audio"),
-    ("space", "left", MASTER_ID, "channel_5"),
-    ("space", "right", MASTER_ID, "channel_6"),
-    ("echo", "output", MASTER_ID, "channel_7"),
+    ("space", "left", MASTER_ID, "return_a_left"),
+    ("space", "right", MASTER_ID, "return_a_right"),
+    ("echo", "output", MASTER_ID, "return_b_left"),
 ]
 for source, source_port, target, target_port in routes:
     patch.connect(source, source_port, target, target_port)
@@ -128,9 +128,8 @@ master.set_level(1, 0.8);  master.set_pan(1, 0.0)
 master.set_level(2, 0.7);  master.set_pan(2, -0.1)
 master.set_level(3, 0.6);  master.set_pan(3, 0.45);  master.set_send("a", 3, 0.5); master.set_send("b", 3, 0.6)
 master.set_level(4, 0.55); master.set_pan(4, -0.45); master.set_send("a", 4, 0.7)
-master.set_level(5, 0.5);  master.set_pan(5, -0.7)
-master.set_level(6, 0.5);  master.set_pan(6, 0.7)
-master.set_level(7, 0.4);  master.set_pan(7, 0.3)
+master.set_return_level("a", 0.55)
+master.set_return_level("b", 0.45)
 master.parameters.master = 0.5
 
 view = RackViewPreset(

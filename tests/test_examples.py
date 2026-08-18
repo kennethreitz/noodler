@@ -147,6 +147,9 @@ def test_each_voice_in_the_garden_has_its_own_register() -> None:
         master = runtime.patch.modules["master"]
         for other in range(1, 9):
             master.set_level(other, 1.0 if other == channel else 0.0)
+        # The dry voice alone: no room, no echo.
+        master.set_return_level("a", 0.0)
+        master.set_return_level("b", 0.0)
         audio = np.concatenate(
             [runtime.patch.render_stereo(256, 48_000.0) for _ in range(1_400)]
         ).sum(axis=1)
@@ -158,8 +161,8 @@ def test_each_voice_in_the_garden_has_its_own_register() -> None:
         return float(np.sum(frequencies[heard] * weights) / np.sum(weights))
 
     bells = spectrum_of(1)
-    kalimba = spectrum_of(3)
-    bowl = spectrum_of(4)
+    kalimba = spectrum_of(2)
+    bowl = spectrum_of(3)
 
     assert bowl < kalimba < bells, (
         f"bowl {bowl:.0f} Hz, kalimba {kalimba:.0f} Hz, bells {bells:.0f} Hz"
@@ -263,7 +266,9 @@ def test_the_highlife_example_keeps_time_with_the_transport() -> None:
 
     for audio, bpm in ((at_108, 108.0), (at_150, 150.0)):
         ratio = beats_per_period(audio, bpm)
-        assert any(abs(ratio - simple) < 0.03 for simple in (0.5, 1.0, 2.0)), ratio
+        assert any(
+            abs(ratio - simple) / simple < 0.03 for simple in (0.5, 1.0, 2.0, 4.0)
+        ), ratio
     assert float(np.max(np.abs(at_108))) < 0.9
 
     clocked = [

@@ -163,7 +163,7 @@
       "parameters": {
         "time_seconds": 0.42,
         "feedback": 0.38,
-        "mix": 0.3,
+        "mix": 1.0,
         "damping": 0.55,
         "drive": 1.0,
         "freeze": false
@@ -174,7 +174,7 @@
       "module_type": "reverb",
       "provider": "builtin",
       "parameters": {
-        "mix": 0.55,
+        "mix": 1.0,
         "decay_seconds": 7.5,
         "damping": 0.5,
         "diffusion": 0.88,
@@ -188,24 +188,72 @@
       "provider": "builtin",
       "parameters": {
         "levels": [
-          0.62,
-          0.62,
-          0.5,
+          0.6,
           0.55,
+          0.55,
+          0.8,
           0.8,
           0.8,
           0.8,
           0.8
         ],
         "pans": [
-          -0.7,
-          0.7,
-          0.35,
-          -0.2,
+          -0.35,
+          0.4,
+          -0.15,
+          0.0,
           0.0,
           0.0,
           0.0,
           0.0
+        ],
+        "sends_a": [
+          0.9,
+          0.3,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.0,
+          0.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.6,
+          0.5
+        ],
+        "return_mutes": [
+          false,
+          false
         ],
         "master": 0.5
       }
@@ -384,21 +432,51 @@
     },
     {
       "source": {
+        "module_id": "bells",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
         "module_id": "kalimba",
         "port_id": "audio"
       },
       "target": {
-        "module_id": "echo",
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bowl",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
         "port_id": "audio"
       }
     },
     {
       "source": {
-        "module_id": "bells",
-        "port_id": "audio"
+        "module_id": "master",
+        "port_id": "send_b"
       },
       "target": {
-        "module_id": "space",
+        "module_id": "echo",
         "port_id": "audio"
       }
     },
@@ -409,7 +487,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_1"
+        "port_id": "return_a_left"
       }
     },
     {
@@ -419,7 +497,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_2"
+        "port_id": "return_a_right"
       }
     },
     {
@@ -429,17 +507,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_3"
-      }
-    },
-    {
-      "source": {
-        "module_id": "bowl",
-        "port_id": "audio"
-      },
-      "target": {
-        "module_id": "master",
-        "port_id": "channel_4"
+        "port_id": "return_b_left"
       }
     }
   ],
@@ -463,6 +531,11 @@
   ],
   "system_output": {
     "master_gain": 0.7
+  },
+  "transport": {
+    "bpm": 120.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
   },
   "view": {
     "zoom": 0.75,

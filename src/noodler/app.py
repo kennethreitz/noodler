@@ -26,6 +26,7 @@ from .module_providers.builtin import (
     LowPassGateParameters,
     MASTER_CHANNELS,
     MasterMixer,
+    RETURN_PORTS,
     SENDS,
     PolarizingMixer,
     PolarizingMixerParameters,
@@ -105,7 +106,7 @@ is how the zoom knows to leave them alone."""
 CONSOLE_STRIP = CONSOLE_PREFIX + "strip_{channel}"
 CONSOLE_MARGIN = 14.0
 """The gap between the console and the bottom-left corner of the canvas."""
-CONSOLE_GAP = 6.0
+CONSOLE_GAP = 4.0
 """Between one strip and the next."""
 
 LEVEL_DIAL_SIZE = 34
@@ -120,6 +121,16 @@ CONSOLE_MASTER_LEVEL = CONSOLE_PREFIX + "master_level"
 CONSOLE_MASTER_METER = CONSOLE_PREFIX + "master_meter"
 CONSOLE_MASTER_READOUT = CONSOLE_PREFIX + "master_readout"
 CONSOLE_THEME = "noodler.theme.console"
+CONSOLE_CONTENT_THEME = "noodler.theme.console_content"
+CONSOLE_MUTE = CONSOLE_PREFIX + "mute_{channel}"
+CONSOLE_SOLO = CONSOLE_PREFIX + "solo_{channel}"
+CONSOLE_RETURN = CONSOLE_PREFIX + "return_{bus}"
+CONSOLE_RETURN_LEVEL = CONSOLE_PREFIX + "return_level_{bus}"
+CONSOLE_RETURN_READOUT = CONSOLE_PREFIX + "return_readout_{bus}"
+CONSOLE_RETURN_MUTE = CONSOLE_PREFIX + "return_mute_{bus}"
+TOGGLE_OFF_THEME = "noodler.theme.toggle_off"
+MUTE_ON_THEME = "noodler.theme.mute_on"
+SOLO_ON_THEME = "noodler.theme.solo_on"
 
 PINNED_NODES: list[int | str] = []
 """Nodes the camera does not carry: the console strips, left to right.
@@ -991,6 +1002,7 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
         INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
     INSTANCE_NODE_TAGS[MASTER_ID] = OUTPUT_NODE
     strips = [CONSOLE_STRIP.format(channel=c) for c in range(1, MASTER_CHANNELS + 1)]
+    strips += [CONSOLE_RETURN.format(bus=bus) for bus in SENDS]
     PINNED_NODES[:] = [*strips, OUTPUT_NODE]
     for strip in strips:
         if strip not in RACK_NODES:
@@ -1211,6 +1223,22 @@ def _configure_theme() -> None:
             dpg.add_theme_style(
                 dpg.mvNodeStyleVar_NodePadding, 6, 4, category=dpg.mvThemeCat_Nodes
             )
+    for tag, background, foreground in (
+        (TOGGLE_OFF_THEME, (36, 36, 34, 255), MUTED_TEXT),
+        (MUTE_ON_THEME, METER_HOT, (28, 26, 22, 255)),
+        (SOLO_ON_THEME, METER_QUIET, (24, 30, 24, 255)),
+    ):
+        with dpg.theme(tag=tag):
+            with dpg.theme_component(dpg.mvButton):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, background)
+                dpg.add_theme_color(
+                    dpg.mvThemeCol_ButtonHovered,
+                    tuple(min(255, c + 16) for c in background[:3]) + (255,),
+                )
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, background)
+                dpg.add_theme_color(dpg.mvThemeCol_Text, foreground)
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 3)
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 5, 1)
     with dpg.theme(tag=METER_THEME):
         with dpg.theme_component(dpg.mvProgressBar):
             dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, OUTPUT_ACCENT)
@@ -1891,6 +1919,7 @@ def _refresh_scope(runtime: AppRuntime) -> None:
 
 CONSOLE_BALLISTICS: list[MeterBallistics] = []
 """One peak-programme meter per strip, made when the console is."""
+RETURN_BALLISTICS: list[MeterBallistics] = []
 
 PORT_TEXTS: dict[tuple[str, str], tuple[int | str, str]] = {}
 """Each output jack's label and signal type, for lighting it with its signal."""
@@ -2014,6 +2043,15 @@ def _refresh_console_meters(runtime: AppRuntime, dt: float, master_level: float)
             continue
         peak = float(peaks[index]) if index < len(peaks) else 0.0
         level = min(1.0, meter.advance(peak, dt))
+        dpg.configure_item(ring, points=_meter_ring_points(level), color=_meter_colour(level))
+    return_peaks = getattr(master, "return_peaks", (0.0, 0.0)) if master is not None else (0.0, 0.0)
+    while len(RETURN_BALLISTICS) < len(SENDS):
+        RETURN_BALLISTICS.append(MeterBallistics())
+    for index, bus in enumerate(SENDS):
+        ring = f"{CONSOLE_RETURN_LEVEL.format(bus=bus)}.meter"
+        if not dpg.does_item_exist(ring):
+            continue
+        level = min(1.0, RETURN_BALLISTICS[index].advance(float(return_peaks[index]), dt))
         dpg.configure_item(ring, points=_meter_ring_points(level), color=_meter_colour(level))
     ring = f"{CONSOLE_MASTER_LEVEL}.meter"
     if dpg.does_item_exist(ring):
@@ -5671,7 +5709,8 @@ def _format_pan(value: float) -> str:
 
 
 def _fader_readout(level: float) -> str:
-    return f"{_decibels(level)} dB"
+    """The level in decibels, the unit understood: "-6", "0", "-∞"."""
+    return _decibels(level)
 
 
 def _add_level_dial(
@@ -5739,7 +5778,7 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
             )
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.levels[channel - 1]
-            with dpg.group(horizontal=True):
+            with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
                 _add_level_dial(
                     CONSOLE_LEVEL.format(channel=channel),
                     level,
@@ -5748,12 +5787,31 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                         master, channel, value
                     ),
                 )
-                dpg.add_text(
-                    _fader_readout(level),
-                    tag=CONSOLE_READOUT.format(channel=channel),
-                    color=MUTED_TEXT,
-                )
-            with dpg.group(horizontal=True):
+                with dpg.group():
+                    dpg.add_text(
+                        _fader_readout(level),
+                        tag=CONSOLE_READOUT.format(channel=channel),
+                        color=MUTED_TEXT,
+                    )
+                    with dpg.group(horizontal=True, horizontal_spacing=3):
+                        mute = dpg.add_button(
+                            label="M",
+                            tag=CONSOLE_MUTE.format(channel=channel),
+                            small=True,
+                            callback=_toggle_mute,
+                            user_data=(master, channel),
+                        )
+                        solo = dpg.add_button(
+                            label="S",
+                            tag=CONSOLE_SOLO.format(channel=channel),
+                            small=True,
+                            callback=_toggle_solo,
+                            user_data=(master, channel),
+                        )
+                    _paint_mute_solo(master, channel)
+                    del mute, solo
+            dpg.bind_item_theme(dial_row, CONSOLE_CONTENT_THEME)
+            with dpg.group(horizontal=True, horizontal_spacing=5) as knob_row:
                 _add_knob(
                     master.parameters.pans[channel - 1],
                     f"Ch {channel} pan",
@@ -5779,6 +5837,39 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                     )
 
 
+def _paint_mute_solo(master: MasterMixer, channel: int) -> None:
+    """Colour a strip's M and S for what they are doing."""
+    mute = CONSOLE_MUTE.format(channel=channel)
+    solo = CONSOLE_SOLO.format(channel=channel)
+    if dpg.does_item_exist(mute):
+        dpg.bind_item_theme(
+            mute, MUTE_ON_THEME if master.parameters.mutes[channel - 1] else TOGGLE_OFF_THEME
+        )
+    if dpg.does_item_exist(solo):
+        dpg.bind_item_theme(
+            solo, SOLO_ON_THEME if master.parameters.solos[channel - 1] else TOGGLE_OFF_THEME
+        )
+
+
+def _toggle_mute(_sender: int | str, _app_data: object, data: tuple[MasterMixer, int]) -> None:
+    master, channel = data
+    master.set_mute(channel, not master.parameters.mutes[channel - 1])
+    _paint_mute_solo(master, channel)
+    _set_patch_status(
+        f"CHANNEL {channel}  {'MUTED' if master.parameters.mutes[channel - 1] else 'UNMUTED'}"
+    )
+
+
+def _toggle_solo(_sender: int | str, _app_data: object, data: tuple[MasterMixer, int]) -> None:
+    master, channel = data
+    master.set_solo(channel, not master.parameters.solos[channel - 1])
+    _paint_mute_solo(master, channel)
+    soloed = [index + 1 for index, on in enumerate(master.parameters.solos) if on]
+    _set_patch_status(
+        "SOLO  " + "  ".join(str(c) for c in soloed) if soloed else "SOLO OFF"
+    )
+
+
 def _channel_level_changed(master: MasterMixer, channel: int, level: float) -> None:
     master.set_level(channel, float(level))
     readout = CONSOLE_READOUT.format(channel=channel)
@@ -5790,6 +5881,67 @@ def _master_level_changed(master: MasterMixer, level: float) -> None:
     master.parameters.master = float(level)
     if dpg.does_item_exist(CONSOLE_MASTER_READOUT):
         dpg.set_value(CONSOLE_MASTER_READOUT, _fader_readout(float(level)))
+
+
+def _paint_return_mute(master: MasterMixer, bus: str) -> None:
+    mute = CONSOLE_RETURN_MUTE.format(bus=bus)
+    if dpg.does_item_exist(mute):
+        on = master.parameters.return_mutes[SENDS.index(bus)]
+        dpg.bind_item_theme(mute, MUTE_ON_THEME if on else TOGGLE_OFF_THEME)
+
+
+def _toggle_return_mute(_sender: int | str, _app_data: object, data: tuple[MasterMixer, str]) -> None:
+    master, bus = data
+    on = not master.parameters.return_mutes[SENDS.index(bus)]
+    master.set_return_mute(bus, on)
+    _paint_return_mute(master, bus)
+    _set_patch_status(f"RETURN {bus.upper()}  {'MUTED' if on else 'UNMUTED'}")
+
+
+def _return_level_changed(master: MasterMixer, bus: str, level: float) -> None:
+    master.set_return_level(bus, float(level))
+    readout = CONSOLE_RETURN_READOUT.format(bus=bus)
+    if dpg.does_item_exist(readout):
+        dpg.set_value(readout, _fader_readout(float(level)))
+
+
+def _build_return_strip(bus: str, master: MasterMixer) -> None:
+    """A return: what came back from a send, in stereo, with a level and a mute."""
+    left_port, right_port = RETURN_PORTS[bus]
+    with dpg.node(tag=CONSOLE_RETURN.format(bus=bus), label=f"RET {bus.upper()}"):
+        for port_id, name in ((left_port, "L"), (right_port, "R")):
+            with dpg.node_attribute(
+                tag=f"{OUTPUT_NODE}.{port_id}",
+                label=f"Return {bus.upper()} {name}",
+                attribute_type=dpg.mvNode_Attr_Input,
+            ):
+                _add_port_text(
+                    name, "audio", f"The {'left' if name == 'L' else 'right'} of what came back from send {bus.upper()}."
+                )
+        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
+            level = master.parameters.return_levels[SENDS.index(bus)]
+            with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
+                _add_level_dial(
+                    CONSOLE_RETURN_LEVEL.format(bus=bus),
+                    level,
+                    f"Return {bus.upper()} level",
+                    lambda value, bus=bus: _return_level_changed(master, bus, value),
+                )
+                with dpg.group():
+                    dpg.add_text(
+                        _fader_readout(level),
+                        tag=CONSOLE_RETURN_READOUT.format(bus=bus),
+                        color=MUTED_TEXT,
+                    )
+                    dpg.add_button(
+                        label="M",
+                        tag=CONSOLE_RETURN_MUTE.format(bus=bus),
+                        small=True,
+                        callback=_toggle_return_mute,
+                        user_data=(master, bus),
+                    )
+                    _paint_return_mute(master, bus)
+            dpg.bind_item_theme(dial_row, CONSOLE_CONTENT_THEME)
 
 
 def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
@@ -5805,6 +5957,8 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
     """
     for channel in range(1, MASTER_CHANNELS + 1):
         _build_strip(channel, master)
+    for bus in SENDS:
+        _build_return_strip(bus, master)
     with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
         for port_id, name, description in (
             ("send_a", "SEND A", "Every channel's send A, summed. Patch it to an effect."),
@@ -5819,7 +5973,7 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
                 _add_port_text(name, "audio", description)
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.master
-            with dpg.group(horizontal=True):
+            with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
                 _add_level_dial(
                     CONSOLE_MASTER_LEVEL,
                     level,
@@ -5829,6 +5983,7 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
                 dpg.add_text(
                     _fader_readout(level), tag=CONSOLE_MASTER_READOUT, color=MUTED_TEXT
                 )
+            dpg.bind_item_theme(dial_row, CONSOLE_CONTENT_THEME)
             # The peak-programme meter the tests read; the ring is what is seen.
             dpg.add_progress_bar(
                 tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
@@ -6809,6 +6964,7 @@ def build_ui(
     PORT_STEPS.clear()
     PORT_INDEX_KEY.clear()
     CONSOLE_BALLISTICS.clear()
+    RETURN_BALLISTICS.clear()
     CANVAS_INTERACTION.reset()
     MODULE_COLLAPSE.reset()
     dpg.set_global_font_scale(1.0)

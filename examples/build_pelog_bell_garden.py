@@ -63,8 +63,8 @@ add("kalimba", "pytheory_voice", instrument="kalimba", level=0.42,
 add("bowl", "pytheory_voice", instrument="singing_bowl", level=0.5,
     release_ms=2400.0, reference_frequency_hz=220.0)
 
-add("echo", "echo_delay", time_seconds=0.42, feedback=0.38, mix=0.3, damping=0.55)
-add("space", "reverb", mix=0.55, decay_seconds=7.5, damping=0.5,
+add("echo", "echo_delay", time_seconds=0.42, feedback=0.38, mix=1.0, damping=0.55)
+add("space", "reverb", mix=1.0, decay_seconds=7.5, damping=0.5,
     diffusion=0.88, pre_delay_ms=40.0)
 
 master = ensure_master(patch)
@@ -98,22 +98,25 @@ routes = [
     # Very slow chance moves the kalimba between registers.
     ("drift", "smooth", "kalimba_pitch", "transpose"),
 
-    # Effects, then the master.
-    ("kalimba", "audio", "echo", "audio"),
-    ("bells", "audio", "space", "audio"),
-
-    ("space", "left", MASTER_ID, "channel_1"),
-    ("space", "right", MASTER_ID, "channel_2"),
-    ("echo", "output", MASTER_ID, "channel_3"),
-    ("bowl", "audio", MASTER_ID, "channel_4"),
+    # Every voice on its own channel; the room and the echo hang off the
+    # master's sends and come back on the returns.
+    ("bells", "audio", MASTER_ID, "channel_1"),
+    ("kalimba", "audio", MASTER_ID, "channel_2"),
+    ("bowl", "audio", MASTER_ID, "channel_3"),
+    (MASTER_ID, "send_a", "space", "audio"),
+    (MASTER_ID, "send_b", "echo", "audio"),
+    ("space", "left", MASTER_ID, "return_a_left"),
+    ("space", "right", MASTER_ID, "return_a_right"),
+    ("echo", "output", MASTER_ID, "return_b_left"),
 ]
 for source, source_port, target, target_port in routes:
     patch.connect(source, source_port, target, target_port)
 
-master.set_level(1, 0.62); master.set_pan(1, -0.7)
-master.set_level(2, 0.62); master.set_pan(2, 0.7)
-master.set_level(3, 0.5); master.set_pan(3, 0.35)
-master.set_level(4, 0.55); master.set_pan(4, -0.2)
+master.set_level(1, 0.6); master.set_pan(1, -0.35); master.set_send("a", 1, 0.9)
+master.set_level(2, 0.55); master.set_pan(2, 0.4); master.set_send("b", 2, 0.8); master.set_send("a", 2, 0.3)
+master.set_level(3, 0.55); master.set_pan(3, -0.15); master.set_send("a", 3, 0.4)
+master.set_return_level("a", 0.6)
+master.set_return_level("b", 0.5)
 master.parameters.master = 0.5
 
 # ------------------------------------------------------------------ the rack

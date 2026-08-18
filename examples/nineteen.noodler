@@ -119,9 +119,9 @@
           0.7,
           0.7,
           0.7,
-          0.55,
-          0.55,
-          0.45,
+          0.8,
+          0.8,
+          0.8,
           0.8,
           0.8
         ],
@@ -129,9 +129,9 @@
           0.0,
           0.0,
           -0.15,
-          -0.7,
-          0.7,
-          0.35,
+          0.0,
+          0.0,
+          0.0,
           0.0,
           0.0
         ],
@@ -154,6 +154,34 @@
           0.0,
           0.0,
           0.0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.6,
+          0.5
+        ],
+        "return_mutes": [
+          false,
+          false
         ],
         "master": 0.48
       }
@@ -439,7 +467,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_4"
+        "port_id": "return_a_left"
       }
     },
     {
@@ -449,7 +477,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_5"
+        "port_id": "return_a_right"
       }
     },
     {
@@ -469,7 +497,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_6"
+        "port_id": "return_b_left"
       }
     },
     {
@@ -503,6 +531,11 @@
   ],
   "system_output": {
     "master_gain": 0.7
+  },
+  "transport": {
+    "bpm": 120.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
   },
   "view": {
     "zoom": 0.75,

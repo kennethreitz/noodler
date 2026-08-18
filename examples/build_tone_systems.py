@@ -153,21 +153,20 @@ def build(example: Example) -> Path:
         elif voice.through == "echo":
             master.set_send("b", channel, 0.8)
 
+    # What comes back from a send goes to its return: stereo, with a level of
+    # its own, straight to the bus -- so the channels stay free for sources.
     if wants_space:
         routes.append((MASTER_ID, "send_a", "space", "audio"))
         patch.modules["space"].parameters.mix = 1.0
-        for side, pan in (("left", -0.7), ("right", 0.7)):
-            channel += 1
-            routes.append(("space", side, MASTER_ID, f"channel_{channel}"))
-            master.set_level(channel, 0.55)
-            master.set_pan(channel, pan)
+        routes.append(("space", "left", MASTER_ID, "return_a_left"))
+        routes.append(("space", "right", MASTER_ID, "return_a_right"))
+        master.set_return_level("a", 0.6)
     if wants_echo:
         routes.append((MASTER_ID, "send_b", "echo", "audio"))
         patch.modules["echo"].parameters.mix = 1.0
-        channel += 1
-        routes.append(("echo", "output", MASTER_ID, f"channel_{channel}"))
-        master.set_level(channel, 0.45)
-        master.set_pan(channel, 0.35)
+        # A mono echo, patched to one side of the return, is heard on both.
+        routes.append(("echo", "output", MASTER_ID, "return_b_left"))
+        master.set_return_level("b", 0.5)
 
     # Very slow chance moves whichever voice is highest between registers.
     if example.voices:

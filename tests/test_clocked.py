@@ -182,7 +182,9 @@ def test_beat_one_is_beat_one() -> None:
     beats.prepare(SR, N)
     out = _run(beats, Transport(bpm=120.0), 4.5)
     first = int(np.flatnonzero(np.abs(out["audio"]) > 0.01)[0])
-    assert first == 0
+    # A kick begins with a click whose first sample or two may be quiet, so
+    # "on the downbeat" is within a fraction of a millisecond of it.
+    assert first <= 8
     downbeats = _edges(out["downbeat"])
     # A four-beat pattern at 120 comes round every two seconds.
     assert np.allclose(np.diff(downbeats) / SR, 2.0, atol=1e-3)

@@ -86,11 +86,13 @@ to open the audio device and start the clock; audio never starts on its own.
 Every output jack glows with the signal on it, and a right-click on any module
 folds it, resets it, unplugs it or removes it.
 
-The sends come out of the master strip as jacks — patch **Send A** into a
-reverb and the reverb's outputs back into two strips, and every strip that
-turns its A up is in the same room. The return is a channel like any other, so
-it can be levelled and panned like any other; the loop it closes through the
-master runs one block late, which is what a reverb is.
+Each strip has **M** and **S**. The sends come out of the master strip as
+jacks and come back on two **return strips** — patch **Send A** into a reverb
+and the reverb's outputs into RET A, and every strip that turns its A up is in
+the same room, while the eight channels stay free for sources. A return is
+stereo, has a level and a mute of its own, and goes straight to the bus; the
+loop it closes through the master runs one block late, which is what a reverb
+is.
 
 To open a saved patch directly:
 

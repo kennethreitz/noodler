@@ -92,7 +92,10 @@ def test_every_channel_has_a_jack() -> None:
     inputs = [
         port for port in MasterMixer.manifest.ports if port.direction.value == "input"
     ]
-    assert len(inputs) == MASTER_CHANNELS
+    channels = [port for port in inputs if port.id.startswith("channel_")]
+    returns = [port for port in inputs if port.id.startswith("return_")]
+    assert len(channels) == MASTER_CHANNELS
+    assert len(returns) == 4, "two stereo returns"
     assert {port.signal_type.value for port in inputs} == {"audio"}
 
 
@@ -143,3 +146,74 @@ def test_a_send_is_not_affected_by_pan_or_master() -> None:
 def test_a_send_must_name_a_real_bus() -> None:
     with pytest.raises(ValueError):
         MasterMixer().set_send("c", 1, 0.5)
+
+
+def test_mute_silences_a_channel_but_its_meter_still_reads() -> None:
+    mixer = MasterMixer()
+    one = np.ones(4, dtype=np.float32)
+    mixer.set_mute(1, True)
+
+    rendered = mixer.process(4, 48_000.0, {"channel_1": one, "channel_2": one})
+
+    assert mixer.channel_peaks[0] > 0.0, "the meter shows what arrives"
+    # Only channel two reaches the bus: half of what two channels would give.
+    both = MasterMixer().process(4, 48_000.0, {"channel_1": one, "channel_2": one})
+    np.testing.assert_allclose(rendered["left"], both["left"] * 0.5, atol=1e-6)
+
+
+def test_solo_silences_everything_else_and_mute_still_wins() -> None:
+    mixer = MasterMixer()
+    one = np.ones(4, dtype=np.float32)
+    mixer.set_solo(2, True)
+    assert mixer.audible(2) and not mixer.audible(1)
+
+    rendered = mixer.process(4, 48_000.0, {"channel_1": one, "channel_2": one})
+    alone = MasterMixer().process(4, 48_000.0, {"channel_2": one})
+    np.testing.assert_allclose(rendered["left"], alone["left"], atol=1e-6)
+
+    mixer.set_mute(2, True)
+    assert not mixer.audible(2), "a muted channel stays muted when soloed"
+    silent = mixer.process(4, 48_000.0, {"channel_1": one, "channel_2": one})
+    np.testing.assert_allclose(silent["left"], 0.0)
+
+
+def test_mutes_and_solos_survive_the_document() -> None:
+    mixer = MasterMixer()
+    mixer.set_mute(3, True)
+    mixer.set_solo(5, True)
+    reloaded = MasterMixer(MasterMixerParameters.model_validate(mixer.parameters.model_dump()))
+    assert reloaded.parameters.mutes[2] is True
+    assert reloaded.parameters.solos[4] is True
+
+
+def test_returns_go_straight_to_the_bus_at_their_own_level() -> None:
+    mixer = MasterMixer()
+    mixer.set_return_level("a", 0.5)
+    left = np.ones(4, dtype=np.float32)
+    right = np.full(4, 0.25, dtype=np.float32)
+
+    rendered = mixer.process(
+        4, 48_000.0, {"return_a_left": left, "return_a_right": right}
+    )
+
+    gain = mixer.parameters.master * np.sqrt(2.0)
+    np.testing.assert_allclose(rendered["left"], 0.5 * gain, atol=1e-6)
+    np.testing.assert_allclose(rendered["right"], 0.125 * gain, atol=1e-6)
+    assert mixer.return_peaks[0] == pytest.approx(0.5)
+
+
+def test_a_mono_return_patched_to_one_side_is_heard_on_both() -> None:
+    mixer = MasterMixer()
+    one = np.ones(4, dtype=np.float32)
+    rendered = mixer.process(4, 48_000.0, {"return_b_left": one})
+    np.testing.assert_allclose(rendered["left"], rendered["right"])
+    assert float(rendered["right"][0]) > 0.0
+
+
+def test_a_muted_return_is_silent_but_metered() -> None:
+    mixer = MasterMixer()
+    mixer.set_return_mute("a", True)
+    one = np.ones(4, dtype=np.float32)
+    rendered = mixer.process(4, 48_000.0, {"return_a_left": one, "return_a_right": one})
+    np.testing.assert_allclose(rendered["left"], 0.0)
+    assert mixer.return_peaks[0] > 0.0
