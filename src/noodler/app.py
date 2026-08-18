@@ -116,7 +116,10 @@ CONTROL_STATUS = "noodler.control_status"
 RACK_WORKSPACE = "noodler.rack_workspace"
 UNPLUG_ALL_BUTTON = "noodler.unplug_all"
 SAVE_PATCH_BUTTON = "noodler.save_patch"
-FRAME_RACK_BUTTON = "noodler.frame_rack"
+FRAME_RACK_MENU_ITEM = "noodler.frame_rack.menu"
+RACK_MENU_BAR = "noodler.menu_bar"
+RACK_OUTLINE_HEIGHT = 220
+LIBRARY_HEADER_ROOM = 36
 TIDY_RACK_BUTTON = "noodler.tidy_rack"
 SAVE_PATCH_DIALOG = "noodler.save_patch_dialog"
 ADD_MODULE_BUTTON = "noodler.add_module"
@@ -399,6 +402,9 @@ class CanvasInteraction:
 
 
 CANVAS_INTERACTION = CanvasInteraction()
+
+TIDY_TARGETS: dict[int | str, float] = {}
+"""Where TIDY asked each module to go, until it gets there or is dragged."""
 
 RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
 """One critically damped spring pair per rack node, in rack coordinates."""
@@ -1257,6 +1263,7 @@ def _refresh_frame(
     # motion rather than teleporting it.
     dt = clamp_timestep(dpg.get_delta_time())
     _release_stale_key_latches()
+    _settle_library_layout()
     _settle_space_pan()
     _consume_macos_magnification()
     _glide_rack(dt)
@@ -1802,44 +1809,33 @@ def _rail_x_targets(
     active_index: int | None,
     gap: float,
 ) -> tuple[float, ...]:
-    """Pack a rail left to right, closing every gap it can.
+    """Make room around an active module while leaving placement alone.
 
-    The rule this replaces only ever pushed modules apart: a gap opened by one
-    drag stayed open for the rest of the session, so a rack could spread but
-    never tidy, and the only way back was to drag everything again. Packing
-    from the rail's left edge keeps the row as compact as its modules allow and
-    leaves a horizontal drag deciding one thing — order.
-
-    The module under the pointer keeps whatever position the pointer gives it;
-    its slot is still reserved here so the rest of the rail opens a gap for it.
+    Packing every rail on every frame did keep the rack tidy, but it took the
+    one thing a rack is for: putting a module where you want it. A drag has to
+    mean a position. Tidying is a thing the user asks for, not a rule the
+    layout enforces -- see TIDY_TARGETS.
     """
     if len(positions) != len(widths):
         raise ValueError("rail positions and widths must have the same length")
     if not positions:
         return ()
-    if active_index is not None and not 0 <= active_index < len(positions):
+    targets = list(positions)
+    if active_index is None:
+        for index in range(1, len(targets)):
+            minimum = targets[index - 1] + widths[index - 1] + gap
+            targets[index] = max(targets[index], minimum)
+        return tuple(targets)
+    if not 0 <= active_index < len(targets):
         raise ValueError("active rail index is out of range")
 
-    targets = []
-    cursor = min(positions)
-    for width in widths:
-        targets.append(cursor)
-        cursor += width + gap
+    for index in range(active_index - 1, -1, -1):
+        maximum = targets[index + 1] - widths[index] - gap
+        targets[index] = min(targets[index], maximum)
+    for index in range(active_index + 1, len(targets)):
+        minimum = targets[index - 1] + widths[index - 1] + gap
+        targets[index] = max(targets[index], minimum)
     return tuple(targets)
-
-
-def _rail_slot_for(
-    center: float,
-    targets: tuple[float, ...],
-    widths: tuple[float, ...],
-) -> int:
-    """Find the packed slot a dragged module is currently closest to."""
-    if not targets:
-        return 0
-    centers = [
-        target + width * 0.5 for target, width in zip(targets, widths)
-    ]
-    return min(range(len(centers)), key=lambda index: abs(centers[index] - center))
 
 
 def _module_depths(patch: PatchGraph) -> dict[str, int]:
@@ -1881,6 +1877,8 @@ def _tidy_rack(
     }
     node_depth[OUTPUT_NODE] = furthest + 1
 
+    TIDY_TARGETS.clear()
+    gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
     for lane in RACK_RAILS.values():
         lane.sort(
             key=lambda node: (
@@ -1890,6 +1888,13 @@ def _tidy_rack(
                 else 0.0,
             )
         )
+        available = [node for node in lane if dpg.does_item_exist(node)]
+        if not available:
+            continue
+        cursor = min(float(dpg.get_item_pos(node)[0]) for node in available)
+        for node in available:
+            TIDY_TARGETS[node] = cursor
+            cursor += max(1.0, float(dpg.get_item_rect_size(node)[0])) + gap
     _set_patch_status("TIDIED  ·  RAILS NOW FOLLOW THE SIGNAL")
 
 
@@ -1939,18 +1944,18 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
             active_index=active_index,
             gap=gap,
         )
-        if active_index is not None:
-            # Dragging a module sideways moves it through the rail rather than
-            # to a coordinate, so its neighbours part for it as it passes.
-            slot = _rail_slot_for(
-                positions[active_index] + widths[active_index] * 0.5,
-                targets,
-                widths,
+        if TIDY_TARGETS:
+            targets = tuple(
+                TIDY_TARGETS.get(node, target)
+                for node, target in zip(available, targets)
             )
-            if slot != active_index:
-                reordered = list(available)
-                reordered.pop(active_index)
-                reordered.insert(slot, active_node)
+        if active_index is not None:
+            # A drag decides position, so the rail's order follows the eye:
+            # keeping the list in visual order is what lets "make room" push
+            # the right neighbours out of the way.
+            order = sorted(range(len(available)), key=lambda i: positions[i])
+            if order != list(range(len(available))):
+                reordered = [available[index] for index in order]
                 lane = RACK_RAILS[rail]
                 if set(lane) == set(reordered):
                     lane[:] = reordered
@@ -1962,7 +1967,7 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
                     max(1.0, float(dpg.get_item_rect_size(node)[0]))
                     for node in available
                 )
-                active_index = slot
+                active_index = available.index(active_node)
                 targets = _rail_x_targets(
                     positions,
                     widths,
@@ -1974,7 +1979,9 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
             current_y = float(dpg.get_item_pos(node)[1])
             spring_x, spring_y = _rail_springs(node, current_x, current_y)
             if node == active_node:
-                # The pointer owns a dragged module; the spring only follows.
+                # The pointer owns a dragged module; the spring only follows,
+                # and a tidy it was still travelling toward is abandoned.
+                TIDY_TARGETS.pop(node, None)
                 spring_x.snap(current_x)
                 spring_y.snap(current_y)
                 continue
@@ -1995,6 +2002,8 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
                 current_y
             ):
                 dpg.set_item_pos(node, [next_x, next_y])
+            if spring_x.settled:
+                TIDY_TARGETS.pop(node, None)
 
 
 def _clear_rack_selection() -> None:
@@ -2321,14 +2330,6 @@ def _add_rack_controls(runtime: AppRuntime) -> None:
         user_data=1,
     )
     dpg.add_button(
-        label="FRAME ALL",
-        tag=FRAME_RACK_BUTTON,
-        callback=_frame_rack,
-        user_data=runtime,
-    )
-    with dpg.tooltip(FRAME_RACK_BUTTON):
-        dpg.add_text("Bring every module back into view.  ·  F")
-    dpg.add_button(
         label="HIDE LIBRARY",
         tag=LIBRARY_PANE_BUTTON,
         callback=_toggle_library_pane,
@@ -2504,6 +2505,7 @@ def _translate_rack(delta_x: float, delta_y: float) -> None:
         CANVAS_INTERACTION.rail_y[rail] += delta_y
     # Carry the springs with the camera so they keep owning the sub-pixel
     # position rather than re-syncing to a truncated one.
+    TIDY_TARGETS.clear()
     for spring_x, spring_y in RAIL_SPRINGS.values():
         spring_x.value += delta_x
         spring_x.target += delta_x
@@ -2541,6 +2543,53 @@ def _pan_rack(*, clear_selection: bool = True) -> None:
     _track_pan_velocity(delta_x, delta_y)
     interaction.last_mouse_x = float(mouse_x)
     interaction.last_mouse_y = float(mouse_y)
+
+
+def _add_rack_menu(runtime: AppRuntime) -> None:
+    """Add the window menu, for the actions a toolbar should not carry.
+
+    Framing is a recovery action rather than a working one: needed rarely, and
+    worth a key rather than permanent space beside the controls used constantly.
+    """
+    with dpg.menu_bar(tag=RACK_MENU_BAR):
+        with dpg.menu(label="View"):
+            dpg.add_menu_item(
+                label="Frame All",
+                tag=FRAME_RACK_MENU_ITEM,
+                shortcut="F",
+                callback=_frame_rack,
+                user_data=runtime,
+            )
+            dpg.add_menu_item(
+                label="Tidy Rails",
+                shortcut="T",
+                callback=_tidy_rack,
+                user_data=runtime,
+            )
+            dpg.add_menu_item(
+                label="Library Pane",
+                shortcut="L",
+                callback=_toggle_library_pane,
+                user_data=runtime,
+            )
+
+
+def _settle_library_layout() -> None:
+    """Give the rack outline whatever room the library is not using.
+
+    A collapsed section that stays where it was leaves dead space above the
+    fold; sending it to the bottom means folding the catalog away actually buys
+    something — a longer view of the rack that is being built.
+    """
+    if not (
+        dpg.does_item_exist(RACK_OUTLINE_BODY)
+        and dpg.does_item_exist(MODULE_LIBRARY_HEADER)
+    ):
+        return
+    open_library = bool(dpg.get_value(MODULE_LIBRARY_HEADER))
+    wanted = RACK_OUTLINE_HEIGHT if open_library else -LIBRARY_HEADER_ROOM
+    if dpg.get_item_configuration(RACK_OUTLINE_BODY)["height"] != wanted:
+        dpg.configure_item(RACK_OUTLINE_BODY, height=wanted)
 
 
 def _settle_space_pan() -> None:
@@ -4910,7 +4959,8 @@ def _build_empty_rack_ui(
         if module_count == 0
         else f"{module_count} MODULES  ·  {connection_count} CABLES"
     )
-    with dpg.window(tag=PRIMARY_WINDOW, label="Noodler"):
+    with dpg.window(tag=PRIMARY_WINDOW, label="Noodler", menubar=True):
+        _add_rack_menu(runtime)
         with dpg.group(horizontal=True):
             dpg.add_text(patch_name.upper(), color=SCALE_ACCENT)
             dpg.add_text(rack_summary, color=TEXT)
@@ -5086,6 +5136,7 @@ def build_ui(
     dpg.set_global_font_scale(1.0)
     PATCH_BAYS.clear()
     RAIL_SPRINGS.clear()
+    TIDY_TARGETS.clear()
     METER_BALLISTICS.reset()
     RACK_HISTORY.clear()
     KEY_LATCH.clear()
@@ -5113,7 +5164,8 @@ def build_ui(
         return runtime
     if not starter_patch:
         return _build_empty_rack_ui(runtime)
-    with dpg.window(tag=PRIMARY_WINDOW, label="Noodler"):
+    with dpg.window(tag=PRIMARY_WINDOW, label="Noodler", menubar=True):
+        _add_rack_menu(runtime)
         with dpg.group(horizontal=True):
             dpg.add_text("HIRAJOSHI GARDEN", color=SCALE_ACCENT)
             dpg.add_text(

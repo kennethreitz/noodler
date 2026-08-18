@@ -1,0 +1,29 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "test",
+  "modules": [],
+  "cables": [],
+  "output_taps": [],
+  "system_output": {
+    "master_gain": 0.8
+  },
+  "view": {
+    "zoom": 1.65,
+    "rails": {
+      "control": -236.5920153175457,
+      "audio": 109.90798468245453
+    },
+    "nodes": [
+      {
+        "node_id": "system_output",
+        "position": {
+          "x": 297.0,
+          "y": 109.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}

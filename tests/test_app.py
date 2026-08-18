@@ -845,35 +845,38 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
         dpg.destroy_context()
 
 
-def test_rail_layout_packs_the_row_and_closes_its_gaps() -> None:
-    """A rack that can only spread is one the user has to keep tidying."""
+def test_rail_layout_makes_room_without_moving_what_fits() -> None:
+    """A drag has to mean a position, so the rail only resolves overlap."""
+    positions = (20.0, 180.0, 430.0)
     widths = (200.0, 180.0, 220.0)
-    spread = (20.0, 500.0, 900.0)
 
+    # Nothing is being dragged: later modules are pushed clear, no further.
     assert _rail_x_targets(
-        spread,
+        positions,
         widths,
         active_index=None,
         gap=40.0,
     ) == (20.0, 260.0, 480.0)
 
-    # The module under the pointer keeps its own position, but its slot is
-    # still reserved so the rest of the rail parts for it.
+    # The dragged module keeps its position and the rest part around it.
     assert _rail_x_targets(
-        spread,
+        positions,
         widths,
         active_index=1,
         gap=40.0,
-    ) == (20.0, 260.0, 480.0)
+    ) == (-60.0, 180.0, 430.0)
 
 
-def test_rail_layout_packs_from_where_the_row_already_is() -> None:
+def test_rail_layout_leaves_a_roomy_row_untouched() -> None:
+    positions = (20.0, 400.0, 900.0)
+    widths = (200.0, 180.0, 220.0)
+
     assert _rail_x_targets(
-        (300.0, 320.0),
-        (100.0, 100.0),
+        positions,
+        widths,
         active_index=None,
-        gap=20.0,
-    ) == (300.0, 420.0)
+        gap=40.0,
+    ) == positions
     assert _rail_x_targets((), (), active_index=None, gap=20.0) == ()
 
 
