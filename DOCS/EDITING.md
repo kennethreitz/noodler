@@ -19,6 +19,8 @@ instrument was telling the user to press a key that did nothing.
 | ⌘Z / ⌘⇧Z | undo, redo |
 | ⌘K | open the module browser |
 | F | frame the whole rack |
+| T | order the rails by signal flow |
+| L | collapse or restore the library pane |
 | Escape | close the browser, or clear the selection |
 | Space + pointer movement | pan the rack, with no button held |
 | Shift + background drag | box-select modules (a plain drag pans) |

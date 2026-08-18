@@ -125,6 +125,8 @@ MODULE_SELECTOR_SEARCH = "noodler.module_selector.search"
 MODULE_SELECTOR_STATUS = "noodler.module_selector.status"
 RACK_OUTLINE_BODY = "noodler.rack_outline.body"
 RACK_OUTLINE_STATUS = "noodler.rack_outline.status"
+MODULE_LIBRARY_HEADER = "noodler.module_library.header"
+LIBRARY_PANE_BUTTON = "noodler.library_pane"
 MODULE_LIBRARY_SECTIONS = (
     (
         "COMPOSE & MODULATE",
@@ -223,10 +225,11 @@ SIGNAL_COLORS = {
 }
 DEFAULT_CONTROL_STATUS = (
     "DRAG JACKS TO PATCH  ·  DRAG MODULES SIDEWAYS TO REORDER  ·  "
-    "T = TIDY  ·  F = FRAME ALL  ·  ⌘Z = UNDO  ·  ⌘K = ADD MODULE  ·  "
-    "SPACE + MOVE = PAN  ·  PINCH = ZOOM  ·  SELECT + DELETE TO REMOVE  ·  "
-    "DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET"
+    "T = TIDY  ·  F = FRAME ALL  ·  L = LIBRARY  ·  ⌘Z = UNDO  ·  "
+    "⌘K = ADD MODULE  ·  SPACE + MOVE = PAN  ·  PINCH = ZOOM  ·  "
+    "SELECT + DELETE TO REMOVE  ·  DOUBLE-CLICK KNOB = RESET"
 )
+
 
 
 
@@ -2326,6 +2329,13 @@ def _add_rack_controls(runtime: AppRuntime) -> None:
     with dpg.tooltip(FRAME_RACK_BUTTON):
         dpg.add_text("Bring every module back into view.  ·  F")
     dpg.add_button(
+        label="HIDE LIBRARY",
+        tag=LIBRARY_PANE_BUTTON,
+        callback=_toggle_library_pane,
+    )
+    with dpg.tooltip(LIBRARY_PANE_BUTTON):
+        dpg.add_text("Collapse the library pane and give the room to the rack.  ·  L")
+    dpg.add_button(
         label="TIDY",
         tag=TIDY_RACK_BUTTON,
         callback=_tidy_rack,
@@ -2404,6 +2414,40 @@ def _show_knob_hints(visible: bool) -> None:
     for tooltip in KNOB_INTERACTION.tooltip_tags:
         if dpg.does_item_exist(tooltip):
             dpg.configure_item(tooltip, show=visible)
+
+
+def _library_pane_is_inline() -> bool:
+    """Report whether the browser is the side pane rather than the dialog."""
+    return dpg.does_item_exist(MODULE_SELECTOR) and not dpg.get_item_type(
+        MODULE_SELECTOR
+    ).endswith("mvWindowAppItem")
+
+
+def _set_library_pane(visible: bool) -> None:
+    """Show or hide the side pane, letting the canvas take the room back."""
+    if not _library_pane_is_inline():
+        return
+    dpg.configure_item(MODULE_SELECTOR, show=visible)
+    if dpg.does_item_exist(LIBRARY_PANE_BUTTON):
+        dpg.configure_item(
+            LIBRARY_PANE_BUTTON,
+            label="HIDE LIBRARY" if visible else "SHOW LIBRARY",
+        )
+
+
+def _toggle_library_pane(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    _user_data: object = None,
+) -> None:
+    """Collapse the whole side pane, and bring it back."""
+    if _keyboard_is_captured() or not _library_pane_is_inline():
+        return
+    visible = not dpg.is_item_shown(MODULE_SELECTOR)
+    _set_library_pane(visible)
+    _set_patch_status(
+        "LIBRARY SHOWN  ·  L HIDES IT" if visible else "LIBRARY HIDDEN  ·  L BRINGS IT BACK"
+    )
 
 
 def _show_box_selector(visible: bool) -> None:
@@ -3006,6 +3050,7 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             (dpg.mvKey_K, _open_module_selector_shortcut),
             (dpg.mvKey_F, _frame_rack),
             (dpg.mvKey_T, _tidy_rack),
+            (dpg.mvKey_L, _toggle_library_pane),
             (dpg.mvKey_Z, _undo_or_redo_rack_edit),
         ):
             dpg.add_key_press_handler(
@@ -4540,6 +4585,10 @@ def _show_module_selector(
     dpg.set_value(MODULE_SELECTOR_SEARCH, "")
     _filter_module_selector("", "", None)
     dpg.show_item(MODULE_SELECTOR)
+    if _library_pane_is_inline():
+        _set_library_pane(True)
+        if dpg.does_item_exist(MODULE_LIBRARY_HEADER):
+            dpg.set_value(MODULE_LIBRARY_HEADER, True)
     dpg.focus_item(MODULE_SELECTOR_SEARCH)
 
 
@@ -4589,38 +4638,42 @@ def _build_module_library(runtime: AppRuntime) -> None:
             pass
         _refresh_rack_outline(runtime)
         dpg.add_separator()
-        dpg.add_text("MODULE LIBRARY", color=SCALE_ACCENT)
-        dpg.add_text("ADD TO THE FREEFORM RACK", color=MUTED_TEXT)
-        dpg.add_input_text(
-            tag=MODULE_SELECTOR_SEARCH,
-            hint="Search instruments, signals, effects…",
-            callback=_filter_module_selector,
-            width=-1,
-        )
-        dpg.add_text(
-            f"{len(BUILTIN_PROVIDER_MANIFEST.modules)} MODULES",
-            tag=MODULE_SELECTOR_STATUS,
-            color=MUTED_TEXT,
-        )
-        dpg.add_separator()
-        for section, categories in MODULE_LIBRARY_SECTIONS:
-            with dpg.tree_node(
-                tag=_module_library_section_tag(section),
-                label=section,
-                default_open=True,
-            ):
-                for category in categories:
-                    manifests = manifests_by_category.get(category, ())
-                    if not manifests:
-                        continue
-                    with dpg.tree_node(
-                        tag=_module_library_category_tag(category),
-                        label=category.upper(),
-                        default_open=category
-                        in {"Musical Brains", "Sources", "Oscillators"},
-                    ):
-                        for manifest in manifests:
-                            _add_module_library_entry(runtime, manifest)
+        with dpg.collapsing_header(
+            tag=MODULE_LIBRARY_HEADER,
+            label="MODULE LIBRARY",
+            default_open=True,
+        ):
+            dpg.add_text("ADD TO THE FREEFORM RACK", color=MUTED_TEXT)
+            dpg.add_input_text(
+                tag=MODULE_SELECTOR_SEARCH,
+                hint="Search instruments, signals, effects…",
+                callback=_filter_module_selector,
+                width=-1,
+            )
+            dpg.add_text(
+                f"{len(BUILTIN_PROVIDER_MANIFEST.modules)} MODULES",
+                tag=MODULE_SELECTOR_STATUS,
+                color=MUTED_TEXT,
+            )
+            dpg.add_separator()
+            for section, categories in MODULE_LIBRARY_SECTIONS:
+                with dpg.tree_node(
+                    tag=_module_library_section_tag(section),
+                    label=section,
+                    default_open=True,
+                ):
+                    for category in categories:
+                        manifests = manifests_by_category.get(category, ())
+                        if not manifests:
+                            continue
+                        with dpg.tree_node(
+                            tag=_module_library_category_tag(category),
+                            label=category.upper(),
+                            default_open=category
+                            in {"Musical Brains", "Sources", "Oscillators"},
+                        ):
+                            for manifest in manifests:
+                                _add_module_library_entry(runtime, manifest)
 
 
 def _build_module_selector(runtime: AppRuntime) -> None:
