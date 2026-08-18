@@ -25,3 +25,7 @@ assembled without repeatedly opening and closing a catalog.
   audio/CV cross-linking rules.
 - [Patch graph and system audio](AUDIO.md) — empty-rack startup, the composed
   reference patch, Core Audio output, and current real-time limitations.
+- [Motion](MOTION.md) — why the rack settles in continuous time, and the
+  spring model the rails, camera, knobs, and meter share.
+- [Editing the rack](EDITING.md) — the editing keys, and the undo history
+  that makes patching safe to explore.

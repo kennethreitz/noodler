@@ -159,19 +159,8 @@ same clamped timestep, and the same sub-pixel accounting as everything else.
 
 ## The keyboard
 
-The rack advertised `SELECT CABLE + DELETE TO UNPATCH` while `app.py` registered
-no key handlers at all — only mouse ones. Delete and Escape are now wired, and
-because most Mac keyboards send Backspace for the key labelled Delete, both are
-bound and both stand down while the module browser is open so the search field
-keeps its own editing keys.
-
-Delete removes selected cables and selected modules; module removal is backed by
-`PatchGraph.remove_module`, which drops every cable and output tap that touched
-the instance and recompiles the processing order. The system output refuses to
-be removed. The title-bar and current-rack-tree close targets call that same
-path. `⌘K` focuses the module library, `F` frames the rack, and Escape clears
-the search or the selection. The guard covers the save-patch dialog as well as
-the library: typing a patch name must not cost the rack a module.
+The keys that edit a rack, and the history that makes them safe to try, are
+described in [Editing the rack](EDITING.md).
 
 ## Deliberately not here
 
@@ -187,9 +176,3 @@ because none of it can be verified without a real window and a real cursor, and
 a half-correct version leaves the user's pointer hidden or frozen. It wants a
 hands-on pass, with an unconditional release in `_end_knob_drag`, in `main`'s
 `finally`, and a per-frame watchdog for a lost mouse-up.
-
-**Undo** is the largest remaining gap, and deletion made it urgent: one keypress
-can now remove a module and every cable attached to it. `PatchGraph` and the
-`.noodler` preset already describe a patch completely, so the shape is
-available; what is missing is a path that rebuilds the rack from a captured
-patch.
