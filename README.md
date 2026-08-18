@@ -38,7 +38,9 @@ modulation and CV/audio cross-patching. An LFO is only slow until it is not.
 
 **The graph is real.** Moving a cable changes the executable `PatchGraph` that
 feeds the audio callback. The visible rack and the sounding instrument are two
-views of the same patch.
+views of the same patch. Patching an output back into something that already
+feeds it is a technique, not a mistake: a loop closes on the previous block, the
+way a real-time graph has always closed one.
 
 **The interface should feel like an instrument.** Modules sit on magnetic
 semantic rails, the rack moves as a single surface, and dense technical detail
@@ -215,7 +217,6 @@ Noodler is an audible prototype, not yet a finished macOS application.
 - There is no signed, self-contained `.app` bundle yet.
 - The third-party provider API is still young and should not be considered
   stable.
-- Feedback loops require an explicit delay and are otherwise rejected.
 - The audio callback still allocates Python dictionaries and NumPy arrays, and
   topology changes do not yet use immutable graph-snapshot handoff.
 - The graph should remain structurally unchanged while audio is running.

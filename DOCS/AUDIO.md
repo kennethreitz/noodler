@@ -153,3 +153,23 @@ callback only has to miss once to be heard.
 The remaining cost is in the modules that genuinely need a sample clock: the
 reverb's delay network and the low-pass gate. Vectorising those is the next
 move if the callback ever needs more room.
+
+## Feedback closes on the previous block
+
+The graph used to refuse a cycle outright, telling the user that feedback
+required an explicit delay module. For an instrument inspired by Eurorack that
+is close to backwards: patching an output into something that already feeds it
+is a technique — self-oscillation, resonant networks, chaotic patches — and
+refusing it made a whole family of patches unbuildable.
+
+The order is now compiled as far as it can be, and whatever remains is a cycle.
+The cable that closes it is marked as feedback and left out of the ordering;
+those cables read the previous block rather than the current one, which is how a
+real-time graph has always closed a loop — with a delay of one block, and no
+algebraic loop to solve.
+
+The newest cable in a cycle is the one chosen to close it, so cables already
+carrying signal keep doing so and the one just patched becomes the feedback
+path, which is what the hand that patched it expects. Only the outputs a loop
+actually asks for are remembered between blocks, and a change of block size
+starts the loop again rather than feeding a module the wrong number of samples.

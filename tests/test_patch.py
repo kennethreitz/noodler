@@ -76,16 +76,77 @@ def test_incompatible_signal_types_are_rejected() -> None:
         patch.connect("source", "sine", "target", "sync")
 
 
-def test_feedback_requires_a_future_explicit_delay_module() -> None:
+def test_a_feedback_patch_is_allowed_to_exist() -> None:
+    """A rack feeds back. Refusing it made a family of patches unbuildable."""
+    patch = PatchGraph()
+    patch.add_module("first", PolarizingMixer())
+    patch.add_module("second", PolarizingMixer())
+    patch.connect("first", "output", "second", "input_1")
+    patch.connect("second", "output", "first", "input_1")
+
+    assert len(patch.cables) == 2
+    assert len(patch.processing_order) == 2
+    assert len(patch.feedback_cables) == 1
+
+    closing = next(iter(patch.feedback_cables))
+    assert closing.source.module_id == "second", "the newest cable closes the loop"
+
+
+def test_a_loop_reads_the_previous_block_not_the_current_one() -> None:
+    """One block of delay is what makes a loop a signal path, not an equation."""
+    patch = PatchGraph()
+    source = ComplexVCO(ComplexVCOParameters(frequency=100.0, amplitude=0.5))
+    passthrough = PolarizingMixer(
+        PolarizingMixerParameters(channels=2, gains=(1.0, 1.0))
+    )
+    patch.add_module("vco", source)
+    patch.add_module("mixer", passthrough)
+    patch.connect("vco", "sine", "mixer", "input_1")
+    patch.connect("mixer", "output", "mixer", "input_2")
+    patch.connect_output("mixer", "output")
+
+    assert len(patch.feedback_cables) == 1
+
+    first = np.array(patch.render(4, 800.0))
+    second = np.array(patch.render(4, 800.0))
+
+    # The first block cannot hear itself; the second carries the first back in.
+    assert np.any(second != 0.0)
+    assert not np.allclose(first, second)
+
+
+def test_a_module_can_be_patched_into_itself() -> None:
+    patch = PatchGraph()
+    patch.add_module("mixer", PolarizingMixer())
+    patch.connect("mixer", "output", "mixer", "input_1")
+
+    assert patch.processing_order == ("mixer",)
+    assert len(patch.feedback_cables) == 1
+    patch.render(4, 48_000.0)  # renders rather than raising
+
+
+def test_a_patch_without_loops_has_no_feedback_cables() -> None:
     patch = PatchGraph()
     patch.add_module("first", PolarizingMixer())
     patch.add_module("second", PolarizingMixer())
     patch.connect("first", "output", "second", "input_1")
 
-    with pytest.raises(PatchError, match="feedback loops"):
-        patch.connect("second", "output", "first", "input_1")
+    assert patch.feedback_cables == frozenset()
+    assert patch.processing_order == ("first", "second")
 
-    assert len(patch.cables) == 1
+
+def test_removing_the_loop_restores_a_plain_order() -> None:
+    patch = PatchGraph()
+    patch.add_module("first", PolarizingMixer())
+    patch.add_module("second", PolarizingMixer())
+    patch.connect("first", "output", "second", "input_1")
+    closing = patch.connect("second", "output", "first", "input_1")
+    assert patch.feedback_cables
+
+    patch.disconnect(closing)
+
+    assert patch.feedback_cables == frozenset()
+    assert patch.processing_order == ("first", "second")
 
 
 def test_output_bus_accepts_continuous_cv() -> None:

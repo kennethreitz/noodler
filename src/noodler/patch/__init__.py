@@ -1,6 +1,6 @@
 """Validated runtime patch graphs for block-processing modules."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
@@ -91,6 +91,8 @@ class PatchGraph:
         self._cables: list[Cable] = []
         self._output_taps: list[OutputTap] = []
         self._processing_order: tuple[str, ...] = ()
+        self._feedback: frozenset[Cable] = frozenset()
+        self._previous: dict[tuple[str, str], ArrayLike] = {}
 
     @property
     def modules(self) -> Mapping[str, BlockModule]:
@@ -107,6 +109,11 @@ class PatchGraph:
     @property
     def processing_order(self) -> tuple[str, ...]:
         return self._processing_order
+
+    @property
+    def feedback_cables(self) -> frozenset[Cable]:
+        """The cables closing a loop, which read the previous block."""
+        return self._feedback
 
     def add_module(self, instance_id: str, module: BlockModule) -> None:
         """Add a uniquely named runtime module to the graph."""
@@ -270,6 +277,13 @@ class PatchGraph:
         for module_id in self._processing_order:
             inputs: dict[str, ArrayLike] = {}
             for cable in incoming[module_id]:
+                if cable in self._feedback:
+                    # A loop is closed with the previous block, which is what
+                    # keeps it a feedback path rather than an equation.
+                    inputs[cable.target.port_id] = self._remembered(
+                        cable.source, frame_count
+                    )
+                    continue
                 try:
                     inputs[cable.target.port_id] = rendered[cable.source.module_id][
                         cable.source.port_id
@@ -284,7 +298,39 @@ class PatchGraph:
                 sample_rate,
                 inputs,
             )
+        self._remember(rendered)
         return rendered
+
+    def _remember(self, rendered: Mapping[str, Mapping[str, ArrayLike]]) -> None:
+        """Keep only the outputs a loop will ask for next block."""
+        if not self._feedback:
+            if self._previous:
+                self._previous.clear()
+            return
+        kept: dict[tuple[str, str], ArrayLike] = {}
+        for cable in self._feedback:
+            source = cable.source
+            try:
+                kept[(source.module_id, source.port_id)] = rendered[
+                    source.module_id
+                ][source.port_id]
+            except KeyError:
+                continue
+        self._previous = kept
+
+    def _remembered(self, source: Endpoint, frame_count: int) -> ArrayLike:
+        """Last block's value for a looped output, silent before there is one."""
+        value = self._previous.get((source.module_id, source.port_id))
+        if value is None:
+            return 0.0
+        block = np.asarray(value)
+        if block.ndim == 0:
+            return value
+        if block.shape != (frame_count,):
+            # The block size changed underneath the loop; start it again rather
+            # than feed a module the wrong number of samples.
+            return 0.0
+        return value
 
     def _port(self, endpoint: Endpoint) -> PortManifest:
         try:
@@ -299,15 +345,43 @@ class PatchGraph:
         )
 
     def _compile_processing_order(self) -> tuple[str, ...]:
+        """Order the modules, letting feedback close the loops it needs.
+
+        A rack feeds back. Patching an output into something that already feeds
+        it is a technique — self-oscillation, chaotic patches, resonant
+        networks — not a mistake, and refusing it made a whole family of patches
+        unbuildable.
+
+        The graph is sorted as far as it can be; whatever remains is a cycle,
+        and the cable that closes it is marked as feedback and left out of the
+        ordering. Those cables read the previous block instead of the current
+        one, which is how a real-time graph has always closed a loop: with a
+        delay of one block, and no algebraic loop to solve.
+        """
+        feedback: set[Cable] = set()
+        while True:
+            live = [cable for cable in self._cables if cable not in feedback]
+            order = self._sorted_with(live)
+            if order is not None:
+                self._feedback = frozenset(feedback)
+                return order
+            closing = self._cycle_closing_cable(live)
+            if closing is None:
+                # Every remaining cable is already feedback; nothing else can
+                # be broken, so order by insertion and let the loops resolve.
+                self._feedback = frozenset(self._cables)
+                return tuple(self._modules)
+            feedback.add(closing)
+
+    def _sorted_with(self, cables: Sequence[Cable]) -> tuple[str, ...] | None:
+        """Kahn's algorithm over one set of cables, or None if it cannot finish."""
         incoming_count = {module_id: 0 for module_id in self._modules}
         outgoing: dict[str, list[str]] = {
             module_id: [] for module_id in self._modules
         }
-        for cable in self._cables:
-            source = cable.source.module_id
-            target = cable.target.module_id
-            outgoing[source].append(target)
-            incoming_count[target] += 1
+        for cable in cables:
+            outgoing[cable.source.module_id].append(cable.target.module_id)
+            incoming_count[cable.target.module_id] += 1
 
         ready = [
             module_id
@@ -322,10 +396,43 @@ class PatchGraph:
                 incoming_count[target] -= 1
                 if incoming_count[target] == 0:
                     ready.append(target)
+        return tuple(order) if len(order) == len(self._modules) else None
 
-        if len(order) != len(self._modules):
-            raise PatchError("feedback loops require an explicit delay module")
-        return tuple(order)
+    def _cycle_closing_cable(self, cables: Sequence[Cable]) -> Cable | None:
+        """Pick the cable that closes a cycle: the most recently patched one.
+
+        Choosing the newest keeps a patch stable while it is being built — the
+        cables already working carry the signal, and the one just added becomes
+        the feedback path, which is what the hand that patched it expects.
+        """
+        stuck = self._modules_in_cycles(cables)
+        for cable in reversed(list(cables)):
+            if (
+                cable.source.module_id in stuck
+                and cable.target.module_id in stuck
+            ):
+                return cable
+        return None
+
+    def _modules_in_cycles(self, cables: Sequence[Cable]) -> set[str]:
+        """Every module a cycle passes through, by repeated leaf removal."""
+        remaining = set(self._modules)
+        edges = [
+            (cable.source.module_id, cable.target.module_id) for cable in cables
+        ]
+        trimming = True
+        while trimming:
+            trimming = False
+            sources = {source for source, target in edges if target in remaining}
+            targets = {target for source, target in edges if source in remaining}
+            for module_id in tuple(remaining):
+                if module_id not in targets or module_id not in sources:
+                    remaining.discard(module_id)
+                    edges = [
+                        edge for edge in edges if module_id not in edge
+                    ]
+                    trimming = True
+        return remaining
 
     @staticmethod
     def _block(
