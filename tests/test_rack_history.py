@@ -144,7 +144,7 @@ def test_undo_restores_everything_an_unplug_all_took() -> None:
 
         _unplug_all("test", None, runtime)
         assert runtime.patch.cables == ()
-        assert runtime.patch.output_taps == ()
+        assert len(runtime.patch.output_taps) == 2, "the master's bus is not a cable"
 
         RACK_HISTORY.undo()
 

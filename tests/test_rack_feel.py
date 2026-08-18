@@ -5,6 +5,7 @@ import pytest
 
 from noodler.app import (
     CONSOLE_MASTER_LEVEL,
+    _console_band,
     AUDIO_RAIL,
     BOX_SELECTOR_FILL,
     CANVAS_INTERACTION,
@@ -365,7 +366,9 @@ def test_framing_brings_a_flung_rack_back(monkeypatch) -> None:
     try:
         runtime = build_ui(starter_patch=True)
         monkeypatch.setattr(
-            dpg, "get_item_rect_size", lambda item: [900, 600]
+            dpg,
+            "get_item_rect_size",
+            lambda item: [900, 600] if item == RACK else [90, 110],
         )
         before = _rack_content_bounds()
         assert before is not None
@@ -377,11 +380,12 @@ def test_framing_brings_a_flung_rack_back(monkeypatch) -> None:
         _frame_rack("test", None, runtime)
         _settle_camera()
 
+        # Centred in the part of the canvas above the console, not the whole.
         framed = _rack_content_bounds()
         centre_x = (framed[0] + framed[2]) * 0.5
         centre_y = (framed[1] + framed[3]) * 0.5
         assert centre_x == pytest.approx(450.0, abs=2.0)
-        assert centre_y == pytest.approx(300.0, abs=2.0)
+        assert centre_y == pytest.approx((600.0 - _console_band()) * 0.5, abs=2.0)
     finally:
         dpg.destroy_context()
 
@@ -406,7 +410,11 @@ def test_a_press_cancels_a_framing_move_in_progress(monkeypatch) -> None:
     dpg.create_context()
     try:
         runtime = build_ui(starter_patch=True)
-        monkeypatch.setattr(dpg, "get_item_rect_size", lambda item: [900, 600])
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [900, 600] if item == RACK else [90, 110],
+        )
         _translate_rack(-2_000.0, 0.0)
         _frame_rack("test", None, runtime)
         _settle_recenter(1.0 / 120.0)
@@ -869,7 +877,7 @@ def test_the_rack_is_centred_only_once_it_can_be_measured(monkeypatch) -> None:
 
         x, y = (float(value) for value in dpg.get_item_pos(node))
         assert x + 116.0 == pytest.approx(475.0, abs=1.0)
-        assert y + 150.0 == pytest.approx(350.0, abs=1.0)
+        assert y + 150.0 == pytest.approx((700.0 - _console_band()) * 0.5, abs=1.0)
         assert CANVAS_INTERACTION.pending_reveal is False
 
         # And it never moves the rack again.
@@ -931,7 +939,7 @@ def test_a_barely_laid_out_viewport_is_not_believed(monkeypatch) -> None:
 
         x, y = (float(value) for value in dpg.get_item_pos(node))
         assert x + 116.0 == pytest.approx(475.0, abs=1.0)
-        assert y + 150.0 == pytest.approx(350.0, abs=1.0)
+        assert y + 150.0 == pytest.approx((700.0 - _console_band()) * 0.5, abs=1.0)
     finally:
         dpg.destroy_context()
 

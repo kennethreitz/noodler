@@ -101,12 +101,12 @@ def test_zooming_redraws_at_the_new_size() -> None:
         knob = f"{VCO_NODE}.control.frequency"
         before = KNOB_INTERACTION.art[knob]
 
-        _resize_knob(knob, 30)
+        _resize_knob(knob, 36)
 
         after = KNOB_INTERACTION.art[knob]
-        assert dpg.get_item_configuration(knob)["width"] == 30
-        assert dpg.get_item_configuration(knob)["height"] == 30
-        assert after.size == 30
+        assert dpg.get_item_configuration(knob)["width"] == 36
+        assert dpg.get_item_configuration(knob)["height"] == 36
+        assert after.size == 36
         assert not dpg.does_item_exist(before.pointer), "the old picture is gone"
         assert dpg.does_item_exist(after.pointer)
     finally:

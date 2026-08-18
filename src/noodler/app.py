@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 
 import dearpygui.dearpygui as dpg
+import numpy as np
 from pydantic import BaseModel
 
 from .module_providers import ModuleManifest, PortDirection
@@ -107,7 +108,7 @@ CONSOLE_MARGIN = 14.0
 CONSOLE_GAP = 6.0
 """Between one strip and the next."""
 
-LEVEL_DIAL_SIZE = 30
+LEVEL_DIAL_SIZE = 34
 LEVEL_DIAL_INSET = 4.0
 """A strip's level is a dial, and its meter is a ring drawn around that dial in
 the margin the inset leaves -- so the meter costs no space at all."""
@@ -333,15 +334,16 @@ beside its neighbour is a panel nobody can see in context.
 KNOB_SIZE_MINIMUM = 12
 """Smallest a rotary control is allowed to be drawn."""
 
-KNOB_SIZE = 18
-"""Diameter of a rotary control. Small enough to read a panel at a glance.
+KNOB_SIZE = 24
+"""Diameter of a rotary control. Small enough to read a panel at a glance,
+big enough to be a target.
 
 Drawn by hand, because Dear PyGui's knob is forty pixels whatever it is asked:
 its width, its height and its font all change nothing about the picture. Every
 "knobs are too big" fix before this one changed a number that was never read.
 """
 
-KNOB_SIZE_LARGE = 24
+KNOB_SIZE_LARGE = 30
 """For the one control on a panel that deserves the eye first."""
 
 KNOB_SWEEP_START = 0.75 * math.pi
@@ -702,7 +704,10 @@ def _consume_pending_open() -> AppRuntime | None:
             dpg.delete_item(item)
     runtime = build_ui(preset=preset)
     dpg.set_primary_window(PRIMARY_WINDOW, True)
-    _set_patch_status(f"OPENED  ·  {preset.name}")
+    if len(runtime.patch.modules) <= 1:
+        _set_patch_status(EMPTY_RACK_STATUS)
+    else:
+        _set_patch_status(f"OPENED  ·  {preset.name}")
     return runtime
 
 
@@ -1736,17 +1741,24 @@ def _unplug_all(
 ) -> None:
     """Remove every visual cable and its corresponding executable route."""
     try:
-        connection_count = len(runtime.patch.cables) + len(
-            runtime.patch.output_taps
+        # Every cable, and every tap that is not the master's own: the bus to
+        # the speakers is not something anyone patched, so it is not unplugged.
+        unplugged: tuple[Cable | OutputTap, ...] = runtime.patch.cables + tuple(
+            tap for tap in runtime.patch.output_taps if tap.source.module_id != MASTER_ID
         )
-        if connection_count == 0:
+        if not unplugged:
             _set_patch_status("NO CABLES TO UNPLUG")
             return
 
-        unplugged: tuple[Cable | OutputTap, ...] = (
-            runtime.patch.cables + runtime.patch.output_taps
-        )
-        removed = _edit_patch(runtime, runtime.patch.disconnect_all)
+        def unplug() -> int:
+            for route in unplugged:
+                if isinstance(route, Cable):
+                    runtime.patch.disconnect(route)
+                else:
+                    runtime.patch.disconnect_output(route)
+            return len(unplugged)
+
+        removed = _edit_patch(runtime, unplug)
         rack_children = dpg.get_item_children(RACK)
         for item in tuple(rack_children.get(0, ())):
             route = dpg.get_item_user_data(item)
@@ -1880,6 +1892,115 @@ def _refresh_scope(runtime: AppRuntime) -> None:
 CONSOLE_BALLISTICS: list[MeterBallistics] = []
 """One peak-programme meter per strip, made when the console is."""
 
+PORT_TEXTS: dict[tuple[str, str], tuple[int | str, str]] = {}
+"""Each output jack's label and signal type, for lighting it with its signal."""
+PORT_ACTIVITY: dict[tuple[str, str], float] = {}
+PORT_STEPS: dict[tuple[str, str], int] = {}
+PORT_INDEX_KEY: list[tuple[str, ...]] = []
+ACTIVITY_STEPS = 6
+ACTIVITY_RELEASE = 0.85
+"""How much of a jack's glow survives from one frame to the next."""
+
+KNOB_STATES: dict[int | str, str] = {}
+KNOB_ARC_HOVER = tuple(min(255, c + 40) for c in SCALE_ACCENT[:3]) + (255,)
+KNOB_TRACK_HOVER = (84, 81, 72, 255)
+
+EMPTY_RACK_STATUS = (
+    "EMPTY RACK  ·  DRAG A MODULE FROM THE LIBRARY  ·  ⌘K TO SEARCH  ·  "
+    "FILE → OPEN EXAMPLE TO HEAR SOMETHING"
+)
+
+
+def _index_port_texts(runtime: AppRuntime) -> None:
+    """Find the label of every output jack on every mounted module, once per
+    change to what is mounted, so the glow has something to paint."""
+    key = tuple(sorted(INSTANCE_NODE_TAGS))
+    if PORT_INDEX_KEY and PORT_INDEX_KEY[0] == key and PORT_TEXTS:
+        return
+    PORT_INDEX_KEY[:] = [key]
+    PORT_TEXTS.clear()
+    PORT_STEPS.clear()
+    for instance_id, node in INSTANCE_NODE_TAGS.items():
+        module = runtime.patch.modules.get(instance_id)
+        if module is None:
+            continue
+        for port in module.manifest.ports:
+            if port.direction is not PortDirection.OUTPUT:
+                continue
+            attribute = f"{node}.{port.id}"
+            if not dpg.does_item_exist(attribute):
+                continue
+            for child in dpg.get_item_children(attribute).get(1, ()):
+                if dpg.get_item_type(child).endswith("mvText"):
+                    PORT_TEXTS[(instance_id, port.id)] = (child, port.signal_type.value)
+                    break
+
+
+def _glow(colour: tuple[int, int, int, int], step: int) -> tuple[int, int, int, int]:
+    """A jack colour between dim and lit, in a few even steps."""
+    weight = 0.38 + 0.62 * (step / ACTIVITY_STEPS)
+    background = (38, 36, 32)
+    return tuple(
+        int(round(background[i] + (colour[i] - background[i]) * weight)) for i in range(3)
+    ) + (255,)
+
+
+def _refresh_jack_activity(runtime: AppRuntime) -> None:
+    """Light every output jack as brightly as the signal on it.
+
+    The rack is alive when its jacks are: an oscillator's saw glows, a gate
+    blinks, a quiet output goes dim. Read from the last rendered block, which
+    the audio thread has already moved on from, and repainted only when a
+    jack changes step -- so a rack of a hundred jacks costs a handful of
+    configure calls a frame rather than a hundred.
+    """
+    _index_port_texts(runtime)
+    if not PORT_TEXTS:
+        return
+    playing = runtime.audio.is_running
+    rendered = runtime.patch.last_rendered if playing else {}
+    for (instance_id, port_id), (text, signal) in PORT_TEXTS.items():
+        level = 0.0
+        if playing:
+            block = rendered.get(instance_id, {}).get(port_id)
+            if block is not None:
+                array = np.asarray(block)
+                if array.ndim == 0:
+                    level = min(1.0, abs(float(array)))
+                elif array.size:
+                    level = min(1.0, float(np.max(np.abs(array))))
+        held = max(level, PORT_ACTIVITY.get((instance_id, port_id), 0.0) * ACTIVITY_RELEASE)
+        PORT_ACTIVITY[(instance_id, port_id)] = held
+        step = min(ACTIVITY_STEPS, int(round(held * ACTIVITY_STEPS)))
+        if PORT_STEPS.get((instance_id, port_id)) == step:
+            continue
+        PORT_STEPS[(instance_id, port_id)] = step
+        if dpg.does_item_exist(text):
+            dpg.configure_item(text, color=_glow(SIGNAL_COLORS.get(signal, TEXT), step))
+
+
+def _refresh_knob_hover() -> None:
+    """Brighten the knob under the pointer, and the one being turned."""
+    hovered = _hovered_knob()
+    hovered_knob = hovered[0] if hovered is not None else None
+    active = KNOB_INTERACTION.active_knob
+    for knob, art in KNOB_INTERACTION.art.items():
+        state = "active" if knob == active else "hover" if knob == hovered_knob else "idle"
+        if KNOB_STATES.get(knob) == state:
+            continue
+        KNOB_STATES[knob] = state
+        if not dpg.does_item_exist(art.arc):
+            continue
+        if state == "active":
+            dpg.configure_item(art.arc, color=TEXT)
+            dpg.configure_item(art.track, color=KNOB_TRACK_HOVER)
+        elif state == "hover":
+            dpg.configure_item(art.arc, color=KNOB_ARC_HOVER)
+            dpg.configure_item(art.track, color=KNOB_TRACK_HOVER)
+        else:
+            dpg.configure_item(art.arc, color=KNOB_ARC)
+            dpg.configure_item(art.track, color=KNOB_TRACK)
+
 
 def _refresh_console_meters(runtime: AppRuntime, dt: float, master_level: float) -> None:
     """Light each strip's ring as far round as its channel reaches."""
@@ -1957,6 +2078,8 @@ def _refresh_frame(
     _refresh_clock(dt)
     _refresh_ui(runtime, dt)
     _refresh_transport_button(runtime)
+    _refresh_jack_activity(runtime)
+    _refresh_knob_hover()
     _refresh_module_close_buttons()
     dpg.set_frame_callback(
         dpg.get_frame_count() + 1,
@@ -2404,6 +2527,35 @@ def _reset_rack_zoom(
     _set_rack_zoom(1.0)
 
 
+CONSOLE_BAND_ESTIMATE = 150.0
+"""Height reserved along the bottom for the console before it is measured."""
+
+
+def _console_band() -> float:
+    """How much of the canvas, from the bottom, the console occupies."""
+    tallest = 0.0
+    for node in PINNED_NODES:
+        if dpg.does_item_exist(node):
+            height = float(dpg.get_item_rect_size(node)[1])
+            tallest = max(tallest, height)
+    if tallest <= 1.0:
+        return CONSOLE_BAND_ESTIMATE
+    return tallest + CONSOLE_MARGIN * 2.0
+
+
+def _rack_view_size() -> tuple[float, float]:
+    """The part of the canvas the rack may use: everything above the console.
+
+    Centring, framing and revealing all reason about "the visible area", and
+    the console is furniture standing in the bottom of it. Placing a module
+    where the console is puts it underneath the console.
+    """
+    view_width, view_height = (float(v) for v in dpg.get_item_rect_size(RACK))
+    if view_height > 1.0:
+        view_height = max(1.0, view_height - _console_band())
+    return view_width, view_height
+
+
 def _is_pinned(node: int | str) -> bool:
     """Whether a node belongs to the console rather than to the rack."""
     return node in PINNED_NODES
@@ -2460,9 +2612,7 @@ def _frame_rack(
 
     interaction = CANVAS_INTERACTION
     minimum_x, minimum_y, maximum_x, maximum_y = bounds
-    view_width, view_height = (
-        float(value) for value in dpg.get_item_rect_size(RACK)
-    )
+    view_width, view_height = _rack_view_size()
     content_width = max(1.0, maximum_x - minimum_x)
     content_height = max(1.0, maximum_y - minimum_y)
 
@@ -2558,9 +2708,7 @@ def _reveal_rack_once() -> None:
     interaction = CANVAS_INTERACTION
     if not interaction.pending_reveal or not dpg.does_item_exist(RACK):
         return
-    view_width, view_height = (
-        float(value) for value in dpg.get_item_rect_size(RACK)
-    )
+    view_width, view_height = _rack_view_size()
     if view_width < MIN_REVEAL_VIEWPORT or view_height < MIN_REVEAL_VIEWPORT:
         return
 
@@ -2590,9 +2738,7 @@ def _reveal_node(node: int | str) -> bool:
     """
     if not dpg.does_item_exist(RACK) or not dpg.does_item_exist(node):
         return False
-    view_width, view_height = (
-        float(value) for value in dpg.get_item_rect_size(RACK)
-    )
+    view_width, view_height = _rack_view_size()
     if view_width <= 1.0 or view_height <= 1.0:
         return False
 
@@ -2889,11 +3035,12 @@ def _spine_attribute_tag(node: int | str) -> str:
 
 
 def _module_spine_labels(runtime: AppRuntime) -> dict[int | str, str]:
-    labels = {
+    """Every module that can fold to a spine -- which the console cannot."""
+    return {
         node: runtime.patch.modules[instance_id].manifest.name.upper()
         for instance_id, node in INSTANCE_NODE_TAGS.items()
+        if not _is_pinned(node) and instance_id in runtime.patch.modules
     }
-    return labels
 
 
 def _add_spine_texture(node: int | str, label: str) -> None:
@@ -2922,6 +3069,8 @@ def _configure_spine_textures(runtime: AppRuntime) -> None:
 
 
 def _add_module_spine(node: int | str) -> None:
+    if not dpg.does_item_exist(node) or dpg.does_item_exist(_spine_attribute_tag(node)):
+        return
     with dpg.node_attribute(
         parent=node,
         tag=_spine_attribute_tag(node),
@@ -2935,6 +3084,94 @@ def _add_module_spines(runtime: AppRuntime) -> None:
     """Attach one normally hidden vertical book spine to every module."""
     for node in _module_spine_labels(runtime):
         _add_module_spine(node)
+        _add_module_context_menu(node, runtime)
+
+
+def _context_menu_tag(node: int | str) -> str:
+    return f"{node}.context"
+
+
+def _add_module_context_menu(node: int | str, runtime: AppRuntime) -> None:
+    """Right-click a module for the four things done to one.
+
+    Fold it away, put its controls back where they were built, pull every
+    cable out of it, or remove it -- each already existed as a gesture or a
+    menu, and each was one more thing to know. A right-click on the module is
+    where a hand goes to ask.
+    """
+    if _is_pinned(node) or not dpg.does_item_exist(node):
+        return
+    tag = _context_menu_tag(node)
+    if dpg.does_item_exist(tag):
+        return
+    with dpg.popup(node, mousebutton=dpg.mvMouseButton_Right, tag=tag):
+        dpg.add_menu_item(
+            label="Fold / Unfold",
+            callback=lambda: _set_module_collapsed(
+                node, not MODULE_COLLAPSE.is_collapsed(node), runtime
+            ),
+        )
+        dpg.add_menu_item(
+            label="Reset controls",
+            callback=lambda: _reset_module_controls(node),
+        )
+        dpg.add_menu_item(
+            label="Unplug all cables",
+            callback=lambda: _unplug_module(node, runtime),
+        )
+        dpg.add_separator()
+        dpg.add_menu_item(
+            label="Remove",
+            callback=lambda: _remove_module_node(node, runtime),
+        )
+
+
+def _knobs_in_node(node: int | str) -> list[int | str]:
+    """Every rotary control that lives on one module panel."""
+    found: list[int | str] = []
+    pending = [node]
+    while pending:
+        item = pending.pop()
+        for slot in dpg.get_item_children(item).values():
+            for child in slot:
+                if child in KNOB_INTERACTION.bindings:
+                    found.append(child)
+                else:
+                    alias = dpg.get_item_alias(child)
+                    if alias and alias in KNOB_INTERACTION.bindings:
+                        found.append(alias)
+                        continue
+                    pending.append(child)
+    return found
+
+
+def _reset_module_controls(node: int | str) -> None:
+    """Every knob on the panel back to the value it was built with."""
+    count = 0
+    for knob in _knobs_in_node(node):
+        binding = KNOB_INTERACTION.bindings.get(knob)
+        if binding is not None and _reset_knob_to_default(knob, binding):
+            count += 1
+    _set_patch_status(f"RESET  {count} CONTROL{'S' if count != 1 else ''}")
+
+
+def _unplug_module(node: int | str, runtime: AppRuntime) -> None:
+    """Pull every cable out of one module, as one undoable edit."""
+    instance_id = _module_id_for_node(node)
+    if instance_id is None:
+        return
+    routes = _routes_touching(runtime.patch, instance_id)
+    if not routes:
+        _set_patch_status("NOTHING PATCHED HERE")
+        return
+    _erase_routes(runtime, routes)
+    _record_edit(
+        f"UNPLUG {instance_id.upper()}",
+        undo=lambda: _restore_routes(runtime, routes),
+        redo=lambda: _erase_routes(runtime, routes),
+    )
+    noun = "CABLE" if len(routes) == 1 else "CABLES"
+    _set_patch_status(f"UNPLUGGED  {instance_id.upper()}  ·  {len(routes)} {noun}")
 
 
 def _node_attributes(node: int | str) -> tuple[int | str, ...]:
@@ -6021,6 +6258,7 @@ def _add_selected_module(
         _bind_rack_node_font(node)
         _add_spine_texture(node, manifest.name.upper())
         _add_module_spine(node)
+        _add_module_context_menu(node, runtime)
         _place_dynamic_node(node, rail)
         _reveal_node(node)
         _refresh_rack_outline(runtime)
@@ -6375,6 +6613,7 @@ def _build_empty_rack_ui(
     runtime: AppRuntime,
     *,
     patch_name: str = "Untitled Patch",
+    console: bool = True,
 ) -> AppRuntime:
     """Build the library rack around one permanent output module."""
     module_count = len(runtime.patch.modules)
@@ -6411,10 +6650,10 @@ def _build_empty_rack_ui(
                     user_data=runtime,
                     width=-1,
                     height=-1,
-                    minimap=True,
-                    minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
+                    minimap=False,
                 ):
-                    _build_console(runtime.audio, ensure_master(runtime.patch))
+                    if console:
+                        _build_console(runtime.audio, ensure_master(runtime.patch))
                     _add_module_spines(runtime)
         dpg.add_separator()
         with dpg.group(horizontal=True):
@@ -6425,7 +6664,6 @@ def _build_empty_rack_ui(
             )
             _add_bar_scope()
             dpg.add_text("", tag=AUDIO_STATUS, color=MUTED_TEXT)
-        dpg.bind_item_theme(OUTPUT_NODE, OUTPUT_THEME)
         CANVAS_INTERACTION.rail_y.update(
             {
                 CONTROL_RAIL: 40.0,
@@ -6469,6 +6707,10 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
     CANVAS_INTERACTION.rail_y.update(preset.view.rails)
 
     for saved_module in preset.modules:
+        if saved_module.instance_id == MASTER_ID:
+            # The master is saved with the document for its levels, but it is
+            # never a panel in the rack: the console already stands for it.
+            continue
         module = runtime.patch.modules[saved_module.instance_id]
         manifest = module.manifest
         node, rail, theme = _register_dynamic_node(
@@ -6484,6 +6726,7 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
         dpg.bind_item_theme(node, theme)
         _add_spine_texture(node, manifest.name.upper())
         _add_module_spine(node)
+        _add_module_context_menu(node, runtime)
         saved_node = saved_nodes.get(saved_module.instance_id)
         if saved_node is None:
             _place_dynamic_node(node, rail)
@@ -6505,6 +6748,15 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
     for knob, binding in KNOB_INTERACTION.bindings.items():
         _resize_knob(knob, round(binding.size * zoom))
     dpg.configure_item(ZOOM_RESET_BUTTON, label=f"{zoom:.0%}")
+
+    # The console is built after the document's modules, so that at first draw
+    # it is above them rather than under them; the cables need its jacks.
+    if not dpg.does_item_exist(OUTPUT_NODE):
+        dpg.push_container_stack(RACK)
+        try:
+            _build_console(runtime.audio, ensure_master(runtime.patch))
+        finally:
+            dpg.pop_container_stack()
 
     for cable in runtime.patch.cables:
         source = _endpoint_attribute(cable.source)
@@ -6551,6 +6803,12 @@ def build_ui(
         TRANSPORT.rewind()
     _reset_rack_registry(starter_patch=starter_patch and preset is None)
     KNOB_INTERACTION.reset()
+    KNOB_STATES.clear()
+    PORT_TEXTS.clear()
+    PORT_ACTIVITY.clear()
+    PORT_STEPS.clear()
+    PORT_INDEX_KEY.clear()
+    CONSOLE_BALLISTICS.clear()
     CANVAS_INTERACTION.reset()
     MODULE_COLLAPSE.reset()
     dpg.set_global_font_scale(1.0)
@@ -6581,11 +6839,16 @@ def build_ui(
     )
     _configure_spine_textures(runtime)
     if preset is not None:
-        _build_empty_rack_ui(runtime, patch_name=preset.name)
+        # The console is built after the document's modules, so that at first
+        # draw it is above them rather than under them.
+        _build_empty_rack_ui(runtime, patch_name=preset.name, console=False)
         _mount_preset_ui(runtime, preset)
         return runtime
     if not starter_patch:
-        return _build_empty_rack_ui(runtime)
+        built = _build_empty_rack_ui(runtime)
+        # An empty rack should say what to do with itself.
+        _set_patch_status(EMPTY_RACK_STATUS)
+        return built
     with dpg.window(tag=PRIMARY_WINDOW, label="Noodler", menubar=True):
         _add_rack_menu(runtime)
         with dpg.group(horizontal=True):
@@ -6617,8 +6880,7 @@ def build_ui(
             user_data=runtime,
             width=-1,
             height=-1,
-            minimap=True,
-            minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
+            minimap=False,
         ):
             _build_vco_node(runtime.vco, runtime.patch)
             _build_mixer_node(runtime.mixer, runtime.patch)
@@ -6821,7 +7083,6 @@ def build_ui(
         dpg.bind_item_theme(SCALE_NODE, SCALE_THEME)
         dpg.bind_item_theme(LPG_NODE, LPG_THEME)
         dpg.bind_item_theme(REVERB_NODE, REVERB_THEME)
-        dpg.bind_item_theme(OUTPUT_NODE, OUTPUT_THEME)
         dpg.set_item_pos(FUNCTION_NODE, [20, 20])
         dpg.set_item_pos(WOGGLE_NODE, [430, 20])
         dpg.set_item_pos(SCALE_NODE, [860, 20])

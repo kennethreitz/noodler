@@ -99,9 +99,33 @@ The strips live *inside* the node editor because that is the only place a
 cable can land: DPG draws links between node attributes and nowhere else, so
 "drop a cable on a mixer slot" is only possible if the slot is a node. Each
 strip is a jack at the top, a level dial whose outer ring is its meter, and
-pan, A and B beneath — dials rather than faders, because a strip that is 106
+pan, A and B beneath — dials rather than faders, because a strip that is 116
 pixels tall leaves the rack the room it needs. The console keeps its own font
 and its dials their own size when the rack zooms: a fader is a fader.
+
+The band the console stands in is reserved. Centring, framing and revealing a
+new module all reason about "the visible area", and that area is the canvas
+*above* the console — otherwise a module is placed where the console is,
+which puts it underneath. A hand can still drag a module under there; the
+camera never will. The console is also built after a document's modules, so
+at first draw it is above them rather than beneath. And there is no minimap:
+it cannot leave the console out, and a fixed console shown as blocks that
+slide around in it is worse than no map. F frames the rack.
+
+## What lights up
+
+Every output jack glows with its signal, read from the last rendered block
+after the audio thread has moved on from it: an oscillator's saw is lit, a
+gate blinks, a quiet output goes dim, and everything goes dark when playback
+stops. A rack of a hundred jacks costs a handful of repaints a frame, because a
+jack is only repainted when it changes step. The knob under the pointer
+brightens; the one being turned brightens more. Each strip's ring meter is the
+same peak-programme ballistics as the master's, so a channel's level and its
+loudness are read in one glance at one dial.
+
+Right-clicking a module asks it the four things done to one: fold, reset its
+controls, unplug every cable from it, remove it. Each existed as a gesture or a
+menu; each was one more thing to know.
 
 ## What this is not
 

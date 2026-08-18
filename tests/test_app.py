@@ -649,7 +649,8 @@ def test_space_pan_moves_the_rack_hierarchy_as_one_view(monkeypatch) -> None:
             assert CANVAS_INTERACTION.rail_y[rail] == pytest.approx(
                 original_y - 35.0
             )
-        assert dpg.get_item_configuration(RACK)["minimap"] is True
+        # No minimap: it cannot leave the console out, and F frames the rack.
+        assert dpg.get_item_configuration(RACK)["minimap"] is False
 
         _end_knob_drag("test", None, KNOB_INTERACTION)
         assert CANVAS_INTERACTION.panning is False
@@ -1052,7 +1053,9 @@ def test_unplug_all_button_clears_visual_and_executable_cables() -> None:
     dpg.create_context()
     try:
         runtime = build_ui(starter_patch=True)
-        initial_count = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+        # Everything patched, which is every cable; the master's own bus to the
+        # speakers was never patched and is never unplugged.
+        initial_count = len(runtime.patch.cables)
         button = dpg.get_item_configuration(UNPLUG_ALL_BUTTON)
 
         button["callback"](
@@ -1063,7 +1066,10 @@ def test_unplug_all_button_clears_visual_and_executable_cables() -> None:
 
         assert initial_count > 0
         assert runtime.patch.cables == ()
-        assert runtime.patch.output_taps == ()
+        assert [tap.source.module_id for tap in runtime.patch.output_taps] == [
+            "master",
+            "master",
+        ], "the speakers stay connected"
         assert dpg.get_item_children(RACK).get(0, []) == []
         assert dpg.get_item_configuration(f"{VCO_NODE}.morph_cv")["show"]
         assert dpg.get_value(CONTROL_STATUS) == (

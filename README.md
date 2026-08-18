@@ -83,6 +83,8 @@ onto it and that is the slot it plays through — a level dial with its meter
 drawn as a ring around it, and pan and two sends beneath. The strip takes the
 name of whatever is patched into it. Press **▶ PLAY** in the menu bar (or ⌘↩)
 to open the audio device and start the clock; audio never starts on its own.
+Every output jack glows with the signal on it, and a right-click on any module
+folds it, resets it, unplugs it or removes it.
 
 The sends come out of the master strip as jacks — patch **Send A** into a
 reverb and the reverb's outputs back into two strips, and every strip that
