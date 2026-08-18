@@ -78,7 +78,6 @@ from .preset import (
     read_patch_preset,
     write_patch_preset,
 )
-from .spine import render_spine_texture
 from .transport import (
     BEAT_UNITS,
     CHOICES as CLOCK_CHOICES,
@@ -87,6 +86,7 @@ from .transport import (
     MAX_BPM,
     MIN_BPM,
     Transport,
+    clock_kind,
     is_rate_field,
 )
 
@@ -132,7 +132,7 @@ RETURN_JACK_INSET = 0.0
 CONSOLE_RETURN_THEME = "noodler.theme.console_return"
 CONSOLE_POST = CONSOLE_PREFIX + "post_{name}"
 JACK_POST_THEME = "noodler.theme.jack_post"
-JACK_POST_LIFT = 20.0
+JACK_POST_LIFT = 30.0
 """How far above a strip's top its jack posts stand.
 
 The pin lands about fourteen pixels below a post's top, so this puts it just
@@ -141,6 +141,13 @@ node brings it to the front, and a pin drawn over the strip would go under
 the strip the moment the strip was clicked. Nothing can cover what stands
 above the top edge."""
 POST_ANCHORS: dict[str, tuple[str, float]] = {}
+POST_TEXTS: dict[str, int | str] = {}
+"""Each post's one text item, whose centre is where its pin is drawn."""
+CONSOLE_CABLES = "noodler.console_cables"
+CONSOLE_CABLE_ITEMS: dict[int | str, int | str] = {}
+"""Drawn console cables, by the link they stand in for."""
+CONSOLE_LINK_HIDDEN_THEME = "noodler.theme.link.console_hidden"
+CONSOLE_CABLE_HOVER_PX = 7.0
 """Each jack post and where it stands: which strip, and how far across it.
 
 A jack post is a node that is nothing but a pin. Dear PyGui draws a pin on a
@@ -290,7 +297,6 @@ REVERB_LEFT_OUTPUT_LINK = "noodler.link.reverb_left_output"
 REVERB_RIGHT_OUTPUT_LINK = "noodler.link.reverb_right_output"
 APP_FONT = "noodler.font"
 FONT_REGISTRY = "noodler.font_registry"
-SPINE_TEXTURE_REGISTRY = "noodler.spine_textures"
 SYSTEM_MONO_FONT = Path("/System/Library/Fonts/SFNSMono.ttf")
 APP_THEME = "noodler.theme.app"
 UTILITY_THEME = "noodler.theme.utility"
@@ -958,7 +964,6 @@ def _consume_pending_open() -> AppRuntime | None:
     for item in (
         PRIMARY_WINDOW,
         INPUT_HANDLERS,
-        SPINE_TEXTURE_REGISTRY,
         MODULE_CLOSE_LAYER,
         SAVE_PATCH_DIALOG,
         OPEN_PATCH_DIALOG,
@@ -987,12 +992,18 @@ TRANSPORT_BUTTON = "noodler.transport.button"
 
 @dataclass(slots=True)
 class RateSync:
-    """A rate control the transport may drive, and the division it follows."""
+    """A control the transport may drive, and the division it follows.
+
+    ``kind`` says what the clock writes: hertz for a rate, seconds or
+    milliseconds for a length. Either way it is written through the same
+    validated model a hand on the knob would write through.
+    """
 
     module: object
     path: tuple[str | int, ...]
     binding: KnobBinding
     division: str = FREE
+    kind: str = "rate"
 
 
 RATE_SYNCS: dict[int | str, RateSync] = {}
@@ -1061,11 +1072,16 @@ def _apply_transport_sync() -> None:
     hand on the knob would write through.
     """
     for knob, sync in RATE_SYNCS.items():
-        hertz = TRANSPORT.hz_for(sync.division)
-        if hertz is None:
+        if sync.kind == "rate":
+            wanted = TRANSPORT.hz_for(sync.division)
+        else:
+            wanted = TRANSPORT.seconds_for(sync.division)
+            if wanted is not None and sync.kind == "ms":
+                wanted *= 1_000.0
+        if wanted is None:
             continue
         binding = sync.binding
-        value = min(binding.maximum, max(binding.minimum, hertz))
+        value = min(binding.maximum, max(binding.minimum, wanted))
         try:
             _set_dynamic_parameter(sync.module, sync.path, value)
         except Exception:
@@ -1495,6 +1511,13 @@ def _configure_theme() -> None:
     _link_theme(AUDIO_LINK_THEME, SIGNAL_COLORS["audio"])
     _link_theme(GATE_LINK_THEME, SIGNAL_COLORS["gate"])
     _link_theme(MUSICAL_LINK_THEME, SIGNAL_COLORS["musical"])
+    with dpg.theme(tag=CONSOLE_LINK_HIDDEN_THEME):
+        # imnodes draws every link arriving from the left, which hooks a cable
+        # that drops onto a strip; those links are drawn by hand instead, and
+        # the editor's own copy is made invisible.
+        with dpg.theme_component(dpg.mvNodeLink):
+            for link_color in (dpg.mvNodeCol_Link, dpg.mvNodeCol_LinkHovered, dpg.mvNodeCol_LinkSelected):
+                dpg.add_theme_color(link_color, (0, 0, 0, 0), category=dpg.mvThemeCat_Nodes)
     # A cable glows with what is on it, in the same steps as its jack.
     for signal, colour in SIGNAL_COLORS.items():
         for step in range(ACTIVITY_STEPS + 1):
@@ -1714,8 +1737,16 @@ def _add_visual_link(
         "musical": MUSICAL_LINK_THEME,
     }.get(signal, CV_LINK_THEME)
     dpg.bind_item_theme(link, theme)
+    if _is_console_route(route):
+        dpg.bind_item_theme(link, CONSOLE_LINK_HIDDEN_THEME)
     CABLE_INDEX_KEY.clear()
     return link
+
+
+def _is_console_route(route: object) -> bool:
+    """Whether a cable lands on the console -- and so is drawn by hand."""
+    target = getattr(route, "target", None)
+    return target is not None and target.module_id == MASTER_ID
 
 
 def _default_cable(
@@ -2327,7 +2358,7 @@ def _index_cables() -> None:
     for link in links:
         route = dpg.get_item_user_data(link)
         source = getattr(route, "source", None)
-        if source is None:
+        if source is None or _is_console_route(route):
             continue
         signal = "cv"
         if ACTIVE_RUNTIME:
@@ -2403,6 +2434,135 @@ def _refresh_cable_glow() -> None:
         CABLE_STEPS[link] = step
         if dpg.does_item_exist(link):
             dpg.bind_item_theme(link, _link_glow_theme(signal if signal in SIGNAL_COLORS else "cv", step))
+
+
+def _console_pin_position(post: str) -> tuple[float, float] | None:
+    text = POST_TEXTS.get(post)
+    if text is None or not (dpg.does_item_exist(post) and dpg.does_item_exist(text)):
+        return None
+    try:
+        left = float(dpg.get_item_rect_min(post)[0])
+        top = float(dpg.get_item_rect_min(text)[1])
+        height = float(dpg.get_item_rect_size(text)[1])
+    except (KeyError, SystemError):
+        return None
+    if height <= 0.0:
+        return None
+    return left, top + height * 0.5
+
+
+def _source_pin_position(module_id: str, port_id: str) -> tuple[float, float] | None:
+    node = INSTANCE_NODE_TAGS.get(module_id)
+    entry = PORT_TEXTS.get((module_id, port_id))
+    if node is None or entry is None or not dpg.does_item_exist(node):
+        return None
+    text = entry[0]
+    if not dpg.does_item_exist(text):
+        return None
+    try:
+        right = float(dpg.get_item_rect_max(node)[0])
+        top = float(dpg.get_item_rect_min(text)[1])
+        height = float(dpg.get_item_rect_size(text)[1])
+    except (KeyError, SystemError):
+        return None
+    if height <= 0.0:
+        return None
+    return right, top + height * 0.5
+
+
+def _console_cable_points(
+    start: tuple[float, float], end: tuple[float, float]
+) -> tuple[tuple[float, float], ...]:
+    """A cable that leaves a module to the right and drops into a jack from above."""
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = max(1.0, math.hypot(dx, dy))
+    # A short reach to the right, as every cable leaves an output, then a
+    # drop that arrives vertically: the drop is most of the vertical distance
+    # so the last stretch into the jack is straight down.
+    reach = min(80.0, max(30.0, 0.2 * length))
+    drop = max(50.0, 0.6 * abs(dy))
+    return (
+        start,
+        (start[0] + reach, start[1]),
+        (end[0], end[1] - drop),
+        end,
+    )
+
+
+def _bezier_point(points: tuple[tuple[float, float], ...], t: float) -> tuple[float, float]:
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = points
+    u = 1.0 - t
+    return (
+        u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
+        u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3,
+    )
+
+
+CONSOLE_CABLE_PATHS: dict[int | str, tuple[tuple[float, float], ...]] = {}
+
+
+def _console_cable_near(position: tuple[float, float]) -> int | str | None:
+    """The drawn console cable under the pointer, if one is."""
+    best, best_distance = None, CONSOLE_CABLE_HOVER_PX
+    for link, points in CONSOLE_CABLE_PATHS.items():
+        for step in range(25):
+            x, y = _bezier_point(points, step / 24.0)
+            distance = math.hypot(x - position[0], y - position[1])
+            if distance < best_distance:
+                best, best_distance = link, distance
+    return best
+
+
+def _refresh_console_cables(runtime: AppRuntime) -> None:
+    """Draw every cable that lands on the console, entering its jack from above.
+
+    imnodes draws every link arriving at an input from the left, offset by a
+    quarter of the cable's length, so a cable dropped from a module onto a
+    strip below overshoots left and hooks back into the jack. These are drawn
+    by hand instead -- leaving the module to the right as every other cable
+    does, then dropping into the jack from above -- on a layer over the rack,
+    with the same glow as any cable, and the editor's own copy hidden.
+    """
+    if not dpg.does_item_exist(RACK):
+        return
+    if not dpg.does_item_exist(CONSOLE_CABLES):
+        dpg.add_viewport_drawlist(tag=CONSOLE_CABLES, front=True)
+    mouse = tuple(float(v) for v in dpg.get_mouse_pos(local=False))
+    hovered = _console_cable_near(mouse) if _mouse_is_over_rack() else None
+    live: set[int | str] = set()
+    for link in dpg.get_item_children(RACK).get(0, ()):
+        route = dpg.get_item_user_data(link)
+        if not _is_console_route(route):
+            continue
+        post = CONSOLE_POST.format(name=route.target.port_id)
+        start = _source_pin_position(route.source.module_id, route.source.port_id)
+        end = _console_pin_position(post)
+        if start is None or end is None:
+            continue
+        live.add(link)
+        points = _console_cable_points(start, end)
+        CONSOLE_CABLE_PATHS[link] = points
+        signal = _endpoint_signal(runtime.patch, route.source)
+        step = PORT_STEPS.get((route.source.module_id, route.source.port_id), 0)
+        colour = TEXT if link == hovered else _glow(SIGNAL_COLORS.get(signal, TEXT), step)
+        thickness = 4.0 if link == hovered else 3.0
+        item = CONSOLE_CABLE_ITEMS.get(link)
+        if item is None or not dpg.does_item_exist(item):
+            CONSOLE_CABLE_ITEMS[link] = dpg.draw_bezier_cubic(
+                *points, color=colour, thickness=thickness, parent=CONSOLE_CABLES
+            )
+        else:
+            dpg.configure_item(
+                item, p1=points[0], p2=points[1], p3=points[2], p4=points[3],
+                color=colour, thickness=thickness,
+            )
+    for link in tuple(CONSOLE_CABLE_ITEMS):
+        if link not in live:
+            item = CONSOLE_CABLE_ITEMS.pop(link)
+            CONSOLE_CABLE_PATHS.pop(link, None)
+            if dpg.does_item_exist(item):
+                dpg.delete_item(item)
 
 
 def _refresh_knob_hover() -> None:
@@ -2514,6 +2674,7 @@ def _refresh_frame(
     dt = clamp_timestep(dpg.get_delta_time())
     try:
         _release_stale_key_latches()
+        _settle_space_tap()
         _consume_scroll()
         _reveal_rack_once()
         _settle_library_layout()
@@ -2527,6 +2688,7 @@ def _refresh_frame(
         _refresh_ui(runtime, dt)
         _refresh_transport_button(runtime)
         _refresh_jack_activity(runtime)
+        _refresh_console_cables(runtime)
         _refresh_knob_hover()
         _refresh_window_title_if_changed()
         _refresh_module_close_buttons()
@@ -2582,29 +2744,15 @@ def _patch_bay_flow_label(binding: PatchBayBinding, connected: set[str]) -> str:
 
 
 def _refresh_patch_bay(binding: PatchBayBinding) -> None:
-    """Show every jack unless the user asks to hide open connections."""
+    """Every jack shows on an open module; only the patched ones on a collapsed one."""
     connected = _connected_port_ids(binding.patch, binding.module_id)
-    hide_open = (
-        bool(dpg.get_value(binding.toggle_tag))
-        if dpg.does_item_exist(binding.toggle_tag)
-        else False
-    )
+    collapsed = MODULE_COLLAPSE.is_collapsed(binding.node_tag)
     for port_id in binding.port_ids:
         tag = f"{binding.node_tag}.{port_id}"
         if dpg.does_item_exist(tag):
-            dpg.configure_item(tag, show=not hide_open or port_id in connected)
+            dpg.configure_item(tag, show=not collapsed or port_id in connected)
     if dpg.does_item_exist(binding.status_tag):
         dpg.set_value(binding.status_tag, _patch_bay_flow_label(binding, connected))
-    if MODULE_COLLAPSE.is_collapsed(binding.node_tag):
-        visibility = MODULE_COLLAPSE.attributes[binding.node_tag]
-        for port_id in binding.port_ids:
-            attribute = f"{binding.node_tag}.{port_id}"
-            if dpg.does_item_exist(attribute):
-                visibility[attribute] = bool(
-                    dpg.get_item_configuration(attribute)["show"]
-                )
-        for attribute in _node_attributes(binding.node_tag):
-            dpg.configure_item(attribute, show=False)
 
 
 def _refresh_patch_bays(patch: PatchGraph) -> None:
@@ -2618,21 +2766,13 @@ def _refresh_patch_bay_labels(patch: PatchGraph) -> None:
             _refresh_patch_bay(binding)
 
 
-def _toggle_patch_bay(
-    _sender: str,
-    _hide_open: bool,
-    binding: PatchBayBinding,
-) -> None:
-    _refresh_patch_bay(binding)
-
-
 def _add_patch_bay_toggle(
     patch: PatchGraph,
     module_id: str,
     node_tag: str,
     port_ids: tuple[str, ...],
 ) -> None:
-    """Add the optional filter for hiding currently open module ports."""
+    """Add the signal-path row that says how many jacks are in use."""
     binding = PatchBayBinding(
         patch=patch,
         module_id=module_id,
@@ -2644,19 +2784,11 @@ def _add_patch_bay_toggle(
     PATCH_BAYS[module_id] = binding
     connected = _connected_port_ids(patch, module_id)
     dpg.add_separator()
-    with dpg.group(horizontal=True):
-        dpg.add_text(
-            _patch_bay_flow_label(binding, connected),
-            tag=binding.status_tag,
-            color=MUTED_TEXT,
-        )
-        dpg.add_checkbox(
-            label="HIDE OPEN",
-            tag=binding.toggle_tag,
-            default_value=False,
-            callback=_toggle_patch_bay,
-            user_data=binding,
-        )
+    dpg.add_text(
+        _patch_bay_flow_label(binding, connected),
+        tag=binding.status_tag,
+        color=MUTED_TEXT,
+    )
 
 
 def _format_duration(seconds: float) -> str:
@@ -3543,65 +3675,11 @@ def _clear_rack_selection() -> None:
         dpg.clear_selected_links(RACK)
 
 
-def _spine_texture_tag(node: int | str) -> str:
-    return f"{node}.spine.texture"
-
-
-def _spine_attribute_tag(node: int | str) -> str:
-    return f"{node}.spine.attribute"
-
-
-def _module_spine_labels(runtime: AppRuntime) -> dict[int | str, str]:
-    """Every module that can fold to a spine -- which the console cannot."""
-    return {
-        node: runtime.patch.modules[instance_id].manifest.name.upper()
-        for instance_id, node in INSTANCE_NODE_TAGS.items()
-        if not _is_pinned(node) and instance_id in runtime.patch.modules
-    }
-
-
-def _add_spine_texture(node: int | str, label: str) -> None:
-    if dpg.does_item_exist(_spine_texture_tag(node)):
-        return
-    texture = render_spine_texture(
-        label,
-        MODULE_ACCENTS[node],
-        SYSTEM_MONO_FONT,
-    )
-    dpg.add_static_texture(
-        texture.width,
-        texture.height,
-        texture.pixels,
-        tag=_spine_texture_tag(node),
-        parent=SPINE_TEXTURE_REGISTRY,
-    )
-
-
-def _configure_spine_textures(runtime: AppRuntime) -> None:
-    """Create rotated labels for collapsed book-spine modules."""
-    if not dpg.does_item_exist(SPINE_TEXTURE_REGISTRY):
-        dpg.add_texture_registry(tag=SPINE_TEXTURE_REGISTRY)
-    for node, label in _module_spine_labels(runtime).items():
-        _add_spine_texture(node, label)
-
-
-def _add_module_spine(node: int | str) -> None:
-    if not dpg.does_item_exist(node) or dpg.does_item_exist(_spine_attribute_tag(node)):
-        return
-    with dpg.node_attribute(
-        parent=node,
-        tag=_spine_attribute_tag(node),
-        attribute_type=dpg.mvNode_Attr_Static,
-        show=False,
-    ):
-        dpg.add_image(_spine_texture_tag(node))
-
-
-def _add_module_spines(runtime: AppRuntime) -> None:
-    """Attach one normally hidden vertical book spine to every module."""
-    for node in _module_spine_labels(runtime):
-        _add_module_spine(node)
-        _add_module_context_menu(node, runtime)
+def _add_module_context_menus(runtime: AppRuntime) -> None:
+    """Give every mounted module its right-click menu."""
+    for instance_id, node in INSTANCE_NODE_TAGS.items():
+        if instance_id in runtime.patch.modules and not _is_pinned(node):
+            _add_module_context_menu(node, runtime)
 
 
 def _context_menu_tag(node: int | str) -> str:
@@ -3701,7 +3779,6 @@ def _node_attributes(node: int | str) -> tuple[int | str, ...]:
         child
         for child in dpg.get_item_children(node).get(1, ())
         if dpg.get_item_type(child) == "mvAppItemType::mvNodeAttribute"
-        and child != dpg.get_alias_id(_spine_attribute_tag(node))
     )
 
 
@@ -3712,21 +3789,6 @@ def _route_node_tags(route: Cable | OutputTap) -> set[int | str]:
             INSTANCE_NODE_TAGS[route.target.module_id],
         }
     return {INSTANCE_NODE_TAGS[route.source.module_id], OUTPUT_NODE}
-
-
-def _sync_collapsed_link_visibility() -> None:
-    """Hide visual cables whose live endpoint is inside a folded spine."""
-    if not dpg.does_item_exist(RACK):
-        return
-    for link in dpg.get_item_children(RACK).get(0, ()):
-        route = dpg.get_item_user_data(link)
-        if not isinstance(route, (Cable, OutputTap)):
-            continue
-        hidden = any(
-            MODULE_COLLAPSE.is_collapsed(node)
-            for node in _route_node_tags(route)
-        )
-        dpg.configure_item(link, show=not hidden)
 
 
 def _module_title_height() -> float:
@@ -3875,15 +3937,47 @@ def _patched_attributes(node: int | str, patch: PatchGraph) -> set[int | str]:
     return live
 
 
+def _attribute_port_id(attribute: int | str) -> str | None:
+    alias = dpg.get_item_alias(attribute)
+    return alias.rsplit(".", 1)[-1] if alias else None
+
+
+def _apply_collapse(node: int | str, runtime: AppRuntime) -> None:
+    """Show a collapsed module as its title and the jacks with cables in them.
+
+    Everything else -- controls, the open jacks, the signal-path row -- is put
+    away. What stays is what the module is *doing*: the cables still land
+    somewhere visible, and the name says what it is.
+    """
+    instance_id = _module_id_for_node(node)
+    connected = (
+        _connected_port_ids(runtime.patch, instance_id) if instance_id else set()
+    )
+    for attribute in _node_attributes(node):
+        kind = dpg.get_item_configuration(attribute).get("attribute_type")
+        if kind == dpg.mvNode_Attr_Static:
+            dpg.configure_item(attribute, show=False)
+            continue
+        port_id = _attribute_port_id(attribute)
+        dpg.configure_item(attribute, show=port_id in connected)
+
+
 def _set_module_collapsed(
     node: int | str,
     collapsed: bool,
     runtime: AppRuntime,
 ) -> None:
-    """Fold or unfold one visual module without touching its live graph."""
+    """Collapse a module to its title and its patched jacks, or open it again.
+
+    Collapsed, a module is what it is doing: its name, and the jacks that have
+    cables in them. Open, it is everything -- every control and every jack,
+    patched or not. There is no third state; a jack with nothing in it is
+    hidden by collapsing and shown by opening, which is what "hide open" was.
+    """
     if not dpg.does_item_exist(node):
         return
     state = MODULE_COLLAPSE
+    label = str(dpg.get_item_configuration(node)["label"])
     if collapsed:
         if state.is_collapsed(node):
             return
@@ -3891,32 +3985,20 @@ def _set_module_collapsed(
             attribute: bool(dpg.get_item_configuration(attribute)["show"])
             for attribute in _node_attributes(node)
         }
-        label = str(dpg.get_item_configuration(node)["label"])
         state.labels[node] = label
-        patched = _patched_attributes(node, runtime.patch)
-        for attribute in state.attributes[node]:
-            # A jack with a cable in it keeps its pin, so the cable stays
-            # plugged into the spine instead of vanishing with the panel. Its
-            # label is put away; the pin is the whole point.
-            if attribute in patched:
-                _set_attribute_text_shown(attribute, False)
-            else:
-                dpg.configure_item(attribute, show=False)
-        dpg.configure_item(_spine_attribute_tag(node), show=True)
-        dpg.configure_item(node, label="▸")
-        _set_patch_status(f"FOLDED  {label}")
+        _apply_collapse(node, runtime)
+        _set_patch_status(f"COLLAPSED  {label}")
         return
 
     visibility = state.attributes.pop(node, None)
-    label = state.labels.pop(node, None)
-    if visibility is None or label is None:
+    state.labels.pop(node, None)
+    if visibility is None:
         return
-    for attribute, show in visibility.items():
+    for attribute in visibility:
         if dpg.does_item_exist(attribute):
-            dpg.configure_item(attribute, show=show)
+            # Open means open: every control and every jack.
+            dpg.configure_item(attribute, show=True)
             _set_attribute_text_shown(attribute, True)
-    dpg.configure_item(_spine_attribute_tag(node), show=False)
-    dpg.configure_item(node, label=label)
     _refresh_patch_bays(runtime.patch)
     _set_patch_status(f"OPENED  {label}")
 
@@ -3981,12 +4063,17 @@ def _toggle_module_from_title(
     """Resolve a left double-click on the rack.
 
     Over a control it restores the default; over a cable it unpatches; over a
-    module title it folds the module down to its spine. Pulling a cable out is
+    module title it collapses the module to its title and its patched jacks
+    (or opens it again). Pulling a cable out is
     the commonest edit in a rack and the least discoverable one here, since a
     node editor gives no way to drag a plug back out of its jack.
     """
     hovered = _hovered_knob()
     if hovered is not None and _reset_knob_to_default(*hovered):
+        return
+    console_cable = _console_cable_near(tuple(float(v) for v in dpg.get_mouse_pos(local=False)))
+    if console_cable is not None:
+        _patch_link_deleted(RACK, console_cable, runtime)
         return
     if dpg.does_item_exist(RACK):
         selected = tuple(dpg.get_selected_links(RACK))
@@ -4093,7 +4180,7 @@ def _space_pressed(_sender: int | str, _app_data: object, _runtime: AppRuntime) 
     SPACE_TAP["panned"] = False
 
 
-def _space_released(_sender: int | str, _app_data: object, runtime: AppRuntime) -> None:
+def _space_released(_sender: int | str = 0, _app_data: object = None, runtime: AppRuntime | None = None) -> None:
     if not SPACE_TAP["down"]:
         return
     SPACE_TAP["down"] = False
@@ -4101,6 +4188,18 @@ def _space_released(_sender: int | str, _app_data: object, runtime: AppRuntime) 
     if SPACE_TAP["panned"] or held > SPACE_TAP_SECONDS or _keyboard_is_captured():
         return
     _toggle_playback(0, None, runtime)
+
+
+def _settle_space_tap() -> None:
+    """Notice space coming up, from the frame loop.
+
+    The key-release handler is kept, but the frame loop asks the key state
+    directly as well -- the same question the pan modifier asks, and one that
+    is known to be answered -- so a tap is never lost to a release event that
+    did not arrive.
+    """
+    if SPACE_TAP["down"] and not dpg.is_key_down(dpg.mvKey_Spacebar):
+        _space_released()
 
 
 def _release_stale_key_latches() -> None:
@@ -5343,12 +5442,13 @@ def _add_rate_sync_control(
     module: object,
     field_path: tuple[str | int, ...],
     knob: int | str,
+    kind: str = "rate",
 ) -> None:
     """Offer the clock as an alternative to setting a rate by hand."""
     binding = KNOB_INTERACTION.bindings.get(knob)
     if binding is None:
         return
-    RATE_SYNCS[knob] = RateSync(module=module, path=field_path, binding=binding)
+    RATE_SYNCS[knob] = RateSync(module=module, path=field_path, binding=binding, kind=kind)
     dpg.add_combo(
         list(CLOCK_CHOICES),
         default_value=FREE,
@@ -5380,8 +5480,9 @@ def _add_dynamic_parameter_controls(
                     label,
                     unit,
                 )
-                if is_rate_field(str(field_path[-1])):
-                    _add_rate_sync_control(module, field_path, knob)
+                kind = clock_kind(str(field_path[-1]))
+                if kind is not None:
+                    _add_rate_sync_control(module, field_path, knob, kind)
         pending_floats.clear()
 
     for field_name, field_info in type(parameters).model_fields.items():
@@ -6551,7 +6652,9 @@ def _build_jack_post(name: str, attribute_tag: str, strip: str, across: float) -
     post = CONSOLE_POST.format(name=name)
     with dpg.node(tag=post, label=""):
         with dpg.node_attribute(tag=attribute_tag, attribute_type=dpg.mvNode_Attr_Input):
-            dpg.add_spacer(width=4, height=2)
+            # A text rather than a spacer: a text reports where it is, and the
+            # pin is drawn at the centre of this row.
+            POST_TEXTS[post] = dpg.add_text(" ")
     dpg.bind_item_theme(post, JACK_POST_THEME)
     POST_ANCHORS[post] = (strip, across)
 
@@ -6568,6 +6671,7 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
     pinned so the rack pans and zooms underneath them.
     """
     POST_ANCHORS.clear()
+    POST_TEXTS.clear()
     for channel in range(1, MASTER_CHANNELS + 1):
         _build_strip(channel, master)
     for bus in SENDS:
@@ -7044,8 +7148,6 @@ def _mount_new_module(
     _build_generic_module_node(instance_id, module, runtime.patch)
     dpg.bind_item_theme(node, theme)
     _bind_rack_node_font(node)
-    _add_spine_texture(node, manifest.name.upper())
-    _add_module_spine(node)
     _add_module_context_menu(node, runtime)
     if beside is not None and dpg.does_item_exist(beside):
         x, y = dpg.get_item_pos(beside)
@@ -7485,7 +7587,7 @@ def _build_empty_rack_ui(
                 ):
                     if console:
                         _build_console(runtime.audio, ensure_master(runtime.patch))
-                    _add_module_spines(runtime)
+                    _add_module_context_menus(runtime)
         dpg.add_separator()
         with dpg.group(horizontal=True):
             dpg.add_text(
@@ -7555,8 +7657,6 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
             runtime.patch,
         )
         dpg.bind_item_theme(node, theme)
-        _add_spine_texture(node, manifest.name.upper())
-        _add_module_spine(node)
         _add_module_context_menu(node, runtime)
         saved_node = saved_nodes.get(saved_module.instance_id)
         if saved_node is None:
@@ -7642,6 +7742,10 @@ def build_ui(
     CABLE_SOURCES.clear()
     CABLE_INDEX_KEY.clear()
     CABLE_STEPS.clear()
+    CONSOLE_CABLE_ITEMS.clear()
+    CONSOLE_CABLE_PATHS.clear()
+    if dpg.does_item_exist(CONSOLE_CABLES):
+        dpg.delete_item(CONSOLE_CABLES, children_only=True)
     CONSOLE_BALLISTICS.clear()
     RETURN_BALLISTICS.clear()
     CANVAS_INTERACTION.reset()
@@ -7675,7 +7779,6 @@ def build_ui(
             starter_patch=starter_patch,
         )
     )
-    _configure_spine_textures(runtime)
     if preset is not None:
         # The console is built after the document's modules, so that at first
         # draw it is above them rather than under them.
@@ -7731,7 +7834,7 @@ def build_ui(
             _build_low_pass_gate_node(runtime.low_pass_gate, runtime.patch)
             _build_reverb_node(runtime.reverb, runtime.patch)
             _build_console(runtime.audio, ensure_master(runtime.patch))
-            _add_module_spines(runtime)
+            _add_module_context_menus(runtime)
             _add_visual_link(
                 f"{FUNCTION_NODE}.channel_1",
                 f"{VCO_NODE}.morph_cv",

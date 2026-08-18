@@ -121,6 +121,22 @@ clicking a node brings it to the front, and a pin drawn over the strip went
 under the strip the moment the strip was clicked. Nothing can cover what
 stands above the top edge.
 
+The cable into that jack is drawn by hand too. imnodes draws every link
+arriving at an input from the left, offset by a quarter of the cable's length,
+so a cable dropped from a module onto a strip below overshoots to the left and
+hooks back into the jack. Console cables are instead drawn on a layer over the
+rack — leaving the module to the right as every other cable does, then
+dropping into the jack from above — with the same glow as any cable, and the
+editor's own copy hidden. Double-clicking a drawn cable unpatches it, as it
+does any other.
+
+Collapsing a module — double-click its title, or right-click — leaves its
+title and the jacks with cables in them, and puts everything else away: the
+controls, the open jacks, the signal-path row. Opening it again shows every
+control and every jack. There is no third state; a jack with nothing in it is
+hidden by collapsing and shown by opening, which is what the HIDE OPEN toggle
+was for, and why it is gone. The book-spine view is gone with it.
+
 The band the console stands in is reserved. Centring, framing and revealing a
 new module all reason about "the visible area", and that area is the canvas
 *above* the console — otherwise a module is placed where the console is,

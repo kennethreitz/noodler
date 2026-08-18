@@ -208,3 +208,31 @@ def test_each_strip_has_a_jack_post_standing_above_its_middle(monkeypatch) -> No
         assert post_y == pytest.approx(strip_y - JACK_POST_LIFT, abs=1.0), "standing above the top edge"
     finally:
         dpg.destroy_context()
+
+
+def test_a_cable_to_the_console_is_drawn_by_hand_and_enters_from_above() -> None:
+    from noodler.app import (
+        CONSOLE_CABLE_PATHS,
+        CONSOLE_LINK_HIDDEN_THEME,
+        _console_cable_points,
+        _is_console_route,
+    )
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        vco = INSTANCE_NODE_TAGS["classic_vco"]
+        _patch_link_created("test", (f"{vco}.saw", f"{OUTPUT_NODE}.channel_1"), runtime)
+        link = dpg.get_item_children(RACK).get(0, [])[0]
+        route = dpg.get_item_user_data(link)
+        assert _is_console_route(route)
+        # imnodes' own copy of the link is invisible; the drawn one is what shows.
+        assert dpg.get_item_alias(dpg.get_item_info(link)["theme"]) == CONSOLE_LINK_HIDDEN_THEME
+
+        points = _console_cable_points((900.0, 400.0), (460.0, 630.0))
+        assert points[1][1] == points[0][1], "leaves the module horizontally"
+        assert points[2][0] == points[3][0], "and arrives at the jack vertically"
+        assert points[2][1] < points[3][1], "from above"
+    finally:
+        dpg.destroy_context()

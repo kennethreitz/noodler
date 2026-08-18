@@ -35,7 +35,7 @@ NOTE_DIVISIONS: dict[str, float] = {
 Dotted divisions are half again as long; triplets are two thirds.
 """
 
-BAR_DIVISIONS: dict[str, float] = {"4 bars": 4.0, "2 bars": 2.0, "1 bar": 1.0}
+BAR_DIVISIONS: dict[str, float] = {"8 bars": 8.0, "4 bars": 4.0, "2 bars": 2.0, "1 bar": 1.0}
 """Bar lengths, measured in bars.
 
 A bar cannot be tabulated in quarter notes because its length is the time
@@ -146,6 +146,15 @@ class Transport:
             return None
         return (self.bpm / 60.0) / quarters
 
+    def seconds_for(self, division: str) -> float | None:
+        """How long one cycle of a division lasts, in seconds.
+
+        The other face of hz_for: a delay time, a decay, a pre-delay are
+        lengths, and a length synced to the clock is a division of the beat.
+        """
+        hertz = self.hz_for(division)
+        return None if hertz is None or hertz <= 0.0 else 1.0 / hertz
+
     def advance(self, dt: float) -> float:
         """Move the clock on by one frame and return the position in the bar."""
         if self.running and dt > 0.0:
@@ -203,6 +212,27 @@ def is_rate_field(field_name: str) -> bool:
     return field_name.endswith("rate_hz")
 
 
+def is_time_field(field_name: str) -> bool:
+    """Whether a parameter names a length of time the transport could set.
+
+    A delay time, a decay, a pre-delay, an attack: any of them can be a
+    division of the beat. Names say the unit -- seconds or milliseconds -- so
+    the sync knows what to write.
+    """
+    return field_name.endswith("_seconds") or field_name.endswith("_ms")
+
+
+def clock_kind(field_name: str) -> str | None:
+    """'rate', 'seconds', 'ms', or None if the clock has nothing to say."""
+    if is_rate_field(field_name):
+        return "rate"
+    if field_name.endswith("_seconds"):
+        return "seconds"
+    if field_name.endswith("_ms"):
+        return "ms"
+    return None
+
+
 __all__ = [
     "BAR_DIVISIONS",
     "BEAT_UNITS",
@@ -215,5 +245,7 @@ __all__ = [
     "MIN_BPM",
     "Transport",
     "TransportFrame",
+    "clock_kind",
     "is_rate_field",
+    "is_time_field",
 ]

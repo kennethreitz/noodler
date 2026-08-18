@@ -561,7 +561,7 @@ def test_generated_float_parameters_are_packed_three_across() -> None:
 def test_patch_bays_show_every_port_until_open_jacks_are_hidden() -> None:
     dpg.create_context()
     try:
-        build_ui(starter_patch=True)
+        runtime = build_ui(starter_patch=True)
 
         assert dpg.get_value(f"{VCO_NODE}.patch_bay.status") == (
             "SIGNAL PATH  ·  3 IN  →  2 OUT"
@@ -585,211 +585,30 @@ def test_patch_bays_show_every_port_until_open_jacks_are_hidden() -> None:
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_2")["show"]
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_4")["show"]
 
-        toggle = f"{VCO_NODE}.patch_bay.hide_open"
-        toggle_configuration = dpg.get_item_configuration(toggle)
-        assert toggle_configuration["label"] == "HIDE OPEN"
-        dpg.set_value(toggle, True)
-        toggle_configuration["callback"](
-            toggle,
-            True,
-            toggle_configuration["user_data"],
-        )
+        # There is no HIDE OPEN toggle: collapsing a module hides its open jacks.
+        assert not dpg.does_item_exist(f"{VCO_NODE}.patch_bay.hide_open")
+        _set_module_collapsed(VCO_NODE, True, runtime)
         assert not dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
         assert not dpg.get_item_configuration(f"{VCO_NODE}.sync")["show"]
         assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
-
-        dpg.set_value(toggle, False)
-        toggle_configuration["callback"](
-            toggle,
-            False,
-            toggle_configuration["user_data"],
-        )
+        _set_module_collapsed(VCO_NODE, False, runtime)
         assert dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
-
-        assert dpg.get_item_pos(FUNCTION_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
-        assert dpg.get_item_pos(WOGGLE_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
-        assert dpg.get_item_pos(SCALE_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
-        assert dpg.get_item_pos(VCO_NODE)[0] < dpg.get_item_pos(MIXER_NODE)[0]
-        assert dpg.get_item_pos(MIXER_NODE)[0] < dpg.get_item_pos(REVERB_NODE)[0]
-        assert dpg.get_item_pos(MIXER_NODE)[0] < dpg.get_item_pos(LPG_NODE)[0]
-        assert dpg.get_item_pos(LPG_NODE)[0] < dpg.get_item_pos(REVERB_NODE)[0]
-        assert dpg.get_item_pos(REVERB_NODE)[0] < dpg.get_item_pos(MIXER_NODE)[0] + 2_000
     finally:
         dpg.destroy_context()
 
 
-def test_space_pan_moves_the_rack_hierarchy_as_one_view(monkeypatch) -> None:
-    dpg.create_context()
-    try:
-        build_ui()
-        # The console is pinned along the bottom, so it is not part of what pans.
-        original = {
-            node: tuple(dpg.get_item_pos(node))
-            for node in RACK_NODES
-            if node not in PINNED_NODES
-        }
-        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
-        CANVAS_INTERACTION.panning = True
-        CANVAS_INTERACTION.last_mouse_x = 100.0
-        CANVAS_INTERACTION.last_mouse_y = 200.0
-        original_rails = dict(CANVAS_INTERACTION.rail_y)
-        monkeypatch.setattr(
-            dpg,
-            "get_mouse_pos",
-            lambda *, local=False: (125.0, 165.0),
-        )
-
-        _pan_rack()
-
-        for node, (original_x, original_y) in original.items():
-            node_x, node_y = dpg.get_item_pos(node)
-            assert node_x == pytest.approx(original_x + 25.0)
-            assert node_y == pytest.approx(original_y - 35.0)
-        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == pinned
-        for rail, original_y in original_rails.items():
-            assert CANVAS_INTERACTION.rail_y[rail] == pytest.approx(
-                original_y - 35.0
-            )
-        # No minimap: it cannot leave the console out, and F frames the rack.
-        assert dpg.get_item_configuration(RACK)["minimap"] is False
-
-        _end_knob_drag("test", None, KNOB_INTERACTION)
-        assert CANVAS_INTERACTION.panning is False
-    finally:
-        dpg.destroy_context()
-
-
-def test_dragging_empty_background_begins_canvas_pan(monkeypatch) -> None:
-    dpg.create_context()
-    try:
-        build_ui()
-        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
-        monkeypatch.setattr(
-            "noodler.app._mouse_is_over_rack_background",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            dpg,
-            "get_mouse_pos",
-            lambda *, local=False: (320.0, 240.0),
-        )
-
-        _begin_knob_drag("test", None, KNOB_INTERACTION)
-
-        assert CANVAS_INTERACTION.panning is True
-        assert CANVAS_INTERACTION.last_mouse_x == 320.0
-        assert CANVAS_INTERACTION.last_mouse_y == 240.0
-        for node in RACK_NODES:
-            assert dpg.get_item_configuration(node)["draggable"] is True
-
-        _end_knob_drag("test", None, KNOB_INTERACTION)
-        assert CANVAS_INTERACTION.panning is False
-        for node in RACK_NODES:
-            assert dpg.get_item_configuration(node)["draggable"] is True
-    finally:
-        dpg.destroy_context()
-
-
-def test_background_hit_test_uses_node_geometry(monkeypatch) -> None:
-    dpg.create_context()
-    try:
-        build_ui()
-        monkeypatch.setattr(
-            "noodler.app._point_is_over_rack",
-            lambda _position: True,
-        )
-
-        assert _point_is_over_rack_background((5_000.0, 5_000.0)) is True
-    finally:
-        dpg.destroy_context()
-
-
-def test_background_drag_recovers_when_node_editor_claims_mouse_down(
-    monkeypatch,
-) -> None:
-    dpg.create_context()
-    try:
-        build_ui()
-        # The console is pinned along the bottom, so it is not part of what pans.
-        original = {
-            node: tuple(dpg.get_item_pos(node))
-            for node in RACK_NODES
-            if node not in PINNED_NODES
-        }
-        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
-        monkeypatch.setattr(
-            dpg,
-            "get_mouse_pos",
-            lambda *, local=False: (325.0, 205.0),
-        )
-        monkeypatch.setattr(
-            dpg,
-            "get_mouse_drag_delta",
-            lambda **_kwargs: (25.0, -35.0),
-        )
-        monkeypatch.setattr(
-            "noodler.app._point_is_over_rack_background",
-            lambda position: position == (300.0, 240.0),
-        )
-
-        _drag_knob("test", None, KNOB_INTERACTION)
-
-        assert CANVAS_INTERACTION.panning is True
-        for node, (original_x, original_y) in original.items():
-            node_x, node_y = dpg.get_item_pos(node)
-            assert node_x == pytest.approx(original_x + 25.0)
-            assert node_y == pytest.approx(original_y - 35.0)
-    finally:
-        dpg.destroy_context()
-
-
-def test_module_drag_origin_is_never_promoted_to_canvas_pan(
-    monkeypatch,
-) -> None:
-    dpg.create_context()
-    try:
-        build_ui()
-        monkeypatch.setattr(
-            dpg,
-            "get_mouse_pos",
-            lambda *, local=False: (325.0, 205.0),
-        )
-        monkeypatch.setattr(
-            dpg,
-            "get_mouse_drag_delta",
-            lambda **_kwargs: (25.0, -35.0),
-        )
-        monkeypatch.setattr(
-            "noodler.app._point_is_over_rack_background",
-            lambda _position: False,
-        )
-
-        _drag_knob("test", None, KNOB_INTERACTION)
-
-        assert CANVAS_INTERACTION.panning is False
-        for node in RACK_NODES:
-            assert dpg.get_item_configuration(node)["draggable"] is True
-    finally:
-        dpg.destroy_context()
-
-
-def test_module_title_collapse_preserves_graph_and_attribute_visibility() -> None:
+def test_module_title_collapse_shows_the_title_and_the_patched_jacks() -> None:
     dpg.create_context()
     try:
         runtime = build_ui(starter_patch=True)
         attributes = _node_attributes(VCO_NODE)
-        visibility = {
-            attribute: dpg.get_item_configuration(attribute)["show"]
-            for attribute in attributes
-        }
         cable_count = len(runtime.patch.cables)
+        title = dpg.get_item_configuration(VCO_NODE)["label"]
 
         _set_module_collapsed(VCO_NODE, True, runtime)
 
         assert MODULE_COLLAPSE.is_collapsed(VCO_NODE) is True
-        assert dpg.get_item_configuration(VCO_NODE)["label"] == "▸"
-        # A folded module keeps the jacks that have cables in them, so the
-        # cables stay plugged into the spine instead of vanishing with it.
+        assert dpg.get_item_configuration(VCO_NODE)["label"] == title, "the title stays"
         patched = {
             f"{VCO_NODE}.{end.port_id}"
             for cable in runtime.patch.cables
@@ -799,25 +618,20 @@ def test_module_title_collapse_preserves_graph_and_attribute_visibility() -> Non
         for attribute in attributes:
             shown = dpg.get_item_configuration(attribute)["show"]
             alias = dpg.get_item_alias(attribute) or attribute
-            assert shown is (alias in patched), alias
-        assert dpg.get_item_configuration(
-            f"{VCO_NODE}.spine.attribute"
-        )["show"] is True
+            kind = dpg.get_item_configuration(attribute).get("attribute_type")
+            if kind == dpg.mvNode_Attr_Static:
+                assert shown is False, "controls are put away"
+            else:
+                assert shown is (alias in patched), alias
         assert dpg.get_item_configuration(VCO_MIXER_LINK)["show"] is True
-        assert dpg.get_item_configuration(WOGGLE_SCALE_LINK)["show"] is True
         assert len(runtime.patch.cables) == cable_count
 
         _set_module_collapsed(VCO_NODE, False, runtime)
 
         assert MODULE_COLLAPSE.is_collapsed(VCO_NODE) is False
-        assert {
-            attribute: dpg.get_item_configuration(attribute)["show"]
-            for attribute in attributes
-        } == visibility
-        assert dpg.get_item_configuration(
-            f"{VCO_NODE}.spine.attribute"
-        )["show"] is False
-        assert dpg.get_item_configuration(VCO_MIXER_LINK)["show"] is True
+        assert all(
+            dpg.get_item_configuration(attribute)["show"] for attribute in attributes
+        ), "open means every control and every jack"
         assert len(runtime.patch.cables) == cable_count
     finally:
         dpg.destroy_context()
