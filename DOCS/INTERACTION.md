@@ -123,14 +123,20 @@ clicking a node brings it to the front, and a pin drawn over the strip went
 under the strip the moment the strip was clicked. Nothing can cover what
 stands above the top edge.
 
-The cable into that jack is drawn by hand too. imnodes draws every link
-arriving at an input from the left, offset by a quarter of the cable's length,
-so a cable dropped from a module onto a strip below overshoots to the left and
-hooks back into the jack. Console cables are instead drawn on a layer over the
-rack — leaving the module to the right as every other cable does, then
-dropping into the jack from above — with the same glow as any cable, and the
-editor's own copy hidden. Double-clicking a drawn cable unpatches it, as it
-does any other.
+Every cable is drawn by hand. imnodes draws a link as a level bezier arriving
+at an input from the left, offset by a quarter of its length: a cable dropped
+from a module onto a strip below overshoots to the left and hooks back into the
+jack, and one between modules lies flat, a wire in a diagram. So the editor's
+own links are all made invisible and every cable is drawn on a layer over the
+rack: leaving the output to the right and arriving at the input from the
+left, as a plug in a jack does, and hanging between the two under its own
+weight — the sag grows with the length, from a few pixels to about a hundred —
+and into the console from above, with a little droop on the way. The layer
+covers the window, so each cable is a polyline along its bezier clipped to the
+editor's rectangle. Cables glow with the jack that feeds them; the one under
+the pointer lights; a click on one picks it (Shift adds) and Delete removes
+it, since the editor's own selection is of a link nobody can see; a
+double-click unpatches it.
 
 Collapsing a module — double-click its title, or right-click — leaves its
 title and the jacks with cables in them, and puts everything else away: the

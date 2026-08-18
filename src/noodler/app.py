@@ -1881,8 +1881,9 @@ def _add_visual_link(
         "musical": MUSICAL_LINK_THEME,
     }.get(signal, CV_LINK_THEME)
     dpg.bind_item_theme(link, theme)
-    if _is_console_route(route):
-        dpg.bind_item_theme(link, CONSOLE_LINK_HIDDEN_THEME)
+    # Every cable is drawn by hand -- hanging, with weight -- on a layer over
+    # the rack; the editor's own copy of the link is made invisible.
+    dpg.bind_item_theme(link, CONSOLE_LINK_HIDDEN_THEME)
     CABLE_INDEX_KEY.clear()
     return link
 
@@ -2651,15 +2652,18 @@ def _refresh_jack_activity(runtime: AppRuntime) -> None:
 
 
 def _refresh_cable_glow() -> None:
-    """Rebind each cable to the glow of the jack that feeds it, on change."""
+    """Keep each cable's glow step at the step of the jack that feeds it.
+
+    The drawn cables read the step when they are drawn; the editor's own
+    links are invisible and are not re-themed -- a theme bound to one would
+    show it again, straight and unweighted, under the drawn cable.
+    """
     _index_cables()
-    for link, (module_id, port_id, signal) in CABLE_SOURCES.items():
+    for link, (module_id, port_id, _signal) in CABLE_SOURCES.items():
         step = PORT_STEPS.get((module_id, port_id), 0)
         if CABLE_STEPS.get(link) == step:
             continue
         CABLE_STEPS[link] = step
-        if dpg.does_item_exist(link):
-            dpg.bind_item_theme(link, _link_glow_theme(signal if signal in SIGNAL_COLORS else "cv", step))
 
 
 def _console_pin_position(post: str) -> tuple[float, float] | None:
@@ -2708,10 +2712,11 @@ def _send_cable_points(
     length = max(1.0, math.hypot(dx, dy))
     rise = max(50.0, 0.6 * abs(dy))
     reach = min(80.0, max(30.0, 0.2 * length))
+    droop = min(40.0, 0.4 * _cable_sag(length))
     return (
         start,
         (start[0], start[1] - rise),
-        (end[0] - reach, end[1]),
+        (end[0] - reach, end[1] + droop),
         end,
     )
 
@@ -2735,6 +2740,40 @@ def _target_pin_position(module_id: str, port_id: str) -> tuple[float, float] | 
     return left, top + height * 0.5
 
 
+CABLE_SAG_PER_PX = 0.16
+CABLE_SAG_MIN = 10.0
+CABLE_SAG_MAX = 110.0
+"""How far a cable hangs below the line between its jacks: with its length,
+as a cable does, but never nothing and never a curtain."""
+
+
+def _cable_sag(length: float) -> float:
+    return min(CABLE_SAG_MAX, max(CABLE_SAG_MIN, CABLE_SAG_PER_PX * length + 8.0))
+
+
+def _hanging_cable_points(
+    start: tuple[float, float], end: tuple[float, float]
+) -> tuple[tuple[float, float], ...]:
+    """A cable between two modules, hanging.
+
+    It leaves the output to the right and arrives at the input from the left,
+    as a cable plugged into a jack does, and between the two it drops -- the
+    control points sit below the jacks by the sag, so the middle hangs and
+    the ends lift out of it. A longer cable hangs lower; a short one barely.
+    """
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = max(1.0, math.hypot(dx, dy))
+    reach = min(120.0, max(24.0, 0.25 * length))
+    sag = _cable_sag(length)
+    return (
+        start,
+        (start[0] + reach, start[1] + sag),
+        (end[0] - reach, end[1] + sag),
+        end,
+    )
+
+
 def _console_cable_points(
     start: tuple[float, float], end: tuple[float, float]
 ) -> tuple[tuple[float, float], ...]:
@@ -2742,14 +2781,16 @@ def _console_cable_points(
     dx = end[0] - start[0]
     dy = end[1] - start[1]
     length = max(1.0, math.hypot(dx, dy))
-    # A short reach to the right, as every cable leaves an output, then a
-    # drop that arrives vertically: the drop is most of the vertical distance
-    # so the last stretch into the jack is straight down.
+    # A short reach to the right, as every cable leaves an output -- drooping
+    # a little under its own weight -- then a drop that arrives vertically:
+    # the drop is most of the vertical distance so the last stretch into the
+    # jack is straight down.
     reach = min(80.0, max(30.0, 0.2 * length))
     drop = max(50.0, 0.6 * abs(dy))
+    droop = min(40.0, 0.4 * _cable_sag(length))
     return (
         start,
-        (start[0] + reach, start[1]),
+        (start[0] + reach, start[1] + droop),
         (end[0], end[1] - drop),
         end,
     )
@@ -2762,6 +2803,62 @@ def _bezier_point(points: tuple[tuple[float, float], ...], t: float) -> tuple[fl
         u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
         u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3,
     )
+
+
+CABLE_SEGMENTS = 28
+"""A drawn cable is a polyline of this many segments along its bezier, so it
+can be clipped to the editor: the layer it is drawn on covers the window."""
+
+
+def _clip_segment(
+    a: tuple[float, float], b: tuple[float, float], rect: tuple[float, float, float, float]
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """The part of segment a-b inside rect (Liang-Barsky), or None."""
+    left, top, right, bottom = rect
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, a[0] - left), (dx, right - a[0]), (-dy, a[1] - top), (dy, bottom - a[1])):
+        if p == 0.0:
+            if q < 0.0:
+                return None
+            continue
+        r = q / p
+        if p < 0.0:
+            if r > t1:
+                return None
+            if r > t0:
+                t0 = r
+        else:
+            if r < t0:
+                return None
+            if r < t1:
+                t1 = r
+    return (a[0] + t0 * dx, a[1] + t0 * dy), (a[0] + t1 * dx, a[1] + t1 * dy)
+
+
+def _clipped_cable_runs(
+    points: tuple[tuple[float, float], ...], rect: tuple[float, float, float, float]
+) -> list[list[tuple[float, float]]]:
+    """The cable's bezier as polyline runs, each wholly inside the editor."""
+    samples = [_bezier_point(points, i / CABLE_SEGMENTS) for i in range(CABLE_SEGMENTS + 1)]
+    runs: list[list[tuple[float, float]]] = []
+    current: list[tuple[float, float]] = []
+    for a, b in zip(samples, samples[1:]):
+        clipped = _clip_segment(a, b, rect)
+        if clipped is None:
+            if current:
+                runs.append(current)
+                current = []
+            continue
+        start, end = clipped
+        if not current or current[-1] != start:
+            if current:
+                runs.append(current)
+            current = [start]
+        current.append(end)
+    if current:
+        runs.append(current)
+    return [run for run in runs if len(run) >= 2]
 
 
 CONSOLE_CABLE_PATHS: dict[int | str, tuple[tuple[float, float], ...]] = {}
@@ -3210,28 +3307,47 @@ def _refresh_selection() -> None:
     dpg.draw_rectangle((x0, y0), (x1, y1), color=(*SELECTION_COLOR, 190), thickness=1.0, parent=SELECTION_LAYER)
 
 
-def _refresh_console_cables(runtime: AppRuntime) -> None:
-    """Draw every cable that lands on the console, entering its jack from above.
+CABLE_SELECTION: set[int | str] = set()
+"""Cables picked by a click on the drawn cable, for Delete. The editor's own
+links are invisible and shaped differently, so their selection is not what
+the eye selected; this is."""
 
-    imnodes draws every link arriving at an input from the left, offset by a
-    quarter of the cable's length, so a cable dropped from a module onto a
-    strip below overshoots left and hooks back into the jack. These are drawn
-    by hand instead -- leaving the module to the right as every other cable
-    does, then dropping into the jack from above -- on a layer over the rack,
-    with the same glow as any cable, and the editor's own copy hidden.
+
+def _refresh_console_cables(runtime: AppRuntime) -> None:
+    """Draw every cable, hanging, on a layer over the rack.
+
+    imnodes draws a link as a level bezier arriving at an input from the left,
+    offset by a quarter of its length: a cable dropped onto a strip below
+    overshoots and hooks back into the jack, and one between modules lies
+    flat as a wire in a diagram. Every cable is drawn by hand instead --
+    leaving the output to the right, arriving at the input from the left, and
+    hanging between the two under its own weight; into the console, from
+    above -- with the glow of the jack that feeds it, and the editor's own
+    copy hidden. Hovered or picked, it lights.
     """
     if not dpg.does_item_exist(RACK):
         return
     if not dpg.does_item_exist(CONSOLE_CABLES):
         dpg.add_viewport_drawlist(tag=CONSOLE_CABLES, front=True)
+    dpg.delete_item(CONSOLE_CABLES, children_only=True)
+    CONSOLE_CABLE_ITEMS.clear()
+    rect = _rack_screen_rect()
+    if rect is None:
+        return
     mouse = tuple(float(v) for v in dpg.get_mouse_pos(local=False))
     hovered = _console_cable_near(mouse) if _mouse_is_over_rack() else None
     live: set[int | str] = set()
     for link in dpg.get_item_children(RACK).get(0, ()):
         route = dpg.get_item_user_data(link)
-        if not _is_console_route(route):
+        if route is None or getattr(route, "source", None) is None:
             continue
-        if route.target.module_id == MASTER_ID:
+        if not _is_console_route(route):
+            start = _source_pin_position(route.source.module_id, route.source.port_id)
+            end = _target_pin_position(route.target.module_id, route.target.port_id)
+            if start is None or end is None:
+                continue
+            points = _hanging_cable_points(start, end)
+        elif route.target.module_id == MASTER_ID:
             post = CONSOLE_POST.format(name=route.target.port_id)
             start = _source_pin_position(route.source.module_id, route.source.port_id)
             end = _console_pin_position(post)
@@ -3249,24 +3365,17 @@ def _refresh_console_cables(runtime: AppRuntime) -> None:
         CONSOLE_CABLE_PATHS[link] = points
         signal = _endpoint_signal(runtime.patch, route.source)
         step = PORT_STEPS.get((route.source.module_id, route.source.port_id), 0)
-        colour = TEXT if link == hovered else _glow(SIGNAL_COLORS.get(signal, TEXT), step)
-        thickness = 4.0 if link == hovered else 3.0
-        item = CONSOLE_CABLE_ITEMS.get(link)
-        if item is None or not dpg.does_item_exist(item):
-            CONSOLE_CABLE_ITEMS[link] = dpg.draw_bezier_cubic(
-                *points, color=colour, thickness=thickness, parent=CONSOLE_CABLES
+        lit = link == hovered or link in CABLE_SELECTION
+        colour = TEXT if lit else _glow(SIGNAL_COLORS.get(signal, TEXT), step)
+        thickness = 4.0 if lit else 3.0
+        for run in _clipped_cable_runs(points, rect):
+            CONSOLE_CABLE_ITEMS[link] = dpg.draw_polyline(
+                run, color=colour, thickness=thickness, parent=CONSOLE_CABLES
             )
-        else:
-            dpg.configure_item(
-                item, p1=points[0], p2=points[1], p3=points[2], p4=points[3],
-                color=colour, thickness=thickness,
-            )
-    for link in tuple(CONSOLE_CABLE_ITEMS):
+    for link in tuple(CONSOLE_CABLE_PATHS):
         if link not in live:
-            item = CONSOLE_CABLE_ITEMS.pop(link)
             CONSOLE_CABLE_PATHS.pop(link, None)
-            if dpg.does_item_exist(item):
-                dpg.delete_item(item)
+            CABLE_SELECTION.discard(link)
 
 
 def _refresh_knob_hover() -> None:
@@ -4451,6 +4560,7 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
 
 
 def _clear_rack_selection() -> None:
+    CABLE_SELECTION.clear()
     if dpg.does_item_exist(RACK):
         dpg.clear_selected_nodes(RACK)
         dpg.clear_selected_links(RACK)
@@ -5432,6 +5542,17 @@ def _end_knob_drag(
     if CANVAS_INTERACTION.panning:
         if CANVAS_INTERACTION.pan_moved:
             _clear_rack_selection()
+        else:
+            # A press on empty canvas that did not move is a click: on a
+            # cable it picks the cable (Shift adds), anywhere else it lets go.
+            cable = _console_cable_near(tuple(float(v) for v in dpg.get_mouse_pos(local=False)))
+            if cable is None:
+                CABLE_SELECTION.clear()
+            elif dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift):
+                CABLE_SELECTION.symmetric_difference_update({cable})
+            else:
+                CABLE_SELECTION.clear()
+                CABLE_SELECTION.add(cable)
         _release_pan_momentum()
         CANVAS_INTERACTION.stop_panning()
         if dpg.does_item_exist(CONTROL_STATUS):
@@ -5623,13 +5744,14 @@ def _delete_rack_selection(
     """Unpatch selected cables and remove selected modules."""
     if _keyboard_is_captured() or not dpg.does_item_exist(RACK):
         return
-    links = tuple(dpg.get_selected_links(RACK))
+    links = tuple(dict.fromkeys((*dpg.get_selected_links(RACK), *CABLE_SELECTION)))
     nodes = tuple(dpg.get_selected_nodes(RACK))
     if not links and not nodes:
         _set_patch_status("NOTHING SELECTED  ·  CLICK A CABLE OR A MODULE FIRST")
         return
     for link in links:
-        _patch_link_deleted(RACK, link, runtime)
+        if dpg.does_item_exist(link):
+            _patch_link_deleted(RACK, link, runtime)
     for item in nodes:
         node = _node_tag_for_item(item)
         if node is not None:
@@ -9039,6 +9161,7 @@ def build_ui(
     CABLE_STEPS.clear()
     CONSOLE_CABLE_ITEMS.clear()
     CONSOLE_CABLE_PATHS.clear()
+    CABLE_SELECTION.clear()
     if dpg.does_item_exist(CONSOLE_CABLES):
         dpg.delete_item(CONSOLE_CABLES, children_only=True)
     CONSOLE_BALLISTICS.clear()

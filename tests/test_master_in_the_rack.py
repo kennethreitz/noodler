@@ -243,7 +243,8 @@ def test_a_cable_to_the_console_is_drawn_by_hand_and_enters_from_above() -> None
         assert dpg.get_item_alias(dpg.get_item_info(link)["theme"]) == CONSOLE_LINK_HIDDEN_THEME
 
         points = _console_cable_points((900.0, 400.0), (460.0, 630.0))
-        assert points[1][1] == points[0][1], "leaves the module horizontally"
+        assert points[1][0] > points[0][0], "leaves the module to the right"
+        assert points[0][1] < points[1][1] <= points[0][1] + 40.0, "drooping a little under its weight"
         assert points[2][0] == points[3][0], "and arrives at the jack vertically"
         assert points[2][1] < points[3][1], "from above"
     finally:

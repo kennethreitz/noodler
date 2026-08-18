@@ -790,3 +790,41 @@ def test_grouped_modules_move_together_and_the_group_travels_with_the_document(m
         RACK_GROUPS.clear()
         GROUP_LAST_POSITIONS.clear()
         dpg.destroy_context()
+
+
+def test_cables_hang_with_their_length_and_are_clipped_to_the_editor() -> None:
+    from noodler.app import (
+        CABLE_SAG_MAX,
+        CABLE_SAG_MIN,
+        _bezier_point,
+        _clip_segment,
+        _clipped_cable_runs,
+        _hanging_cable_points,
+    )
+
+    short = _hanging_cable_points((100.0, 100.0), (180.0, 100.0))
+    long = _hanging_cable_points((100.0, 100.0), (900.0, 100.0))
+    # Out of the output to the right, into the input from the left, and down between.
+    assert short[1][0] > short[0][0] and short[2][0] < short[3][0]
+    assert short[1][1] > short[0][1] and short[2][1] > short[3][1]
+    short_sag = short[1][1] - short[0][1]
+    long_sag = long[1][1] - long[0][1]
+    assert CABLE_SAG_MIN <= short_sag < long_sag <= CABLE_SAG_MAX, "a longer cable hangs lower"
+    # The middle of a level cable is below its ends: it hangs.
+    mid_x, mid_y = _bezier_point(long, 0.5)
+    assert mid_y > 100.0 + 0.5 * long_sag and abs(mid_x - 500.0) < 1.0
+
+    rect = (0.0, 0.0, 400.0, 300.0)
+    assert _clip_segment((10.0, 10.0), (50.0, 50.0), rect) == ((10.0, 10.0), (50.0, 50.0))
+    assert _clip_segment((-100.0, 10.0), (-50.0, 50.0), rect) is None
+    (start, end) = _clip_segment((-100.0, 100.0), (100.0, 100.0), rect)
+    assert start == (0.0, 100.0) and end == (100.0, 100.0)
+    # A cable that leaves the editor and comes back is drawn as two runs.
+    runs = _clipped_cable_runs(_hanging_cable_points((50.0, 280.0), (350.0, 280.0)), rect)
+    assert len(runs) == 2, "out through the bottom and back in"
+    for run in runs:
+        for x, y in run:
+            assert 0.0 <= x <= 400.0 and 0.0 <= y <= 300.0 + 1e-6
+    # And one wholly inside is one run of every sample.
+    runs = _clipped_cable_runs(_hanging_cable_points((50.0, 50.0), (350.0, 50.0)), rect)
+    assert len(runs) == 1 and len(runs[0]) == 29

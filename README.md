@@ -101,9 +101,11 @@ name of whatever is patched into it. Press **▶ PLAY** in the menu bar — or t
 space, or ⌘↩ — to open the audio device and start the clock; audio never starts
 on its own. Patch a send into a reverb and the reverb goes fully wet by itself,
 since the dry sound is already on the channel.
-Every output jack and cable glows with the signal on it, and a right-click on
-any module offers its local actions: collapse, duplicate, reset, unplug, or
-remove.
+Every output jack and cable glows with the signal on it — and cables hang,
+sagging with their length like patch cords do, out of the output to the right
+and into the input from the left. Click a cable to pick it, double-click to
+unpatch it. A right-click on any module offers its local actions: collapse,
+duplicate, reset, unplug, group, or remove.
 
 Each strip has **M** and **S**. To the right of the channels sit two **effect
 strips**, FX A and FX B, each with its send jack out and its return L and R in
