@@ -5,11 +5,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from AppKit import NSCursor, NSEvent, NSEventMaskMagnify
+    from AppKit import (
+        NSCursor,
+        NSEvent,
+        NSEventMaskMagnify,
+        NSEventMaskScrollWheel,
+    )
 except ImportError:  # pragma: no cover - exercised on non-macOS hosts
     NSCursor = None
     NSEvent = None
     NSEventMaskMagnify = 0
+    NSEventMaskScrollWheel = 0
 
 
 @dataclass(slots=True)
@@ -93,3 +99,50 @@ class MacCursor:
         if NSCursor is not None:
             NSCursor.pop()
         return True
+
+
+@dataclass(slots=True)
+class MacScrollMonitor:
+    """Forward two-axis scrolling, which Dear PyGui reports only one axis of.
+
+    A trackpad scrolls sideways as readily as it scrolls down, and reports both
+    with sub-line precision. Taking the event natively means a scroll moves the
+    rack the way it moves every other surface on the machine, including its
+    momentum, instead of arriving as a single quantised vertical tick.
+    """
+
+    callback: Callable[[float, float], None]
+    lines: float = 16.0
+    """Pixels a notched mouse wheel is worth, when deltas are not precise."""
+
+    _token: Any = field(default=None, init=False, repr=False)
+    _handler: Any = field(default=None, init=False, repr=False)
+
+    def start(self) -> bool:
+        """Install the monitor once, returning whether it is active."""
+        if self._token is not None:
+            return True
+        if NSEvent is None:
+            return False
+
+        def handle(event: Any) -> Any:
+            scale = 1.0 if event.hasPreciseScrollingDeltas() else self.lines
+            self.callback(
+                float(event.scrollingDeltaX()) * scale,
+                float(event.scrollingDeltaY()) * scale,
+            )
+            return event
+
+        self._handler = handle
+        self._token = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            NSEventMaskScrollWheel,
+            handle,
+        )
+        return self._token is not None
+
+    def stop(self) -> None:
+        if self._token is None or NSEvent is None:
+            return
+        NSEvent.removeMonitor_(self._token)
+        self._token = None
+        self._handler = None

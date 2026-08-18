@@ -27,6 +27,9 @@ from noodler.app import (
     VCO_NODE,
     _add_selected_module,
     _begin_knob_drag,
+    _capture_macos_scroll,
+    _consume_scroll,
+    _scroll_rack,
     _control_position,
     _delete_rack_selection,
     _end_knob_drag,
@@ -800,5 +803,111 @@ def test_space_and_a_click_drag_pans_rather_than_selects(monkeypatch) -> None:
         assert moved[0] - start[0] == pytest.approx(130.0)
         assert moved[1] - start[1] == pytest.approx(70.0)
         assert cleared, "the editor keeps trying to select; keep clearing"
+    finally:
+        dpg.destroy_context()
+
+
+def test_scrolling_moves_the_rack_rather_than_zooming() -> None:
+    """A gesture that means two things means neither reliably."""
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        start = tuple(dpg.get_item_pos(VCO_NODE))
+        zoom = CANVAS_INTERACTION.zoom
+
+        _capture_macos_scroll(-40.0, -120.0)
+        _consume_scroll()
+
+        moved = tuple(dpg.get_item_pos(VCO_NODE))
+        assert moved[0] - start[0] == pytest.approx(-40.0)
+        assert moved[1] - start[1] == pytest.approx(-120.0)
+        assert CANVAS_INTERACTION.zoom == zoom, "scrolling must not zoom"
+    finally:
+        dpg.destroy_context()
+
+
+def test_sideways_scrolling_is_carried_too() -> None:
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        start = float(dpg.get_item_pos(VCO_NODE)[0])
+
+        _capture_macos_scroll(90.0, 0.0)
+        _consume_scroll()
+
+        assert float(dpg.get_item_pos(VCO_NODE)[0]) - start == pytest.approx(90.0)
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_wheel_stands_down_when_the_platform_reports_scrolling(
+    monkeypatch,
+) -> None:
+    """Both paths firing would scroll the rack twice for one gesture."""
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        monkeypatch.setattr("noodler.app._mouse_is_over_rack", lambda: True)
+        CANVAS_INTERACTION.native_scroll = True
+
+        _scroll_rack("test", 3.0)
+
+        assert CANVAS_INTERACTION.pending_scroll_y == 0.0
+
+        CANVAS_INTERACTION.native_scroll = False
+        _scroll_rack("test", 3.0)
+        assert CANVAS_INTERACTION.pending_scroll_y > 0.0
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_module_drag_cannot_turn_into_a_pan_partway(monkeypatch) -> None:
+    """The rack can move under a drag; the drag must not change its mind.
+
+    Whether a gesture began over empty background was re-tested every frame
+    against node rectangles that had moved since — a scroll, a glide, or a
+    neighbour settling was enough to make a module drag start panning instead,
+    leaving the module behind.
+    """
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: (400.0, 300.0)
+        )
+        monkeypatch.setattr(
+            dpg, "get_mouse_drag_delta", lambda **_kwargs: (10.0, 5.0)
+        )
+        monkeypatch.setattr("noodler.app._module_close_at", lambda _p: None)
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        # The press lands on a module.
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background", lambda _p: False
+        )
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: False
+        )
+
+        _begin_knob_drag("test", None, (KNOB_INTERACTION, None))
+        _drag_knob("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.panning is False
+
+        # Now the rack shifts, so that same origin is over background.
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background", lambda _p: True
+        )
+        for _ in range(5):
+            _drag_knob("test", None, KNOB_INTERACTION)
+
+        assert CANVAS_INTERACTION.panning is False, "the drag changed its mind"
+
+        # A fresh press over background still pans.
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: True
+        )
+        _begin_knob_drag("test", None, (KNOB_INTERACTION, None))
+        _drag_knob("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.panning is True
     finally:
         dpg.destroy_context()

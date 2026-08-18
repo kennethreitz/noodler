@@ -40,7 +40,7 @@ from .module_providers.builtin import (
 )
 from .engine import SystemAudioEngine
 from .history import Edit, EditHistory
-from .macos_gestures import MacCursor, MacMagnifyMonitor
+from .macos_gestures import MacCursor, MacMagnifyMonitor, MacScrollMonitor
 from .motion import (
     Glide,
     KnobDrag,
@@ -153,6 +153,12 @@ ZOOM_OUT_BUTTON = "noodler.zoom_out"
 ZOOM_RESET_BUTTON = "noodler.zoom_reset"
 ZOOM_IN_BUTTON = "noodler.zoom_in"
 OUTPUT_METER = "noodler.output_meter"
+OUTPUT_SCOPE = "noodler.output_scope"
+OUTPUT_SCOPE_TRACE = "noodler.output_scope.trace"
+SCOPE_WIDTH = 172
+SCOPE_HEIGHT = 54
+SCOPE_POINTS_DRAWN = 172
+"""One point per pixel: any more is detail the trace cannot show."""
 INPUT_HANDLERS = "noodler.input_handlers"
 MODULE_CLOSE_LAYER = "noodler.module_close_layer"
 VCO_MIXER_LINK = "noodler.link.vco_mixer"
@@ -366,6 +372,9 @@ class CanvasInteraction:
     zoom_target: float = 1.0
     zoom_anchor: tuple[float, float] | None = None
     pending_magnification: float = 0.0
+    pending_scroll_x: float = 0.0
+    pending_scroll_y: float = 0.0
+    native_scroll: bool = False
     rail_y: dict[str, float] = field(default_factory=dict)
     zoom_spring: Spring = field(
         default_factory=lambda: unit_spring(1.0, ZOOM_HALF_LIFE)
@@ -375,6 +384,8 @@ class CanvasInteraction:
     pan_velocity_x: float = 0.0
     pan_velocity_y: float = 0.0
     press_consumed: bool = False
+    drag_classified: bool = False
+    drag_pans: bool = False
     pending_reveal: bool = True
     """The rack has not been put in front of the user yet."""
     """A press already answered by a one-shot control, held until release."""
@@ -384,6 +395,7 @@ class CanvasInteraction:
     translate_residue_y: float = 0.0
 
     def reset(self) -> None:
+        self.forget_gesture()
         self.panning = False
         self.pan_candidate = False
         self.press_x = 0.0
@@ -394,6 +406,8 @@ class CanvasInteraction:
         self.zoom_target = 1.0
         self.zoom_anchor = None
         self.pending_magnification = 0.0
+        self.pending_scroll_x = 0.0
+        self.pending_scroll_y = 0.0
         self.rail_y.clear()
         self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
         self.press_consumed = False
@@ -416,7 +430,13 @@ class CanvasInteraction:
         self.press_x = float(screen_position[0])
         self.press_y = float(screen_position[1])
 
+    def forget_gesture(self) -> None:
+        """Forget how the current press was classified, once it has ended."""
+        self.drag_classified = False
+        self.drag_pans = False
+
     def stop_panning(self) -> None:
+        self.forget_gesture()
         self.panning = False
         self.pan_candidate = False
         self.press_x = 0.0
@@ -1252,8 +1272,31 @@ def _decibels(level: float) -> str:
     return "-∞" if level <= 0.00001 else f"{20.0 * math.log10(level):.0f}"
 
 
+def _refresh_scope(runtime: AppRuntime) -> None:
+    """Draw what was just played, so a patch can be watched as well as heard."""
+    if not dpg.does_item_exist(OUTPUT_SCOPE_TRACE):
+        return
+    trace = runtime.audio.scope_trace()
+    if trace.size < SCOPE_POINTS_DRAWN:
+        return
+    step = trace.size // SCOPE_POINTS_DRAWN
+    middle = SCOPE_HEIGHT * 0.5
+    reach = SCOPE_HEIGHT * 0.46
+    dpg.configure_item(
+        OUTPUT_SCOPE_TRACE,
+        points=[
+            (
+                float(index),
+                middle - float(trace[index * step]) * reach,
+            )
+            for index in range(SCOPE_POINTS_DRAWN)
+        ],
+    )
+
+
 def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
     """Copy inexpensive audio telemetry onto the UI thread."""
+    _refresh_scope(runtime)
     if not dpg.does_item_exist(OUTPUT_METER):
         return
     # The engine reports a per-block peak, which flickers when drawn raw.
@@ -1287,6 +1330,7 @@ def _refresh_frame(
     # motion rather than teleporting it.
     dt = clamp_timestep(dpg.get_delta_time())
     _release_stale_key_latches()
+    _consume_scroll()
     _reveal_rack_once()
     _settle_library_layout()
     _consume_macos_magnification()
@@ -1625,6 +1669,37 @@ def _capture_macos_magnification(delta: float) -> None:
         CANVAS_INTERACTION.pending_magnification += float(delta)
 
 
+WHEEL_LINES = 48.0
+"""Rack pixels one notch of a plain mouse wheel is worth."""
+
+
+def _capture_macos_scroll(delta_x: float, delta_y: float) -> None:
+    """Collect native two-axis scrolling for the next frame."""
+    interaction = CANVAS_INTERACTION
+    interaction.native_scroll = True
+    if math.isfinite(delta_x):
+        interaction.pending_scroll_x += float(delta_x)
+    if math.isfinite(delta_y):
+        interaction.pending_scroll_y += float(delta_y)
+
+
+def _consume_scroll() -> None:
+    """Apply one frame of scrolling to the rack.
+
+    Scrolling moves the rack. It is not a second way to zoom: zooming is what
+    pinching does, and what the − / + controls do, and a gesture that means two
+    things means neither reliably.
+    """
+    interaction = CANVAS_INTERACTION
+    delta_x = interaction.pending_scroll_x
+    delta_y = interaction.pending_scroll_y
+    interaction.pending_scroll_x = 0.0
+    interaction.pending_scroll_y = 0.0
+    if delta_x or delta_y:
+        interaction.stop_glide()
+        _translate_rack(delta_x, delta_y)
+
+
 def _consume_macos_magnification() -> None:
     """Apply one frame of native pinch input to the rack camera target."""
     interaction = CANVAS_INTERACTION
@@ -1657,6 +1732,18 @@ def _settle_rack_zoom(dt: float = 1.0 / 60.0) -> None:
     _set_rack_zoom(spring.advance(dt), screen_anchor=anchor)
     interaction.zoom_target = target
     interaction.zoom_anchor = anchor
+
+
+def _scroll_rack(
+    _sender: int | str,
+    delta: float,
+    _user_data: object = None,
+) -> None:
+    """Scroll the rack from Dear PyGui's wheel, where nothing native reports it."""
+    if CANVAS_INTERACTION.native_scroll or not _mouse_is_over_rack():
+        return
+    _capture_macos_scroll(0.0, float(delta) * WHEEL_LINES)
+    CANVAS_INTERACTION.native_scroll = False
 
 
 def _zoom_rack(
@@ -2794,21 +2881,29 @@ def _drag_knob(
     if knob is None:
         canvas = CANVAS_INTERACTION
         if canvas.press_consumed:
-            # The drag handler can promote a press into a pan on its own, so it
-            # has to respect a press already spent on a one-shot control.
             return
-        mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
-        if canvas.pan_candidate:
-            origin = (canvas.press_x, canvas.press_y)
-        else:
-            drag_x, drag_y = dpg.get_mouse_drag_delta(
-                button=dpg.mvMouseButton_Left
-            )
-            origin = (float(mouse_x - drag_x), float(mouse_y - drag_y))
-            if not _point_is_over_rack_background(origin):
-                return
-            canvas.arm_pan(origin)
-        _begin_canvas_pan(origin)
+        if not canvas.drag_classified:
+            # What a gesture is gets decided once, on the frame it starts.
+            # Asking again every frame re-tested "did this begin over empty
+            # background?" against node rectangles that had moved since — so a
+            # module drag could become a canvas pan halfway through, leaving the
+            # module behind. The node editor sometimes claims the press before
+            # it can be armed, which is why the origin is recovered here at all.
+            canvas.drag_classified = True
+            if canvas.pan_candidate:
+                canvas.drag_pans = True
+            else:
+                mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
+                drag_x, drag_y = dpg.get_mouse_drag_delta(
+                    button=dpg.mvMouseButton_Left
+                )
+                origin = (float(mouse_x - drag_x), float(mouse_y - drag_y))
+                canvas.drag_pans = _point_is_over_rack_background(origin)
+                if canvas.drag_pans:
+                    canvas.arm_pan(origin)
+        if not canvas.drag_pans:
+            return
+        _begin_canvas_pan((canvas.press_x, canvas.press_y))
         _pan_rack()
         return
     if not dpg.does_item_exist(knob):
@@ -3163,7 +3258,7 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             callback=_toggle_module_from_title,
             user_data=runtime,
         )
-        dpg.add_mouse_wheel_handler(callback=_zoom_rack)
+        dpg.add_mouse_wheel_handler(callback=_scroll_rack)
         # The rack has always advertised these keys; now they are wired.
         for key, action in (
             (dpg.mvKey_Delete, _delete_rack_selection),
@@ -4308,7 +4403,30 @@ def _build_output_node(engine: SystemAudioEngine) -> None:
                 size=68,
                 tag=f"{OUTPUT_NODE}.control.master",
             )
-            dpg.add_text("OUTPUT LEVEL", color=MUTED_TEXT)
+            dpg.add_text("OUTPUT", color=MUTED_TEXT)
+            with dpg.drawlist(
+                width=SCOPE_WIDTH, height=SCOPE_HEIGHT, tag=OUTPUT_SCOPE
+            ):
+                dpg.draw_rectangle(
+                    (0, 0),
+                    (SCOPE_WIDTH, SCOPE_HEIGHT),
+                    fill=(22, 23, 21, 255),
+                    color=(58, 56, 50, 255),
+                )
+                dpg.draw_line(
+                    (0, SCOPE_HEIGHT * 0.5),
+                    (SCOPE_WIDTH, SCOPE_HEIGHT * 0.5),
+                    color=(58, 56, 50, 255),
+                )
+                dpg.draw_polyline(
+                    [
+                        (index, SCOPE_HEIGHT * 0.5)
+                        for index in range(SCOPE_POINTS_DRAWN)
+                    ],
+                    color=SIGNAL_COLORS["audio"],
+                    thickness=1.4,
+                    tag=OUTPUT_SCOPE_TRACE,
+                )
             dpg.add_progress_bar(
                 tag=OUTPUT_METER,
                 default_value=0.0,
@@ -5530,6 +5648,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     runtime: AppRuntime | None = None
     gesture_monitor = MacMagnifyMonitor(_capture_macos_magnification)
+    scroll_monitor = MacScrollMonitor(_capture_macos_scroll)
     dpg.create_context()
     try:
         dpg.create_viewport(
@@ -5548,10 +5667,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         dpg.set_primary_window(PRIMARY_WINDOW, True)
         dpg.show_viewport()
         gesture_monitor.start()
+        CANVAS_INTERACTION.native_scroll = scroll_monitor.start()
         dpg.set_frame_callback(1, _refresh_frame, user_data=runtime)
         dpg.start_dearpygui()
     finally:
         RACK_CURSOR.reset()
+        scroll_monitor.stop()
         gesture_monitor.stop()
         if runtime is not None:
             runtime.audio.close()

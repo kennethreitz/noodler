@@ -10,6 +10,13 @@ import sounddevice as sd
 from noodler.patch import PatchGraph
 
 
+SCOPE_POINTS = 480
+"""Samples kept for display: a couple of hundred milliseconds of the output."""
+
+SCOPE_STRIDE = 8
+"""Only every eighth sample is kept. A trace is a shape, not a measurement."""
+
+
 class SystemAudioEngine:
     """Render a patch through the default Core Audio output device."""
 
@@ -45,6 +52,8 @@ class SystemAudioEngine:
         self.last_status: str | None = None
         self.last_error: str | None = None
         self.last_peak = 0.0
+        self._scope = np.zeros(SCOPE_POINTS, dtype=np.float32)
+        self._scope_write = 0
 
     @property
     def master_gain(self) -> float:
@@ -132,6 +141,7 @@ class SystemAudioEngine:
             np.nan_to_num(stereo, copy=False, nan=0.0, posinf=1.0, neginf=-1.0)
             np.clip(stereo, -1.0, 1.0, out=stereo)
             self.last_peak = float(np.max(np.abs(stereo), initial=0.0))
+            self._capture_scope(stereo)
             if outdata.shape[1] == 1:
                 outdata[:, 0] = np.mean(stereo, axis=1)
             else:
@@ -143,6 +153,34 @@ class SystemAudioEngine:
             self.last_peak = 0.0
             self.last_error = f"{type(exc).__name__}: {exc}"
             raise sd.CallbackAbort from exc
+
+    def _capture_scope(self, stereo: np.ndarray) -> None:
+        """Keep a decimated trace of what was just played.
+
+        The callback writes into a fixed ring and never allocates; the reader is
+        the interface, one frame behind at worst, which is all a trace needs.
+        """
+        trace = np.mean(stereo, axis=1)[::SCOPE_STRIDE].astype(np.float32)
+        taken = trace.size
+        if not taken:
+            return
+        if taken >= SCOPE_POINTS:
+            self._scope[:] = trace[-SCOPE_POINTS:]
+            self._scope_write = 0
+            return
+        start = self._scope_write
+        end = start + taken
+        if end <= SCOPE_POINTS:
+            self._scope[start:end] = trace
+        else:
+            split = SCOPE_POINTS - start
+            self._scope[start:] = trace[:split]
+            self._scope[: end - SCOPE_POINTS] = trace[split:]
+        self._scope_write = end % SCOPE_POINTS
+
+    def scope_trace(self) -> np.ndarray:
+        """The recent output, oldest sample first."""
+        return np.roll(self._scope, -self._scope_write)
 
     def __enter__(self) -> "SystemAudioEngine":
         self.start()
