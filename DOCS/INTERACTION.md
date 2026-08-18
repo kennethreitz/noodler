@@ -172,6 +172,31 @@ persistence layer are sound. What is missing is an editor: someone to decide
 which of the three pans survives, and to delete the other two.
 
 
+## What is selected, shown
+
+The node editor's own selection colours were the module's own -- a selected
+panel looked like an unselected one -- and its box selector took no colour
+from any theme it was offered, so a shift-drag swept out an invisible
+rectangle. Both are drawn now on a layer over the rack: a selected module
+wears an amber outline with a soft halo, and the marquee is an amber tint
+from where the shift-press began to the pointer, for as long as the button
+is down. Clipped to the editor, so neither bleeds into the outline pane or
+the console.
+
+While at it: the editor reports a zero rectangle for itself, which had left
+"is the pointer over empty canvas" always false, so a plain background drag
+never panned and only ever box-selected, invisibly. The editor's rectangle is
+now taken from its row's bottom-right corner and its own size, and the drag
+pans as the table says. A drag pans only if its press armed it; the fallback
+that re-decided from a recovered origin now and then turned a click on a
+module into a pan, and is gone. And a press is classified once, on its first
+frame: Dear PyGui repeats the mouse-down callback every frame the button is
+held, and re-reading a press that began on a jack as a press on empty canvas
+-- once the cable being drawn out had carried the pointer off the module --
+was how dragging one thing dragged everything. The module's hit box for that
+test is also its panel, not the content box the editor reports: the jacks
+stand astride the panel's edge, outside the content.
+
 ## The editor's own pan
 
 Dear PyGui's node editor pans by itself — middle-drag, or a trackpad gesture

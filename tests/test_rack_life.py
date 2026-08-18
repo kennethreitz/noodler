@@ -586,3 +586,42 @@ def test_the_default_rack_parks_its_effects_above_the_effect_strips(monkeypatch)
     finally:
         PARK_EFFECTS.clear()
         dpg.destroy_context()
+
+
+def test_a_selected_module_wears_an_amber_outline_and_a_shift_drag_draws_the_marquee(monkeypatch) -> None:
+    from noodler.app import (
+        CANVAS_INTERACTION,
+        RACK,
+        SELECTION_LAYER,
+        _rack_screen_rect,
+        _refresh_selection,
+        default_rack_preset,
+    )
+
+    dpg.create_context()
+    try:
+        build_ui(preset=default_rack_preset())
+        delay = INSTANCE_NODE_TAGS["delay"]
+        parent = dpg.get_item_parent(RACK)
+        monkeypatch.setattr(dpg, "get_item_rect_size", lambda item: [1000, 700] if item == RACK else [120, 80])
+        monkeypatch.setattr(dpg, "get_item_rect_max", lambda item: [1400, 800] if item == parent else [500, 400])
+        monkeypatch.setattr(dpg, "get_item_rect_min", lambda item: [400, 100] if item == parent else [380, 320])
+        assert _rack_screen_rect() == (400.0, 100.0, 1400.0, 800.0)
+        monkeypatch.setattr(dpg, "get_selected_nodes", lambda editor: [dpg.get_alias_id(delay)])
+        _refresh_selection()
+        rings = dpg.get_item_children(SELECTION_LAYER, 2)
+        assert len(rings) == 3, "three rings: a halo, a glow and the line"
+        # A shift-drag in progress: the marquee joins the rings.
+        CANVAS_INTERACTION.marquee_origin = (500.0, 200.0)
+        monkeypatch.setattr(dpg, "is_mouse_button_down", lambda button: True)
+        monkeypatch.setattr(dpg, "get_mouse_pos", lambda local=True: [700.0, 350.0])
+        _refresh_selection()
+        assert len(dpg.get_item_children(SELECTION_LAYER, 2)) == 5
+        # Released: the marquee goes, and the origin with it.
+        monkeypatch.setattr(dpg, "is_mouse_button_down", lambda button: False)
+        _refresh_selection()
+        assert CANVAS_INTERACTION.marquee_origin is None
+        assert len(dpg.get_item_children(SELECTION_LAYER, 2)) == 3
+    finally:
+        CANVAS_INTERACTION.marquee_origin = None
+        dpg.destroy_context()

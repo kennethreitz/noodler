@@ -559,11 +559,16 @@ class CanvasInteraction:
     pan_velocity_x: float = 0.0
     pan_velocity_y: float = 0.0
     press_consumed: bool = False
+    press_classified: bool = False
+    """The current press has been looked at once; the held-button repeats of
+    the mouse-down callback are not fresh presses."""
     drag_classified: bool = False
     drag_pans: bool = False
     pending_reveal: bool = True
     reveal_attempts: int = 0
     """The rack has not been put in front of the user yet."""
+    marquee_origin: tuple[float, float] | None = None
+    """Where a shift-drag began, while it lasts: the marquee is drawn from here."""
     """A press already answered by a one-shot control, held until release."""
     recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
     recenter_y: Spring = field(default_factory=lambda: pixel_spring(0.0))
@@ -587,6 +592,7 @@ class CanvasInteraction:
         self.rail_y.clear()
         self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
         self.press_consumed = False
+        self.press_classified = False
         self.pending_reveal = True
         self.reveal_attempts = 0
         self.stop_glide()
@@ -1072,6 +1078,7 @@ def _consume_pending_open() -> AppRuntime | None:
         MODULE_CLOSE_LAYER,
         CONSOLE_CABLES,
         OUTLINE_LAYER,
+        SELECTION_LAYER,
         SAVE_PATCH_DIALOG,
         OPEN_PATCH_DIALOG,
         EXPORT_DIALOG,
@@ -2742,6 +2749,88 @@ def _console_cable_near(position: tuple[float, float]) -> int | str | None:
     return best
 
 
+SELECTION_LAYER = "noodler.selection_layer"
+SELECTION_COLOR = (211, 145, 57)
+"""Amber, the marquee's colour: a selected module wears the same."""
+SELECTION_ROUNDING = 8.0
+
+
+def _rack_screen_rect() -> tuple[float, float, float, float] | None:
+    """The editor's rectangle on screen, as (left, top, right, bottom).
+
+    The node editor reports no rectangle of its own -- rect_min and rect_max
+    come back zero -- but it fills the right-hand end of its row, so its box
+    is the row's bottom-right corner less the editor's size.
+    """
+    if not dpg.does_item_exist(RACK):
+        return None
+    try:
+        width, height = (float(v) for v in dpg.get_item_rect_size(RACK))
+        parent = dpg.get_item_parent(RACK)
+        right, bottom = (float(v) for v in dpg.get_item_rect_max(parent))
+    except (KeyError, SystemError):
+        return None
+    if width <= 1.0 or height <= 1.0:
+        return None
+    return right - width, bottom - height, right, bottom
+
+
+def _refresh_selection() -> None:
+    """Show what is selected: an amber outline on each selected module, and
+    the marquee itself while a shift-drag is sweeping one out.
+
+    imnodes draws neither in a way that reads here -- its selected colours
+    are the module's own, and its box selector took no colour from any theme
+    it was offered -- so both are drawn on a layer over the rack, clipped to
+    the editor so nothing bleeds into the outline or the console.
+    """
+    if not dpg.does_item_exist(SELECTION_LAYER):
+        dpg.add_viewport_drawlist(tag=SELECTION_LAYER, front=True)
+    dpg.delete_item(SELECTION_LAYER, children_only=True)
+    rect = _rack_screen_rect()
+    if rect is None:
+        return
+    left, top, right, bottom = rect
+    for item in dpg.get_selected_nodes(RACK):
+        node = _node_tag_for_item(item)
+        if node is None or _is_pinned(node) or not dpg.does_item_exist(node):
+            continue
+        try:
+            x0, y0 = (float(v) for v in dpg.get_item_rect_min(node))
+            x1, y1 = (float(v) for v in dpg.get_item_rect_max(node))
+        except (KeyError, SystemError):
+            continue
+        if x1 <= x0 or y1 <= y0 or x1 < left or x0 > right or y1 < top or y0 > bottom:
+            continue
+        # The editor reports the content box; the panel's edge is its padding
+        # further out, and the outline should sit on the edge.
+        x0, y0, x1, y1 = x0 - 6.0, y0 - 3.0, x1 + 6.0, y1 + 4.0
+        for pad, alpha, thickness in ((5.0, 26, 6.0), (2.5, 78, 3.0), (1.0, 235, 1.5)):
+            dpg.draw_rectangle(
+                (max(left, x0 - pad), max(top, y0 - pad)),
+                (min(right, x1 + pad), min(bottom, y1 + pad)),
+                color=(*SELECTION_COLOR, alpha),
+                thickness=thickness,
+                rounding=SELECTION_ROUNDING + pad,
+                parent=SELECTION_LAYER,
+            )
+    origin = CANVAS_INTERACTION.marquee_origin
+    if origin is None:
+        return
+    if not dpg.is_mouse_button_down(dpg.mvMouseButton_Left):
+        CANVAS_INTERACTION.marquee_origin = None
+        return
+    mouse_x, mouse_y = (float(v) for v in dpg.get_mouse_pos(local=False))
+    x0, x1 = sorted((origin[0], mouse_x))
+    y0, y1 = sorted((origin[1], mouse_y))
+    x0, y0 = max(left, x0), max(top, y0)
+    x1, y1 = min(right, x1), min(bottom, y1)
+    if x1 - x0 < 1.0 or y1 - y0 < 1.0:
+        return
+    dpg.draw_rectangle((x0, y0), (x1, y1), color=(0, 0, 0, 0), fill=(*SELECTION_COLOR, 34), parent=SELECTION_LAYER)
+    dpg.draw_rectangle((x0, y0), (x1, y1), color=(*SELECTION_COLOR, 190), thickness=1.0, parent=SELECTION_LAYER)
+
+
 def _refresh_console_cables(runtime: AppRuntime) -> None:
     """Draw every cable that lands on the console, entering its jack from above.
 
@@ -2926,6 +3015,7 @@ def _refresh_frame(
         _refresh_transport_button(runtime)
         _refresh_jack_activity(runtime)
         _refresh_console_cables(runtime)
+        _refresh_selection()
         _show_export_messages()
         _refresh_outline_parameters()
         _refresh_outline_links()
@@ -3090,15 +3180,12 @@ def _set_knob_value(
 
 
 def _point_is_over_rack(screen_position: tuple[float, float]) -> bool:
-    if not dpg.does_item_exist(RACK):
+    rect = _rack_screen_rect()
+    if rect is None:
         return False
     mouse_x, mouse_y = screen_position
-    minimum_x, minimum_y = dpg.get_item_rect_min(RACK)
-    maximum_x, maximum_y = dpg.get_item_rect_max(RACK)
-    return (
-        minimum_x <= mouse_x <= maximum_x
-        and minimum_y <= mouse_y <= maximum_y
-    )
+    left, top, right, bottom = rect
+    return left <= mouse_x <= right and top <= mouse_y <= bottom
 
 
 def _mouse_is_over_rack() -> bool:
@@ -3107,6 +3194,17 @@ def _mouse_is_over_rack() -> bool:
     if bool(dpg.get_item_state(RACK).get("hovered", False)):
         return True
     return _point_is_over_rack(tuple(dpg.get_mouse_pos(local=False)))
+
+
+NODE_HIT_MARGIN_X = 14.0
+NODE_HIT_MARGIN_Y = 8.0
+"""How far past a module's reported box a press still belongs to the module.
+
+The editor reports a module's content box, not its panel: the padding, the
+border and -- most of all -- the jacks, drawn astride the panel's edge, lie
+outside it. A press on a jack that counted as empty canvas armed a pan, and
+dragging the cable out dragged the whole rack with it.
+"""
 
 
 def _point_is_over_rack_background(
@@ -3119,9 +3217,17 @@ def _point_is_over_rack_background(
     for node in RACK_NODES:
         if not dpg.does_item_exist(node):
             continue
-        minimum_x, minimum_y = dpg.get_item_rect_min(node)
-        maximum_x, maximum_y = dpg.get_item_rect_max(node)
-        if minimum_x <= mouse_x <= maximum_x and minimum_y <= mouse_y <= maximum_y:
+        try:
+            if dpg.is_item_hovered(node):
+                return False
+            minimum_x, minimum_y = dpg.get_item_rect_min(node)
+            maximum_x, maximum_y = dpg.get_item_rect_max(node)
+        except (KeyError, SystemError):
+            continue
+        if (
+            minimum_x - NODE_HIT_MARGIN_X <= mouse_x <= maximum_x + NODE_HIT_MARGIN_X
+            and minimum_y - NODE_HIT_MARGIN_Y <= mouse_y <= maximum_y + NODE_HIT_MARGIN_Y
+        ):
             return False
     return True
 
@@ -4849,12 +4955,21 @@ def _begin_knob_drag(
         interaction = interaction_data
     if interaction.active_knob is not None:
         return
-    if CANVAS_INTERACTION.panning or CANVAS_INTERACTION.press_consumed:
+    if (
+        CANVAS_INTERACTION.panning
+        or CANVAS_INTERACTION.press_consumed
+        or CANVAS_INTERACTION.press_classified
+    ):
         # Dear PyGui repeats the mouse-down callback for every frame the button
         # is held. Beginning the pan again would move its origin to the current
-        # pointer each frame, leaving the drag with nothing to travel, and a
-        # press already spent on a one-shot control must not become a drag.
+        # pointer each frame, leaving the drag with nothing to travel; a press
+        # already spent on a one-shot control must not become a drag; and a
+        # press that began on a module -- a jack, say, with a cable being drawn
+        # out of it -- must not be re-read as a press on empty canvas once the
+        # pointer has left the module. What a press is, is decided on its
+        # first frame.
         return
+    CANVAS_INTERACTION.press_classified = True
     # Any press on the rack catches a gliding canvas, the way a finger does.
     CANVAS_INTERACTION.stop_glide()
     mouse_position = tuple(dpg.get_mouse_pos(local=False))
@@ -4893,8 +5008,9 @@ def _begin_knob_drag(
     if _mouse_is_over_rack_background():
         if dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift):
             # Panning owns a plain background drag, so box selection keeps the
-            # modified one — and only then is the marquee worth drawing.
+            # modified one -- and only then is the marquee drawn, from here.
             _show_box_selector(True)
+            CANVAS_INTERACTION.marquee_origin = (float(mouse_position[0]), float(mouse_position[1]))
             return
         CANVAS_INTERACTION.arm_pan(mouse_position)
         _begin_canvas_pan(mouse_position)
@@ -4911,27 +5027,16 @@ def _drag_knob(
     knob = interaction.active_knob
     if knob is None:
         canvas = CANVAS_INTERACTION
-        if canvas.press_consumed:
+        if canvas.press_consumed or canvas.marquee_origin is not None:
+            # Spent on a control, or sweeping a marquee: neither is a pan.
             return
         if not canvas.drag_classified:
-            # What a gesture is gets decided once, on the frame it starts.
-            # Asking again every frame re-tested "did this begin over empty
-            # background?" against node rectangles that had moved since — so a
-            # module drag could become a canvas pan halfway through, leaving the
-            # module behind. The node editor sometimes claims the press before
-            # it can be armed, which is why the origin is recovered here at all.
+            # What a gesture is gets decided once, on the frame it starts, and
+            # by the press: a drag pans only if the press armed it, from empty
+            # background or with Space held. Re-deciding here from a recovered
+            # origin was how a click on a module now and then became a pan.
             canvas.drag_classified = True
-            if canvas.pan_candidate:
-                canvas.drag_pans = True
-            else:
-                mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
-                drag_x, drag_y = dpg.get_mouse_drag_delta(
-                    button=dpg.mvMouseButton_Left
-                )
-                origin = (float(mouse_x - drag_x), float(mouse_y - drag_y))
-                canvas.drag_pans = _point_is_over_rack_background(origin)
-                if canvas.drag_pans:
-                    canvas.arm_pan(origin)
+            canvas.drag_pans = canvas.pan_candidate
         if not canvas.drag_pans:
             return
         _begin_canvas_pan((canvas.press_x, canvas.press_y))
@@ -4966,7 +5071,9 @@ def _end_knob_drag(
     interaction: KnobInteraction,
 ) -> None:
     _show_box_selector(False)
+    CANVAS_INTERACTION.marquee_origin = None
     CANVAS_INTERACTION.press_consumed = False
+    CANVAS_INTERACTION.press_classified = False
     RACK_CURSOR.reset()
     if CANVAS_INTERACTION.panning:
         if CANVAS_INTERACTION.pan_moved:
