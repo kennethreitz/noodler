@@ -179,6 +179,30 @@ nearest the original so a line does not leap, which is the mapping
 input, or the switch, decides whether it mirrors; the untouched pitch is
 also put out, for playing a line and its mirror at once.
 
+`Scope` (`scope`, Utilities) keeps the last two and a half seconds of whatever
+is patched into it and its panel draws a window of it -- a millisecond to two
+seconds wide -- as a trace, one point per pixel: in `trigger` mode held still
+on the last rising crossing of the signal's own middle (or the last rising
+edge of its `trigger` input) that leaves a whole window after it, as a bench
+scope does; in `roll` mode the newest window. `gain` scales it; `centered` puts
+zero in the middle for a wave, or at the bottom for a gate or an envelope. The
+trace takes the colour of the cable feeding it. The signal passes through
+unchanged, and a falling `peak` is put out. The panel builder finds the trace
+through a `display = "scope"` attribute on the module -- the builder knows
+kinds of display, not modules -- and redraws it every frame while the panel
+is open.
+
+`QWERTY Keys` (`keys`, Musical Brains) is played from the typing keyboard.
+Its panel has an ARM KEYS button and a drawn keybed of eighteen keys; armed,
+the home row is a piano the way every DAW's is -- A is C, W is C sharp, up to
+the semicolon -- Z and X take the octave down and up, and Escape releases.
+While armed the app's letter shortcuts stand aside (command chords still
+work). The keybed lights held notes and can be clicked and held with the
+mouse, armed or not. Pitch (last note wins, with glide if asked), gate, a
+trigger on every press, and a velocity of how many keys are down. Which keys
+are down is a small locked list the interface writes and the audio thread
+reads: state, not events.
+
 All PyTheory scale, chord, progression, and voicing preparation happens outside
 the real-time callback. Live blocks contain only numeric arrays; no `Chord`,
 `Tone`, or Pydantic object is constructed or passed while rendering audio --

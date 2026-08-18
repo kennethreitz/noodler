@@ -206,6 +206,24 @@ was how dragging one thing dragged everything. The module's hit box for that
 test is also its panel, not the content box the editor reports: the jacks
 stand astride the panel's edge, outside the content.
 
+## Less on the canvas
+
+The freeform area had got busy. Every panel opened with a category line under
+its title, closed with a rule and a count of its jacks, and every jack -- open
+or patched -- was drawn at full brightness with its label in its signal's
+colour; the grid was graph paper; and once the cables were drawn by hand,
+over the panels, they hid what was under them. So: no category line (the
+title's colour says the family), no jack count (the jacks are right there),
+open jacks are dim dots with muted labels and patched ones are lit, the grid
+is a hint at forty-eight pixels, cables are a little translucent, and the long
+labels that ended in an ellipsis on every panel are abbreviated (REF FREQ,
+INSTR, GATE LEN). One trap found on the way: a separator left as the last
+item of a node attribute makes the node as wide as the editor -- imnodes
+measures the attribute by it -- so a spacer follows the rule.
+
+The module library is a list, not a wall of buttons: four sections, a quiet
+category heading over each run of rows, and each module a line to click.
+
 ## The editor's own pan
 
 Dear PyGui's node editor pans by itself — middle-drag, or a trackpad gesture

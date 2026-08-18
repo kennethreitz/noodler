@@ -104,6 +104,8 @@ from .chord_ear import (
     ChordEarParameters,
     name_chord,
 )
+from .scope import SCOPE_MANIFEST, Scope, ScopeParameters
+from .keys import KEYS_MANIFEST, Keys, KeysParameters
 from .negative_harmony import (
     NEGATIVE_HARMONY_MANIFEST,
     NegativeHarmony,
@@ -203,6 +205,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
         PROGRESSION_MANIFEST,
         CHORD_EAR_MANIFEST,
         NEGATIVE_HARMONY_MANIFEST,
+        KEYS_MANIFEST,
         TONE_ROW_MANIFEST,
         PYTHEORY_REVERB_MANIFEST,
         PYTHEORY_FX_MANIFEST,
@@ -223,6 +226,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
         ADSR_ENVELOPE_MANIFEST,
         VCA_MANIFEST,
         POLARIZING_MIXER_MANIFEST,
+        SCOPE_MANIFEST,
         FUNCTION_UTILITY_MANIFEST,
         WOGGLEBUG_MANIFEST,
         SCALE_GENERATOR_MANIFEST,
@@ -244,6 +248,8 @@ BUILTIN_MODULE_TYPES = MappingProxyType({
         (PROGRESSION_MANIFEST, PyTheoryProgression),
         (CHORD_EAR_MANIFEST, ChordEar),
         (NEGATIVE_HARMONY_MANIFEST, NegativeHarmony),
+        (KEYS_MANIFEST, Keys),
+        (SCOPE_MANIFEST, Scope),
         (TONE_ROW_MANIFEST, ToneRowVoice),
         (PYTHEORY_REVERB_MANIFEST, PyTheoryReverb),
         (PYTHEORY_FX_MANIFEST, PyTheoryFX),
@@ -325,6 +331,12 @@ __all__ = [
     "ChordEar",
     "ChordEarParameters",
     "name_chord",
+    "SCOPE_MANIFEST",
+    "Scope",
+    "ScopeParameters",
+    "KEYS_MANIFEST",
+    "Keys",
+    "KeysParameters",
     "NEGATIVE_HARMONY_MANIFEST",
     "NegativeHarmony",
     "NegativeHarmonyParameters",

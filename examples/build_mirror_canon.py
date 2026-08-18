@@ -46,10 +46,10 @@ add("clock", "clock", (40, 40), trigger_ms=6.0)
 add("changes", "pytheory_progression", (40, 320), progression="Pachelbel", tonic="D",
     mode="major", voicing="open", octave=4, bars_per_chord=1, gate_length=0.95,
     reference_frequency_hz=220.0)
-add("mirror_1", "pytheory_negative_harmony", (420, 320), tonic="D", mode="major")
-add("mirror_2", "pytheory_negative_harmony", (420, 520), tonic="D", mode="major")
-add("mirror_3", "pytheory_negative_harmony", (420, 720), tonic="D", mode="major")
-add("mirror_4", "pytheory_negative_harmony", (420, 920), tonic="D", mode="major")
+add("mirror_1", "pytheory_negative_harmony", (420, 300), tonic="D", mode="major")
+add("mirror_2", "pytheory_negative_harmony", (420, 570), tonic="D", mode="major")
+add("mirror_3", "pytheory_negative_harmony", (420, 840), tonic="D", mode="major")
+add("mirror_4", "pytheory_negative_harmony", (420, 1110), tonic="D", mode="major")
 add("ear", "pytheory_chord_ear", (760, 40), reference_frequency_hz=220.0)
 add("hijaz", "pytheory_maqam", (40, 900), maqam="Hijaz", tonic="D3", style="walk",
     rest_chance=0.25, density=0.7, gate_length=0.55, span_octaves=2,
@@ -58,21 +58,21 @@ add("hijaz", "pytheory_maqam", (40, 900), maqam="Hijaz", tonic="D3", style="walk
 # ---------------------------------------------------------------- the voices
 add("piano", "pytheory_voice", (760, 320), instrument="electric_piano", level=0.34,
     release_ms=900.0, reference_frequency_hz=220.0)
-add("piano_2", "pytheory_voice", (760, 560), instrument="electric_piano", level=0.28,
+add("piano_2", "pytheory_voice", (760, 570), instrument="electric_piano", level=0.28,
     release_ms=900.0, reference_frequency_hz=220.0)
-add("piano_3", "pytheory_voice", (760, 800), instrument="electric_piano", level=0.28,
+add("piano_3", "pytheory_voice", (760, 840), instrument="electric_piano", level=0.28,
     release_ms=900.0, reference_frequency_hz=220.0)
-add("piano_4", "pytheory_voice", (760, 1040), instrument="electric_piano", level=0.28,
+add("piano_4", "pytheory_voice", (760, 1110), instrument="electric_piano", level=0.28,
     release_ms=900.0, reference_frequency_hz=220.0)
 add("shadow_1", "pytheory_voice", (1120, 320), instrument="piano", level=0.2,
     release_ms=1200.0, reference_frequency_hz=440.0)
-add("shadow_2", "pytheory_voice", (1120, 560), instrument="piano", level=0.2,
+add("shadow_2", "pytheory_voice", (1120, 570), instrument="piano", level=0.2,
     release_ms=1200.0, reference_frequency_hz=440.0)
-add("shadow_3", "pytheory_voice", (1120, 800), instrument="piano", level=0.2,
+add("shadow_3", "pytheory_voice", (1120, 840), instrument="piano", level=0.2,
     release_ms=1200.0, reference_frequency_hz=440.0)
-add("shadow_4", "pytheory_voice", (1120, 1040), instrument="piano", level=0.2,
+add("shadow_4", "pytheory_voice", (1120, 1110), instrument="piano", level=0.2,
     release_ms=1200.0, reference_frequency_hz=440.0)
-add("oud", "pytheory_voice", (420, 1140), instrument="oud", level=0.4,
+add("oud", "pytheory_voice", (40, 1380), instrument="oud", level=0.4,
     release_ms=500.0, reference_frequency_hz=220.0)
 add("bass", "pytheory_voice", (1480, 320), instrument="contrabass", level=0.5,
     release_ms=600.0, reference_frequency_hz=220.0)

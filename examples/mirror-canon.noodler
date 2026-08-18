@@ -877,7 +877,7 @@
         "node_id": "mirror_1",
         "position": {
           "x": 420.0,
-          "y": 320.0
+          "y": 300.0
         },
         "collapsed": false
       },
@@ -885,7 +885,7 @@
         "node_id": "mirror_2",
         "position": {
           "x": 420.0,
-          "y": 520.0
+          "y": 570.0
         },
         "collapsed": false
       },
@@ -893,7 +893,7 @@
         "node_id": "mirror_3",
         "position": {
           "x": 420.0,
-          "y": 720.0
+          "y": 840.0
         },
         "collapsed": false
       },
@@ -901,7 +901,7 @@
         "node_id": "mirror_4",
         "position": {
           "x": 420.0,
-          "y": 920.0
+          "y": 1110.0
         },
         "collapsed": false
       },
@@ -933,7 +933,7 @@
         "node_id": "piano_2",
         "position": {
           "x": 760.0,
-          "y": 560.0
+          "y": 570.0
         },
         "collapsed": false
       },
@@ -941,7 +941,7 @@
         "node_id": "piano_3",
         "position": {
           "x": 760.0,
-          "y": 800.0
+          "y": 840.0
         },
         "collapsed": false
       },
@@ -949,7 +949,7 @@
         "node_id": "piano_4",
         "position": {
           "x": 760.0,
-          "y": 1040.0
+          "y": 1110.0
         },
         "collapsed": false
       },
@@ -965,7 +965,7 @@
         "node_id": "shadow_2",
         "position": {
           "x": 1120.0,
-          "y": 560.0
+          "y": 570.0
         },
         "collapsed": false
       },
@@ -973,7 +973,7 @@
         "node_id": "shadow_3",
         "position": {
           "x": 1120.0,
-          "y": 800.0
+          "y": 840.0
         },
         "collapsed": false
       },
@@ -981,15 +981,15 @@
         "node_id": "shadow_4",
         "position": {
           "x": 1120.0,
-          "y": 1040.0
+          "y": 1110.0
         },
         "collapsed": false
       },
       {
         "node_id": "oud",
         "position": {
-          "x": 420.0,
-          "y": 1140.0
+          "x": 40.0,
+          "y": 1380.0
         },
         "collapsed": false
       },

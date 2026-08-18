@@ -478,7 +478,8 @@ def test_module_selector_search_filters_names_categories_and_descriptions() -> N
         assert dpg.get_item_configuration(
             _module_library_category_tag("Filters")
         )["show"] is True
-        assert dpg.get_value(_module_library_category_tag("Filters")) is True
+        # A category is a quiet heading over its rows, not a tree to open.
+        assert dpg.get_item_type(_module_library_category_tag("Filters")).endswith("mvText")
         assert dpg.get_item_configuration(
             _module_library_category_tag("Musical Brains")
         )["show"] is False
@@ -567,9 +568,8 @@ def test_patch_bays_show_every_port_until_open_jacks_are_hidden() -> None:
     try:
         runtime = build_ui(starter_patch=True)
 
-        assert dpg.get_value(f"{VCO_NODE}.patch_bay.status") == (
-            "SIGNAL PATH  ·  3 IN  →  2 OUT"
-        )
+        # No count of the jacks on the panel: the jacks are right there.
+        assert not dpg.does_item_exist(f"{VCO_NODE}.patch_bay.status")
         assert dpg.get_item_configuration(f"{VCO_NODE}.morph_cv")["show"]
         assert dpg.get_item_configuration(f"{VCO_NODE}.pitch")["show"]
         assert dpg.get_item_configuration(
@@ -577,15 +577,6 @@ def test_patch_bays_show_every_port_until_open_jacks_are_hidden() -> None:
         )["show"]
         assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
         assert dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
-        assert dpg.get_value(f"{WOGGLE_NODE}.patch_bay.status") == (
-            "SIGNAL PATH  ·  4 OUT"
-        )
-        assert dpg.get_value(f"{REVERB_NODE}.patch_bay.status") == (
-            "SIGNAL PATH  ·  3 IN  →  2 OUT"
-        )
-        assert dpg.get_value(f"{LPG_NODE}.patch_bay.status") == (
-            "SIGNAL PATH  ·  2 IN  →  1 OUT"
-        )
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_2")["show"]
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_4")["show"]
 

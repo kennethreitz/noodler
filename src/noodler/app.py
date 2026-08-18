@@ -432,7 +432,24 @@ UNIT_SUFFIXES = (
 )
 """Field-name endings that name a unit, which belongs on the value."""
 
-LABEL_ABBREVIATIONS = {"frequency": "freq", "modulation": "mod"}
+LABEL_ABBREVIATIONS = {
+    "frequency": "freq",
+    "modulation": "mod",
+    # Long field names that ended in an ellipsis on every panel: the readout
+    # under the knob says the rest, and the tooltip says everything.
+    "reference": "ref",
+    "instrument": "instr",
+    "octaves": "oct",
+    "transposition": "transp",
+    "progression": "prog",
+    "chance": "%",
+    "length": "len",
+    "brightness": "bright",
+    "distortion": "dist",
+    "diffusion": "diffuse",
+    "resonance": "reso",
+    "threshold": "thresh",
+}
 
 MIN_RACK_ZOOM = 0.55
 MAX_RACK_ZOOM = 1.65
@@ -1613,7 +1630,7 @@ def _configure_theme() -> None:
                 (dpg.mvNodeStyleVar_PinCircleRadius, 5),
                 (dpg.mvNodeStyleVar_PinHoverRadius, 9),
                 (dpg.mvNodeStyleVar_LinkThickness, 3),
-                (dpg.mvNodeStyleVar_GridSpacing, 32),
+                (dpg.mvNodeStyleVar_GridSpacing, 48),
             ):
                 dpg.add_theme_style(
                     node_style,
@@ -1665,6 +1682,23 @@ def _configure_theme() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (135, 119, 211, 40))
             dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (135, 119, 211, 70))
             dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0)
+    for tag, pin in ((PIN_OPEN_THEME, PIN_OPEN), (PIN_PATCHED_THEME, PIN_PATCHED)):
+        # A jack with nothing in it is a dim dot; one with a cable is lit.
+        # Bound per attribute, so a panel of twelve jacks reads as the two
+        # or three that matter.
+        with dpg.theme(tag=tag):
+            with dpg.theme_component(dpg.mvNodeAttribute):
+                dpg.add_theme_color(dpg.mvNodeCol_Pin, pin, category=dpg.mvThemeCat_Nodes)
+                dpg.add_theme_color(dpg.mvNodeCol_PinHovered, (255, 245, 210, 255), category=dpg.mvThemeCat_Nodes)
+    with dpg.theme(tag=LIBRARY_ROW_THEME):
+        # A module in the library is a line of text you can click, not a
+        # button: the pane reads as a list, and the list is the whole point.
+        with dpg.theme_component(dpg.mvSelectable):
+            dpg.add_theme_color(dpg.mvThemeCol_Text, TEXT)
+            dpg.add_theme_color(dpg.mvThemeCol_Header, (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (135, 119, 211, 36))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (135, 119, 211, 64))
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 1)
     with dpg.theme(tag=OUTLINE_ARROW_THEME):
         # The disclosure arrow on a module's row: the tree's own arrow, as a
         # button with no body, so the row reads as one line of the tree.
@@ -2740,6 +2774,8 @@ def _target_pin_position(module_id: str, port_id: str) -> tuple[float, float] | 
     return left, top + height * 0.5
 
 
+CABLE_ALPHA = 178
+CABLE_THICKNESS = 2.6
 CABLE_SAG_PER_PX = 0.16
 CABLE_SAG_MIN = 10.0
 CABLE_SAG_MAX = 110.0
@@ -3366,8 +3402,11 @@ def _refresh_console_cables(runtime: AppRuntime) -> None:
         signal = _endpoint_signal(runtime.patch, route.source)
         step = PORT_STEPS.get((route.source.module_id, route.source.port_id), 0)
         lit = link == hovered or link in CABLE_SELECTION
-        colour = TEXT if lit else _glow(SIGNAL_COLORS.get(signal, TEXT), step)
-        thickness = 4.0 if lit else 3.0
+        # A cable lies over the panels now, so it is a little see-through:
+        # the control under it stays readable, and a rack of fifty cables
+        # reads as a rack with cables in it rather than a net over one.
+        colour = TEXT if lit else (*_glow(SIGNAL_COLORS.get(signal, TEXT), step)[:3], CABLE_ALPHA)
+        thickness = 4.0 if lit else CABLE_THICKNESS
         for run in _clipped_cable_runs(points, rect):
             CONSOLE_CABLE_ITEMS[link] = dpg.draw_polyline(
                 run, color=colour, thickness=thickness, parent=CONSOLE_CABLES
@@ -3508,6 +3547,7 @@ def _refresh_frame(
         _refresh_console_toggles()
         _refresh_group_outlines()
         _refresh_selection()
+        _refresh_module_displays(runtime)
         _show_export_messages()
         _refresh_outline_parameters()
         _refresh_outline_links()
@@ -3565,13 +3605,27 @@ def _patch_bay_flow_label(binding: PatchBayBinding, connected: set[str]) -> str:
 
 
 def _refresh_patch_bay(binding: PatchBayBinding) -> None:
-    """Every jack shows on an open module; only the patched ones on a collapsed one."""
+    """Every jack shows on an open module; only the patched ones on a collapsed
+    one -- and a patched jack is lit, an open one dim, pin and label both."""
     connected = _connected_port_ids(binding.patch, binding.module_id)
     collapsed = MODULE_COLLAPSE.is_collapsed(binding.node_tag)
+    module = binding.patch.modules.get(binding.module_id)
+    signals = {port.id: (port.signal_type.value, port.direction) for port in module.manifest.ports} if module is not None else {}
     for port_id in binding.port_ids:
         tag = f"{binding.node_tag}.{port_id}"
-        if dpg.does_item_exist(tag):
-            dpg.configure_item(tag, show=not collapsed or port_id in connected)
+        if not dpg.does_item_exist(tag):
+            continue
+        patched = port_id in connected
+        dpg.configure_item(tag, show=not collapsed or patched)
+        if dpg.does_item_exist(PIN_PATCHED_THEME):
+            dpg.bind_item_theme(tag, PIN_PATCHED_THEME if patched else PIN_OPEN_THEME)
+        signal, direction = signals.get(port_id, ("cv", None))
+        if direction is PortDirection.INPUT:
+            # An input's label is its signal's colour only once something is on it.
+            for child in dpg.get_item_children(tag, 1) or ():
+                if dpg.get_item_type(child).endswith("mvText"):
+                    dpg.configure_item(child, color=SIGNAL_COLORS.get(signal, TEXT) if patched else MUTED_TEXT)
+                    break
     if dpg.does_item_exist(binding.status_tag):
         dpg.set_value(binding.status_tag, _patch_bay_flow_label(binding, connected))
 
@@ -3603,13 +3657,12 @@ def _add_patch_bay_toggle(
         status_tag=f"{node_tag}.patch_bay.status",
     )
     PATCH_BAYS[module_id] = binding
-    connected = _connected_port_ids(patch, module_id)
+    # A rule between the controls and the jacks, and no count of the jacks:
+    # the jacks are right there, lit when patched. The spacer after the rule
+    # matters: a separator left as the attribute's last item makes the node
+    # as wide as the editor -- imnodes measures the attribute by it.
     dpg.add_separator()
-    dpg.add_text(
-        _patch_bay_flow_label(binding, connected),
-        tag=binding.status_tag,
-        color=MUTED_TEXT,
-    )
+    dpg.add_spacer(height=1)
 
 
 def _format_duration(seconds: float) -> str:
@@ -5427,6 +5480,14 @@ def _begin_knob_drag(
         CANVAS_INTERACTION.press_consumed = True
         _press_console_toggle(*toggle)
         return
+    key = _keybed_at(mouse_position)
+    if key is not None:
+        # A press on a drawn key plays it until the button comes up.
+        module, semitone = key
+        module.press(semitone)
+        KEYBED_MOUSE_NOTE[:] = [(module, semitone)]
+        CANVAS_INTERACTION.press_consumed = True
+        return
     group_id = _group_label_at(mouse_position)
     if group_id is not None:
         # A press on a group's name takes hold of the whole group.
@@ -5538,6 +5599,9 @@ def _end_knob_drag(
     CANVAS_INTERACTION.press_consumed = False
     CANVAS_INTERACTION.press_classified = False
     GROUP_DRAG.clear()
+    for module, semitone in KEYBED_MOUSE_NOTE:
+        module.release(semitone)
+    KEYBED_MOUSE_NOTE.clear()
     RACK_CURSOR.reset()
     if CANVAS_INTERACTION.panning:
         if CANVAS_INTERACTION.pan_moved:
@@ -5594,6 +5658,9 @@ def _unregister_rack_node(node: int | str, instance_id: str) -> None:
         RACK_NODES.remove(node)
     RACK_GROUPS.forget(instance_id)
     GROUP_LAST_POSITIONS.pop(node, None)
+    MODULE_DISPLAYS.pop(node, None)
+    if KEYS_ARMED and KEYS_ARMED[0][1] == node:
+        _disarm_keys()
     INSTANCE_NODE_TAGS.pop(instance_id, None)
     VIEW_NODE_TAGS.pop(instance_id, None)
     MODULE_ACCENTS.pop(node, None)
@@ -5715,6 +5782,12 @@ def _keyboard_is_captured() -> bool:
     must never claim it while a text field is open. A search box or a patch
     name would otherwise lose a character — or the rack would lose a module.
     """
+    if _keys_are_armed() and not (
+        dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl)
+    ):
+        # The typing keyboard is a piano for the moment: the letters are notes,
+        # not shortcuts. Command chords still reach the app; Escape releases.
+        return True
     if dpg.does_item_exist(SAVE_PATCH_DIALOG) and dpg.is_item_shown(
         SAVE_PATCH_DIALOG
     ):
@@ -5771,6 +5844,9 @@ def _dismiss_rack_focus(
         and dpg.is_item_shown(MODULE_SELECTOR)
     ):
         dpg.hide_item(MODULE_SELECTOR)
+        return
+    if _keys_are_armed():
+        _disarm_keys()
         return
     if _keyboard_is_captured():
         dpg.set_value(MODULE_SELECTOR_SEARCH, "")
@@ -5883,7 +5959,8 @@ def _configure_rack_theme() -> None:
             with dpg.theme_component(dpg.mvNodeEditor):
                 for editor_color, color, tag in (
                     (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255), 0),
-                    (dpg.mvNodeCol_GridLine, (43, 45, 40, 150), 0),
+                    # Barely there: the grid is a hint of a surface, not graph paper.
+                    (dpg.mvNodeCol_GridLine, (43, 45, 40, 64), 0),
                 ):
                     dpg.add_theme_color(
                         editor_color,
@@ -5943,6 +6020,9 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
                 callback=_press_once(key, action),
                 user_data=runtime,
             )
+        # Any key at all, for a Keys module while one is armed.
+        dpg.add_key_press_handler(-1, callback=_keys_key_pressed, user_data=runtime)
+        dpg.add_key_release_handler(-1, callback=_keys_key_released, user_data=runtime)
         # A tap of space plays or stops; space held while dragging still pans.
         dpg.add_key_press_handler(
             dpg.mvKey_Spacebar,
@@ -6495,6 +6575,286 @@ def _add_dynamic_parameter_controls(
     flush_float_row()
 
 
+MODULE_DISPLAYS: dict[int | str, dict[str, object]] = {}
+"""Panels with something live drawn on them -- a scope's trace, a keybed --
+by node: what kind, the module, and the drawn items."""
+SCOPE_DISPLAY_SIZE = (200, 72)
+KEYS_DISPLAY_SIZE = (216, 50)
+SCOPE_BACKGROUND = (18, 19, 17, 255)
+SCOPE_RULE = (58, 56, 50, 255)
+KEY_WHITE = (78, 74, 66, 255)
+KEY_WHITE_HELD = (224, 208, 169, 255)
+KEY_BLACK = (30, 29, 27, 255)
+KEY_BLACK_HELD = (211, 145, 57, 255)
+KEYS_ARMED: list[tuple[object, int | str]] = []
+"""The Keys module the typing keyboard is playing, if one is armed: at most one."""
+KEYBED_MOUSE_NOTE: list[tuple[object, int]] = []
+"""A note being held down with the mouse on a drawn keybed."""
+
+
+def _add_module_display(module: object, node: int | str) -> None:
+    """Add whatever a module wants drawn live on its panel.
+
+    A module says so with a ``display`` attribute; the panel builder does not
+    know the modules, only the kinds of thing a panel can carry.
+    """
+    kind = getattr(module, "display", None)
+    if kind == "scope":
+        _add_scope_display(module, node)
+    elif kind == "keys":
+        _add_keys_display(module, node)
+
+
+def _display_scale() -> float:
+    return CANVAS_INTERACTION.zoom
+
+
+# ---- scope ----------------------------------------------------------------
+
+
+def _add_scope_display(module: object, node: int | str) -> None:
+    width, height = SCOPE_DISPLAY_SIZE
+    scale = _display_scale()
+    w, h = round(width * scale), round(height * scale)
+    with dpg.drawlist(width=w, height=h, tag=f"{node}.scope") as canvas:
+        dpg.draw_rectangle((0, 0), (w, h), fill=SCOPE_BACKGROUND, color=SCOPE_RULE, rounding=4.0, tag=f"{node}.scope.bg")
+        dpg.draw_line((0, h * 0.5), (w, h * 0.5), color=SCOPE_RULE, tag=f"{node}.scope.axis")
+        dpg.draw_polyline([(0.0, h * 0.5), (float(w), h * 0.5)], color=SIGNAL_COLORS["cv"], thickness=1.5, tag=f"{node}.scope.trace")
+    MODULE_DISPLAYS[node] = {"kind": "scope", "module": module, "canvas": canvas, "size": (w, h)}
+
+
+def _scope_signal_colour(runtime: AppRuntime, node: int | str) -> tuple[int, int, int, int] | None:
+    """The colour of whatever feeds the scope, or None when nothing does."""
+    instance_id = _module_id_for_node(node)
+    if instance_id is None:
+        return None
+    for cable in runtime.patch.cables:
+        if cable.target.module_id == instance_id and cable.target.port_id == "signal":
+            signal = _endpoint_signal(runtime.patch, cable.source)
+            return SIGNAL_COLORS.get(signal, SIGNAL_COLORS["cv"])
+    return None
+
+
+def _refresh_scope_display(runtime: AppRuntime, node: int | str, display: dict[str, object]) -> None:
+    module = display["module"]
+    canvas = display["canvas"]
+    width, height = SCOPE_DISPLAY_SIZE
+    scale = _display_scale()
+    w, h = round(width * scale), round(height * scale)
+    if display["size"] != (w, h):
+        # The rack zoomed: the trace zooms with its panel.
+        dpg.configure_item(canvas, width=w, height=h)
+        dpg.configure_item(f"{node}.scope.bg", pmin=(0, 0), pmax=(w, h))
+        display["size"] = (w, h)
+    colour = _scope_signal_colour(runtime, node)
+    trace = module.trace(max(2, w))
+    parameters = module.parameters
+    gain = float(parameters.gain)
+    if parameters.centered:
+        middle, reach = h * 0.5, h * 0.46
+        dpg.configure_item(f"{node}.scope.axis", p1=(0, middle), p2=(w, middle))
+    else:
+        middle, reach = h - 3.0, h * 0.92
+        dpg.configure_item(f"{node}.scope.axis", p1=(0, middle), p2=(w, middle))
+    values = np.clip(trace * gain, -1.0, 1.0)
+    points = [(float(index), float(middle - values[index] * reach)) for index in range(len(values))]
+    dpg.configure_item(
+        f"{node}.scope.trace",
+        points=points,
+        color=colour if colour is not None else MUTED_TEXT,
+    )
+
+
+# ---- keys -----------------------------------------------------------------
+
+
+def _add_keys_display(module: object, node: int | str) -> None:
+    from .module_providers.builtin.keys import KEY_ROW
+
+    width, height = KEYS_DISPLAY_SIZE
+    scale = _display_scale()
+    w, h = round(width * scale), round(height * scale)
+    with dpg.group(horizontal=True, horizontal_spacing=6):
+        arm = dpg.add_button(
+            label="ARM KEYS",
+            tag=f"{node}.keys.arm",
+            small=True,
+            callback=_toggle_keys_armed,
+            user_data=(module, node),
+        )
+        with dpg.tooltip(arm):
+            dpg.add_text(f"Armed, the letter keys play this: {KEY_ROW} low to high, Z and X for the octave. Escape releases.", wrap=300)
+        dpg.add_text("", tag=f"{node}.keys.note", color=MUTED_TEXT)
+    dpg.bind_item_theme(arm, TOGGLE_OFF_THEME)
+    bed = dpg.add_drawlist(width=w, height=h, tag=f"{node}.keys.bed")
+    MODULE_DISPLAYS[node] = {"kind": "keys", "module": module, "canvas": bed, "size": (w, h), "drawn": None}
+    _draw_keybed(node, MODULE_DISPLAYS[node])
+
+
+def _keybed_geometry(w: int, h: int) -> list[tuple[int, bool, float, float, float, float]]:
+    """(semitone, is_black, left, top, right, bottom) for the eighteen keys."""
+    from .module_providers.builtin.keys import BLACK_SEMITONES, KEY_ROW
+
+    whites = [s for s in range(len(KEY_ROW)) if s not in BLACK_SEMITONES]
+    white_width = w / len(whites)
+    keys = []
+    white_index = {s: i for i, s in enumerate(whites)}
+    for semitone in range(len(KEY_ROW)):
+        if semitone in BLACK_SEMITONES:
+            # A black key sits astride the line between its white neighbours.
+            below = white_index[semitone - 1]
+            left = (below + 1) * white_width - white_width * 0.3
+            keys.append((semitone, True, left, 0.0, left + white_width * 0.6, h * 0.6))
+        else:
+            index = white_index[semitone]
+            keys.append((semitone, False, index * white_width, 0.0, (index + 1) * white_width, float(h)))
+    return keys
+
+
+def _draw_keybed(node: int | str, display: dict[str, object]) -> None:
+    module = display["module"]
+    bed = display["canvas"]
+    w, h = display["size"]
+    held = set(module.held())
+    state = (tuple(sorted(held)), bool(getattr(module, "armed", False)), (w, h))
+    if display.get("drawn") == state:
+        return
+    display["drawn"] = state
+    dpg.delete_item(bed, children_only=True)
+    keys = _keybed_geometry(w, h)
+    # Whites first, then blacks on top.
+    for semitone, black, left, top, right, bottom in [k for k in keys if not k[1]]:
+        fill = KEY_WHITE_HELD if semitone in held else KEY_WHITE
+        dpg.draw_rectangle((left + 1, top), (right - 1, bottom), fill=fill, color=SCOPE_BACKGROUND, rounding=2.0, parent=bed)
+    for semitone, black, left, top, right, bottom in [k for k in keys if k[1]]:
+        fill = KEY_BLACK_HELD if semitone in held else KEY_BLACK
+        dpg.draw_rectangle((left, top), (right, bottom), fill=fill, color=SCOPE_BACKGROUND, rounding=2.0, parent=bed)
+    if dpg.does_item_exist(f"{node}.keys.note"):
+        names = " ".join(module.note_name(s) for s in module.held()[-3:])
+        dpg.set_value(f"{node}.keys.note", names or f"OCT {module.parameters.octave}")
+
+
+def _refresh_keys_display(_runtime: AppRuntime, node: int | str, display: dict[str, object]) -> None:
+    width, height = KEYS_DISPLAY_SIZE
+    scale = _display_scale()
+    w, h = round(width * scale), round(height * scale)
+    if display["size"] != (w, h):
+        dpg.configure_item(display["canvas"], width=w, height=h)
+        display["size"] = (w, h)
+    _draw_keybed(node, display)
+
+
+def _keybed_at(screen_position: tuple[float, float]) -> tuple[object, int] | None:
+    """The key under a point on any drawn keybed, as (module, semitone)."""
+    x, y = screen_position
+    for node, display in MODULE_DISPLAYS.items():
+        if display["kind"] != "keys" or not dpg.does_item_exist(display["canvas"]):
+            continue
+        try:
+            left, top = (float(v) for v in dpg.get_item_rect_min(display["canvas"]))
+        except (KeyError, SystemError):
+            continue
+        w, h = display["size"]
+        if not (left <= x <= left + w and top <= y <= top + h):
+            continue
+        local = (x - left, y - top)
+        keys = _keybed_geometry(w, h)
+        # Blacks first: they lie on top of the whites.
+        for semitone, black, kl, kt, kr, kb in sorted(keys, key=lambda k: not k[1]):
+            if kl <= local[0] <= kr and kt <= local[1] <= kb:
+                return display["module"], semitone
+    return None
+
+
+def _toggle_keys_armed(_sender: int | str, _app_data: object, data: tuple[object, int | str]) -> None:
+    module, node = data
+    if KEYS_ARMED and KEYS_ARMED[0][0] is module:
+        _disarm_keys()
+        return
+    _disarm_keys()
+    module.armed = True
+    KEYS_ARMED[:] = [(module, node)]
+    if dpg.does_item_exist(f"{node}.keys.arm"):
+        dpg.bind_item_theme(f"{node}.keys.arm", SOLO_ON_THEME)
+        dpg.configure_item(f"{node}.keys.arm", label="ARMED")
+    _set_patch_status("KEYS ARMED  ·  A–;  PLAY  ·  Z/X OCTAVE  ·  ESC RELEASES")
+
+
+def _disarm_keys() -> None:
+    for module, node in KEYS_ARMED:
+        module.armed = False
+        module.release_all()
+        if dpg.does_item_exist(f"{node}.keys.arm"):
+            dpg.bind_item_theme(f"{node}.keys.arm", TOGGLE_OFF_THEME)
+            dpg.configure_item(f"{node}.keys.arm", label="ARM KEYS")
+    if KEYS_ARMED:
+        KEYS_ARMED.clear()
+        _set_patch_status("KEYS RELEASED")
+
+
+def _keys_are_armed() -> bool:
+    return bool(KEYS_ARMED) and dpg.does_item_exist(KEYS_ARMED[0][1])
+
+
+def _semitone_for_key_code(key: int) -> int | str | None:
+    """What a Dear PyGui key code plays: a semitone, 'up', 'down', or None."""
+    from .module_providers.builtin.keys import semitone_for_letter
+
+    if key == dpg.mvKey_Z:
+        return "down"
+    if key == dpg.mvKey_X:
+        return "up"
+    if dpg.mvKey_A <= key <= dpg.mvKey_Z:
+        return semitone_for_letter(chr(ord("A") + key - dpg.mvKey_A))
+    if key == dpg.mvKey_Colon:
+        return semitone_for_letter(";")
+    if key == dpg.mvKey_Quote:
+        return semitone_for_letter("'")
+    return None
+
+
+def _keys_key_pressed(_sender: int | str, key: int, _user_data: object) -> None:
+    """Any key, while a Keys module is armed: play it, or move the octave."""
+    if not _keys_are_armed():
+        return
+    if dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl):
+        return
+    module, _node = KEYS_ARMED[0]
+    what = _semitone_for_key_code(int(key))
+    if what == "down":
+        module.octave_down()
+    elif what == "up":
+        module.octave_up()
+    elif isinstance(what, int):
+        module.press(what)
+
+
+def _keys_key_released(_sender: int | str, key: int, _user_data: object) -> None:
+    if not KEYS_ARMED:
+        return
+    module, _node = KEYS_ARMED[0]
+    what = _semitone_for_key_code(int(key))
+    if isinstance(what, int):
+        module.release(what)
+
+
+def _refresh_module_displays(runtime: AppRuntime) -> None:
+    """Redraw every live panel display: scopes each frame, keybeds on change."""
+    for node, display in tuple(MODULE_DISPLAYS.items()):
+        if not dpg.does_item_exist(node) or not dpg.does_item_exist(display["canvas"]):
+            MODULE_DISPLAYS.pop(node, None)
+            continue
+        if not dpg.is_item_shown(node) or MODULE_COLLAPSE.is_collapsed(node):
+            continue
+        try:
+            if display["kind"] == "scope":
+                _refresh_scope_display(runtime, node, display)
+            elif display["kind"] == "keys":
+                _refresh_keys_display(runtime, node, display)
+        except (KeyError, SystemError):
+            continue
+
+
 def _build_generic_module_node(
     instance_id: str,
     module: object,
@@ -6505,15 +6865,12 @@ def _build_generic_module_node(
     port_ids = tuple(port.id for port in manifest.ports)
     with dpg.node(parent=RACK, tag=node, label=manifest.name.upper()):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            summary = dpg.add_text(
-                manifest.category.upper(),
-                color=MODULE_ACCENTS[node],
-            )
-            with dpg.tooltip(summary):
-                dpg.add_text(manifest.description, color=MUTED_TEXT, wrap=280)
+            # No category line under the title: the title's colour already
+            # says which family this is, and the library said the rest.
             parameters = getattr(module, "parameters", None)
             if isinstance(parameters, BaseModel):
                 _add_dynamic_parameter_controls(module, parameters)
+            _add_module_display(module, node)
             _add_patch_bay_toggle(patch, instance_id, node, port_ids)
 
         for port in manifest.ports:
@@ -7804,6 +8161,11 @@ def _rack_outline_module_label(
 
 OUTLINE_LINK_THEME = "noodler.theme.outline_link"
 OUTLINE_ARROW_THEME = "noodler.theme.outline_arrow"
+LIBRARY_ROW_THEME = "noodler.theme.library_row"
+PIN_OPEN_THEME = "noodler.theme.pin.open"
+PIN_PATCHED_THEME = "noodler.theme.pin.patched"
+PIN_OPEN = (104, 98, 86, 255)
+PIN_PATCHED = (224, 208, 169, 255)
 OUTLINE_DETAIL_INDENT = 22
 OUTLINE_LINKS: dict[int | str, int] = {}
 """Each outline link and how wide its name is, for the underline on hover."""
@@ -8629,8 +8991,6 @@ def _filter_module_selector(
             category_tag = _module_library_category_tag(category)
             if dpg.does_item_exist(category_tag):
                 dpg.configure_item(category_tag, show=category_visible)
-                if words and category_visible:
-                    dpg.set_value(category_tag, True)
         section_tag = _module_library_section_tag(section)
         if dpg.does_item_exist(section_tag):
             dpg.configure_item(section_tag, show=section_visible)
@@ -8662,20 +9022,31 @@ def _add_module_library_entry(
     runtime: AppRuntime,
     manifest: ModuleManifest,
 ) -> None:
-    """Add one compact, descriptive module button to a browser surface."""
-    button = dpg.add_button(
+    """One module in the library: its name, a line to click, with what it is
+    in a tooltip. A row, not a button -- thirty-odd buttons is a wall."""
+    row = dpg.add_selectable(
         label=manifest.name,
         tag=_module_selector_button_tag(manifest.id),
-        callback=_add_selected_module,
+        callback=_add_module_from_library,
         user_data=(runtime, manifest.id),
-        width=-1,
+        indent=12,
     )
-    with dpg.tooltip(button):
+    dpg.bind_item_theme(row, LIBRARY_ROW_THEME)
+    with dpg.tooltip(row):
         dpg.add_text(manifest.description, wrap=360)
         dpg.add_text(
             f"{len(manifest.ports)} PATCH POINTS  ·  {manifest.id}",
             color=MUTED_TEXT,
         )
+
+
+def _add_module_from_library(
+    sender: int | str, app_data: object, selection: tuple[AppRuntime, str]
+) -> None:
+    """A click on a library row adds the module; the row does not stay lit."""
+    if dpg.does_item_exist(sender):
+        dpg.set_value(sender, False)
+    _add_selected_module(sender, app_data, selection)
 
 
 def _build_module_library(runtime: AppRuntime) -> None:
@@ -8709,7 +9080,6 @@ def _build_module_library(runtime: AppRuntime) -> None:
             label="MODULE LIBRARY",
             default_open=True,
         ):
-            dpg.add_text("ADD TO THE FREEFORM RACK", color=MUTED_TEXT)
             dpg.add_input_text(
                 tag=MODULE_SELECTOR_SEARCH,
                 hint="Search instruments, signals, effects…",
@@ -8721,7 +9091,9 @@ def _build_module_library(runtime: AppRuntime) -> None:
                 tag=MODULE_SELECTOR_STATUS,
                 color=MUTED_TEXT,
             )
-            dpg.add_separator()
+            # Four sections, each a list. Within one, a category is a quiet
+            # heading over its rows, not another tree to open: one level of
+            # chevrons is enough to read, and every module is a line away.
             for section, categories in MODULE_LIBRARY_SECTIONS:
                 with dpg.tree_node(
                     tag=_module_library_section_tag(section),
@@ -8732,14 +9104,14 @@ def _build_module_library(runtime: AppRuntime) -> None:
                         manifests = manifests_by_category.get(category, ())
                         if not manifests:
                             continue
-                        with dpg.tree_node(
+                        dpg.add_text(
+                            category.upper(),
                             tag=_module_library_category_tag(category),
-                            label=category.upper(),
-                            default_open=category
-                            in {"Musical Brains", "Sources", "Oscillators"},
-                        ):
-                            for manifest in manifests:
-                                _add_module_library_entry(runtime, manifest)
+                            color=MUTED_TEXT,
+                            indent=12,
+                        )
+                        for manifest in manifests:
+                            _add_module_library_entry(runtime, manifest)
 
 
 def build_runtime_from_preset(preset: PatchPreset) -> AppRuntime:
@@ -9170,6 +9542,9 @@ def build_ui(
     GROUP_LAST_POSITIONS.clear()
     GROUP_LABEL_BOXES.clear()
     GROUP_DRAG.clear()
+    MODULE_DISPLAYS.clear()
+    KEYS_ARMED.clear()
+    KEYBED_MOUSE_NOTE.clear()
     CANVAS_INTERACTION.reset()
     MODULE_COLLAPSE.reset()
     dpg.set_global_font_scale(1.0)
