@@ -211,16 +211,15 @@ class MelodyBrain:
             phrase_step = self._phrase[max(0, self._step)]
             name, midi, base_frequency = self._tones[phrase_step.tone_index]
             del name
-            transposition = float(np.clip(transpose[sample], -8.0, 8.0))
+            # Plain arithmetic, not np.clip: a numpy call on one scalar costs
+            # more than the whole sample's worth of work around it.
+            transposition = min(8.0, max(-8.0, float(transpose[sample])))
             frequency = base_frequency * 2.0**transposition
             pitch = math.log2(frequency / self.parameters.reference_frequency_hz)
             if reset_event or clock_event:
-                live_density = float(
-                    np.clip(
-                        self.parameters.density + density_cv[sample],
-                        0.0,
-                        1.0,
-                    )
+                live_density = min(
+                    1.0,
+                    max(0.0, self.parameters.density + float(density_cv[sample])),
                 )
                 self._live_active = phrase_step.active and (
                     live_density >= self.parameters.density
@@ -469,19 +468,15 @@ class HarmonyBrain:
                 trigger = 1.0
                 cadence = 1.0 if self._index == 0 else 0.0
 
-            chord = self._chords[self._index]
-            voices = self._voicings[self._index]
-            root_midi = float(chord.root.midi)
-            outputs["chord"][sample] = root_midi
-            outputs["bass"][sample] = self._midi_pitch(self._bass[self._index])
-            for voice_index, midi in enumerate(voices, start=1):
-                outputs[f"voice_{voice_index}"][sample] = self._midi_pitch(midi)
-            outputs["degree"][sample] = (
-                self._index / (len(self._chords) - 1)
-                if len(self._chords) > 1
-                else 0.0
-            )
-            outputs["function"][sample] = self._functions[self._index]
+            row = self._rows[self._index]
+            outputs["chord"][sample] = row[0]
+            outputs["bass"][sample] = row[1]
+            outputs["voice_1"][sample] = row[2]
+            outputs["voice_2"][sample] = row[3]
+            outputs["voice_3"][sample] = row[4]
+            outputs["voice_4"][sample] = row[5]
+            outputs["degree"][sample] = row[6]
+            outputs["function"][sample] = row[7]
             outputs["gate"][sample] = gate
             outputs["trigger"][sample] = trigger
             outputs["cadence"][sample] = cadence
@@ -544,6 +539,24 @@ class HarmonyBrain:
         self._voicings = tuple(voicings)
         self._bass = tuple(bass)
         self._functions = tuple(function_values)
+        # Everything a chord sounds like is fixed the moment the progression
+        # is. Reading it from the chord objects per sample meant rebuilding
+        # PyTheory's tone system 256 times a block -- the whole module cost
+        # half an audio callback, and none of that work was ever different.
+        span = len(chords) - 1
+        self._rows = tuple(
+            (
+                float(chord.root.midi),
+                self._midi_pitch(bass[index]),
+                self._midi_pitch(voicings[index][0]),
+                self._midi_pitch(voicings[index][1]),
+                self._midi_pitch(voicings[index][2]),
+                self._midi_pitch(voicings[index][3]),
+                index / span if span else 0.0,
+                function_values[index],
+            )
+            for index, chord in enumerate(chords)
+        )
 
     @staticmethod
     def _roman_pattern(mode: str, style: HarmonicStyle) -> tuple[str, ...]:

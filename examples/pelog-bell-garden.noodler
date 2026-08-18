@@ -1,0 +1,577 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Pelog Bell Garden",
+  "modules": [
+    {
+      "instance_id": "key",
+      "module_type": "key",
+      "provider": "builtin",
+      "parameters": {
+        "system": "pelog",
+        "tonic": "nem",
+        "octave": 3,
+        "scale_name": "pelog barang",
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "japanese",
+        "tonic": "A",
+        "octave": 4,
+        "scale_name": "in",
+        "style": "motif and answer",
+        "phrase_length": 11,
+        "octave_range": 3,
+        "density": 0.58,
+        "step_bias": 0.78,
+        "rate_hz": 2.1,
+        "gate_length": 0.3,
+        "reference_frequency_hz": 220.0,
+        "seed": 17
+      }
+    },
+    {
+      "instance_id": "harmony",
+      "module_type": "harmony_brain",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "C",
+        "mode": "major",
+        "style": "tonic journey",
+        "length": 6,
+        "register_octave": 3,
+        "rate_hz": 0.22,
+        "gate_length": 0.85,
+        "reference_frequency_hz": 220.0,
+        "seed": 451
+      }
+    },
+    {
+      "instance_id": "arp",
+      "module_type": "arpeggio_brain",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "up / down",
+        "octave_range": 2,
+        "rate_hz": 5.6,
+        "gate_length": 0.22,
+        "fallback_pitches": [
+          0.0,
+          0.3333333333333333,
+          0.5833333333333334,
+          1.0
+        ],
+        "reference_midi": 57.0,
+        "seed": 1904
+      }
+    },
+    {
+      "instance_id": "drift",
+      "module_type": "wogglebug",
+      "provider": "builtin",
+      "parameters": {
+        "clock_rate_hz": 0.14,
+        "chaos": 0.28,
+        "ego_id_balance": 0.4,
+        "woggle": 0.5,
+        "audio_level": 0.0,
+        "seed": 8675
+      }
+    },
+    {
+      "instance_id": "bell_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "kalimba_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "bowl_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "bells",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "tubular_bells",
+        "level": 0.42,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "kalimba",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "kalimba",
+        "level": 0.42,
+        "release_ms": 260.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "bowl",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "singing_bowl",
+        "level": 0.5,
+        "release_ms": 2400.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.42,
+        "feedback": 0.38,
+        "mix": 0.3,
+        "damping": 0.55,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "reverb",
+      "provider": "builtin",
+      "parameters": {
+        "mix": 0.55,
+        "decay_seconds": 7.5,
+        "damping": 0.5,
+        "diffusion": 0.88,
+        "pre_delay_ms": 40.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.62,
+          0.62,
+          0.5,
+          0.55,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.7,
+          0.7,
+          0.35,
+          -0.2,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "master": 0.5
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "bell_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "bowl_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "bell_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bell_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "bells",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "bells",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kalimba_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "kalimba",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "kalimba",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "bass"
+      },
+      "target": {
+        "module_id": "bowl_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bowl_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "bowl",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "bowl",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "drift",
+        "port_id": "smooth"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "transpose"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kalimba",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bells",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bowl",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_4"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.7
+  },
+  "view": {
+    "zoom": 0.75,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "key",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 40.0,
+          "y": 330.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmony",
+        "position": {
+          "x": 40.0,
+          "y": 680.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "drift",
+        "position": {
+          "x": 40.0,
+          "y": 1020.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "arp",
+        "position": {
+          "x": 400.0,
+          "y": 680.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bell_pitch",
+        "position": {
+          "x": 420.0,
+          "y": 330.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kalimba_pitch",
+        "position": {
+          "x": 760.0,
+          "y": 680.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bowl_pitch",
+        "position": {
+          "x": 420.0,
+          "y": 1020.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bells",
+        "position": {
+          "x": 800.0,
+          "y": 330.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kalimba",
+        "position": {
+          "x": 1120.0,
+          "y": 680.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bowl",
+        "position": {
+          "x": 800.0,
+          "y": 1020.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1160.0,
+          "y": 330.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1480.0,
+          "y": 680.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}

@@ -87,3 +87,79 @@ def test_the_showcase_keeps_evolving() -> None:
 
     assert early > 0.0 and later > 0.0
     assert abs(later - early) > 0.005, "the patch sounded the same all through"
+
+
+def test_the_bell_garden_is_tuned_by_pytheory_not_by_semitones() -> None:
+    """Pelog is why the Key exists: its steps are nothing like 100 cents."""
+    preset = read_patch_preset(Path("examples/pelog-bell-garden.noodler"))
+    runtime = build_runtime_from_preset(preset)
+    runtime.patch.prepare(48_000.0, 256)
+
+    key = runtime.patch.modules["key"]
+    assert key.parameters.system == "pelog"
+
+    tones = sorted(frequency for _name, frequency in key.field.tones)
+    steps = [
+        1_200.0 * np.log2(higher / lower)
+        for lower, higher in zip(tones, tones[1:])
+    ]
+    assert steps, "the scale should have steps"
+    assert not all(abs(step - 100.0) < 5.0 for step in steps), (
+        "these are semitones, not pelog"
+    )
+    # Uneven on purpose: a pelog step is anything from a small to a large one.
+    assert max(steps) - min(steps) > 40.0
+
+
+def test_every_voice_in_the_garden_is_pytheory_synthesis() -> None:
+    preset = read_patch_preset(Path("examples/pelog-bell-garden.noodler"))
+    runtime = build_runtime_from_preset(preset)
+    runtime.patch.prepare(48_000.0, 256)
+
+    voices = {
+        instance_id: module
+        for instance_id, module in runtime.patch.modules.items()
+        if instance_id in {"bells", "kalimba", "bowl"}
+    }
+    assert len(voices) == 3
+    for instance_id, voice in voices.items():
+        assert voice.manifest.id == "pytheory_voice", instance_id
+        assert voice.ready, f"{instance_id} rendered nothing"
+        assert voice._anchors, instance_id
+
+    # One Key, three quantizers: the whole garden is in one tuning.
+    scale_targets = {
+        cable.target.module_id
+        for cable in runtime.patch.cables
+        if cable.source.module_id == "key" and cable.source.port_id == "scale"
+    }
+    assert scale_targets == {"bell_pitch", "kalimba_pitch", "bowl_pitch"}
+
+
+def test_each_voice_in_the_garden_has_its_own_register() -> None:
+    """Three instruments in one range is a pile, not an arrangement."""
+    preset = read_patch_preset(Path("examples/pelog-bell-garden.noodler"))
+
+    def spectrum_of(channel: int) -> float:
+        runtime = build_runtime_from_preset(preset)
+        runtime.patch.prepare(48_000.0, 256)
+        master = runtime.patch.modules["master"]
+        for other in range(1, 9):
+            master.set_level(other, 1.0 if other == channel else 0.0)
+        audio = np.concatenate(
+            [runtime.patch.render_stereo(256, 48_000.0) for _ in range(1_400)]
+        ).sum(axis=1)
+        spectrum = np.abs(np.fft.rfft(audio * np.hanning(len(audio))))
+        frequencies = np.fft.rfftfreq(len(audio), 1.0 / 48_000.0)
+        heard = (frequencies > 40.0) & (frequencies < 6_000.0)
+        # Where the energy actually sits, rather than one lucky peak.
+        weights = spectrum[heard]
+        return float(np.sum(frequencies[heard] * weights) / np.sum(weights))
+
+    bells = spectrum_of(1)
+    kalimba = spectrum_of(3)
+    bowl = spectrum_of(4)
+
+    assert bowl < kalimba < bells, (
+        f"bowl {bowl:.0f} Hz, kalimba {kalimba:.0f} Hz, bells {bells:.0f} Hz"
+    )
