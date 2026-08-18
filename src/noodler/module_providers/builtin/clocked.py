@@ -282,6 +282,7 @@ class PyTheoryBeats:
 
     manifest = PYTHEORY_BEATS_MANIFEST
     uses_transport = True
+    strip_name = "DRUM"
 
     def __init__(self, parameters: PyTheoryBeatsParameters | None = None) -> None:
         self.parameters = parameters or PyTheoryBeatsParameters()

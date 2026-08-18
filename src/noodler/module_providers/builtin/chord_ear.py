@@ -94,6 +94,8 @@ class ChordEar:
     """Name the chord on the inputs."""
 
     manifest = CHORD_EAR_MANIFEST
+    readout = True
+    """The panel shows the label: what is sounding, or which one this is."""
 
     def __init__(self, parameters: ChordEarParameters | None = None) -> None:
         self.parameters = parameters or ChordEarParameters()

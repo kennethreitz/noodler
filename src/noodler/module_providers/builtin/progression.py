@@ -122,6 +122,8 @@ class PyTheoryProgression:
     """Step through a chord progression on the clock."""
 
     manifest = PROGRESSION_MANIFEST
+    readout = True
+    """The panel shows the label: what is sounding, or which one this is."""
     uses_transport = True
 
     def __init__(self, parameters: ProgressionParameters | None = None) -> None:

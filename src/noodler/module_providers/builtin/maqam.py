@@ -91,6 +91,8 @@ class MaqamVoice:
     """Improvise in a maqam."""
 
     manifest = MAQAM_MANIFEST
+    readout = True
+    """The panel shows the label: what is sounding, or which one this is."""
 
     def __init__(self, parameters: MaqamParameters | None = None) -> None:
         self.parameters = parameters or MaqamParameters()

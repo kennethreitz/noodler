@@ -244,6 +244,11 @@ class PyTheoryVoice:
         return f"{rendered} of {SEMITONES} pitches"
 
     @property
+    def strip_name(self) -> str:
+        """What a console strip calls this: the instrument's last word, four letters."""
+        return self.parameters.instrument.split("_")[-1][:4].upper()
+
+    @property
     def label(self) -> str:
         """What the status line says when this instrument is chosen.
 

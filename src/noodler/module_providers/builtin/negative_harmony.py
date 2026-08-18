@@ -85,6 +85,8 @@ class NegativeHarmony:
     """Mirror pitches about a key's axis."""
 
     manifest = NEGATIVE_HARMONY_MANIFEST
+    readout = True
+    """The panel shows the label: what is sounding, or which one this is."""
 
     def __init__(self, parameters: NegativeHarmonyParameters | None = None) -> None:
         self.parameters = parameters or NegativeHarmonyParameters()

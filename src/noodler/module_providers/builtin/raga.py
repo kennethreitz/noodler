@@ -95,6 +95,8 @@ class RagaVoice:
     """Improvise in a raga."""
 
     manifest = RAGA_VOICE_MANIFEST
+    readout = True
+    """The panel shows the label: what is sounding, or which one this is."""
 
     def __init__(self, parameters: RagaVoiceParameters | None = None) -> None:
         self.parameters = parameters or RagaVoiceParameters()

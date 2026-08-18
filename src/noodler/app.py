@@ -3548,6 +3548,7 @@ def _refresh_frame(
         _refresh_group_outlines()
         _refresh_selection()
         _refresh_module_displays(runtime)
+        _refresh_module_readouts()
         _show_export_messages()
         _refresh_outline_parameters()
         _refresh_outline_links()
@@ -5659,6 +5660,7 @@ def _unregister_rack_node(node: int | str, instance_id: str) -> None:
     RACK_GROUPS.forget(instance_id)
     GROUP_LAST_POSITIONS.pop(node, None)
     MODULE_DISPLAYS.pop(node, None)
+    MODULE_READOUTS.pop(node, None)
     if KEYS_ARMED and KEYS_ARMED[0][1] == node:
         _disarm_keys()
     INSTANCE_NODE_TAGS.pop(instance_id, None)
@@ -6592,17 +6594,45 @@ KEYBED_MOUSE_NOTE: list[tuple[object, int]] = []
 """A note being held down with the mouse on a drawn keybed."""
 
 
+MODULE_READOUTS: dict[int | str, object] = {}
+"""Panels with a live line of text -- the chord that is sounding, the note
+under the keys -- by node: the module whose label it is."""
+
+
 def _add_module_display(module: object, node: int | str) -> None:
     """Add whatever a module wants drawn live on its panel.
 
     A module says so with a ``display`` attribute; the panel builder does not
-    know the modules, only the kinds of thing a panel can carry.
+    know the modules, only the kinds of thing a panel can carry. A module
+    with ``readout`` set shows its label on the panel, kept current: what
+    chord is sounding, which raga this is.
     """
+    if getattr(module, "readout", False):
+        label = str(getattr(module, "label", "") or "")
+        dpg.add_text(label, tag=f"{node}.readout", color=SCALE_ACCENT)
+        MODULE_READOUTS[node] = module
     kind = getattr(module, "display", None)
     if kind == "scope":
         _add_scope_display(module, node)
     elif kind == "keys":
         _add_keys_display(module, node)
+
+
+def _refresh_module_readouts() -> None:
+    """Keep each panel's readout at the module's label, a few times a second."""
+    if dpg.get_frame_count() % 6:
+        return
+    for node, module in tuple(MODULE_READOUTS.items()):
+        tag = f"{node}.readout"
+        if not dpg.does_item_exist(tag):
+            MODULE_READOUTS.pop(node, None)
+            continue
+        try:
+            label = str(getattr(module, "label", "") or "")
+        except Exception:
+            continue
+        if dpg.get_value(tag) != label:
+            dpg.set_value(tag, label)
 
 
 def _display_scale() -> float:
@@ -8106,26 +8136,35 @@ def _console_titles(patch: PatchGraph) -> None:
         if not dpg.does_item_exist(strip):
             continue
         source = feeding.get(channel)
-        label = f"{channel}" if source is None else _strip_title(source)
+        label = f"{channel}" if source is None else _strip_title(source, patch.modules.get(source))
         if dpg.get_item_configuration(strip)["label"] != label:
             dpg.configure_item(strip, label=label)
 
 
-def _strip_title(instance_id: str, width: int = 8) -> str:
-    """An instance name short enough for a strip: "P VOICE", "REVERB", "ECHO 2"."""
+STRIP_TITLE_CHARS = 4
+"""What fits on a strip's title row beside its M and S."""
+
+
+def _strip_title(instance_id: str, module: object = None, width: int = STRIP_TITLE_CHARS) -> str:
+    """A name short enough for a strip's title row: "BEAT", "HARM", "VOI2".
+
+    A module may say what to call it -- a voice, its instrument -- through a
+    ``strip_name``; otherwise the last word of its instance name, with the
+    copy number kept if it has one, cut to what fits beside M and S.
+    """
+    said = getattr(module, "strip_name", None)
+    if isinstance(said, str) and said.strip():
+        return said.strip().upper()[:width]
     words = [word for word in instance_id.replace("-", "_").split("_") if word]
     if not words:
         return instance_id.upper()[:width]
-    joined = " ".join(words).upper()
-    if len(joined) <= width:
-        return joined
-    if len(words) >= 2:
-        initials = "".join(word[0] for word in words[:-1]).upper()
-        short = f"{initials} {words[-1].upper()}"
-        if len(short) <= width:
-            return short
-        return short[:width].rstrip()
-    return joined[:width].rstrip()
+    number = ""
+    if words[-1].isdigit() and len(words) > 1:
+        number = words[-1]
+        words = words[:-1]
+    stem = words[-1].upper()
+    room = max(1, width - len(number))
+    return f"{stem[:room]}{number}"
 
 
 def _module_selector_button_tag(module_id: str) -> str:
@@ -9543,6 +9582,7 @@ def build_ui(
     GROUP_LABEL_BOXES.clear()
     GROUP_DRAG.clear()
     MODULE_DISPLAYS.clear()
+    MODULE_READOUTS.clear()
     KEYS_ARMED.clear()
     KEYBED_MOUSE_NOTE.clear()
     CANVAS_INTERACTION.reset()

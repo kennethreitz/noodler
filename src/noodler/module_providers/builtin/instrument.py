@@ -126,6 +126,11 @@ class InstrumentVoice:
 
     manifest = INSTRUMENT_VOICE_MANIFEST
 
+    @property
+    def strip_name(self) -> str:
+        """What a console strip calls this: the instrument's last word, four letters."""
+        return str(self.parameters.instrument).split("_")[-1][:4].upper()
+
     def __init__(self, parameters: InstrumentVoiceParameters | None = None) -> None:
         self.parameters = parameters or InstrumentVoiceParameters()
         self._phase = 0.0

@@ -101,6 +101,8 @@ class ToneRowVoice:
     """Step through a twelve-tone row."""
 
     manifest = TONE_ROW_MANIFEST
+    readout = True
+    """The panel shows the label: what is sounding, or which one this is."""
 
     def __init__(self, parameters: ToneRowParameters | None = None) -> None:
         self.parameters = parameters or ToneRowParameters()
