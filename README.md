@@ -81,8 +81,10 @@ channel strips and a master, pinned inside the rack so the camera never carries
 them away. Each strip has its jack at the top — drag a module's audio output
 onto it and that is the slot it plays through — a level dial with its meter
 drawn as a ring around it, and pan and two sends beneath. The strip takes the
-name of whatever is patched into it. Press **▶ PLAY** in the menu bar (or ⌘↩)
-to open the audio device and start the clock; audio never starts on its own.
+name of whatever is patched into it. Press **▶ PLAY** in the menu bar — or tap
+space, or ⌘↩ — to open the audio device and start the clock; audio never starts
+on its own. Patch a send into a reverb and the reverb goes fully wet by itself,
+since the dry sound is already on the channel.
 Every output jack glows with the signal on it, and a right-click on any module
 folds it, resets it, unplugs it or removes it.
 

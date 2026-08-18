@@ -7,6 +7,12 @@ import dearpygui.dearpygui as dpg
 import pytest
 
 from noodler.app import (
+    OUTPUT_NODE,
+    SPACE_TAP,
+    TRANSPORT,
+    _patch_link_created,
+    _space_pressed,
+    _space_released,
     CABLE_SOURCES,
     CABLE_STEPS,
     CONTROL_STATUS,
@@ -21,7 +27,6 @@ from noodler.app import (
     KNOB_ARC,
     KNOB_INTERACTION,
     KNOB_STATES,
-    OUTPUT_NODE,
     PINNED_NODES,
     PORT_STEPS,
     PORT_TEXTS,
@@ -255,5 +260,66 @@ def test_duplicate_copies_the_settings_and_not_the_cables() -> None:
         assert len(runtime.patch.cables) == cables_before
         RACK_HISTORY.undo()
         assert "pytheory_voice_2" not in runtime.patch.modules
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_send_into_an_effect_makes_it_fully_wet() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "reverb"))
+        reverb = runtime.patch.modules["reverb"]
+        node = INSTANCE_NODE_TAGS["reverb"]
+        assert reverb.parameters.mix < 1.0
+        assert dpg.does_item_exist(f"{node}.control.mix"), "generic knobs are addressable"
+
+        _patch_link_created("test", (f"{OUTPUT_NODE}.send_a", f"{node}.audio"), runtime)
+
+        assert reverb.parameters.mix == pytest.approx(1.0)
+        assert "FULLY WET" in dpg.get_value(CONTROL_STATUS)
+    finally:
+        dpg.destroy_context()
+
+
+def test_an_ordinary_cable_into_an_effect_leaves_its_mix_alone() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        _add_selected_module("test", None, (runtime, "reverb"))
+        reverb = runtime.patch.modules["reverb"]
+        before = reverb.parameters.mix
+        _patch_link_created(
+            "test",
+            (f"{INSTANCE_NODE_TAGS['classic_vco']}.saw", f"{INSTANCE_NODE_TAGS['reverb']}.audio"),
+            runtime,
+        )
+        assert reverb.parameters.mix == pytest.approx(before)
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_tap_of_space_toggles_playback_and_a_pan_does_not(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        toggled = []
+        monkeypatch.setattr("noodler.app._toggle_playback", lambda *a, **k: toggled.append(1))
+        monkeypatch.setattr("noodler.app._keyboard_is_captured", lambda: False)
+
+        _space_pressed("k", None, runtime)
+        _space_released("k", None, runtime)
+        assert toggled == [1], "a tap plays"
+
+        _space_pressed("k", None, runtime)
+        SPACE_TAP["panned"] = True
+        _space_released("k", None, runtime)
+        assert toggled == [1], "a space that panned was not a tap"
+
+        _space_pressed("k", None, runtime)
+        SPACE_TAP["down_at"] -= 1.0
+        _space_released("k", None, runtime)
+        assert toggled == [1], "a long hold is not a tap"
     finally:
         dpg.destroy_context()

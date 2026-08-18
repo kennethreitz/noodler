@@ -17,6 +17,8 @@ instrument was telling the user to press a key that did nothing.
 | --- | --- |
 | Delete / Backspace | unpatch selected cables, remove selected modules |
 | ⌘Z / ⌘⇧Z | undo, redo |
+| space (tap) | play / stop; held while dragging, it still pans |
+| ⌘↩ | play / stop |
 | ⌘K | open the module browser |
 | F | frame the whole rack |
 | T | order the rails by signal flow |

@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 import math
+import time
 from pathlib import Path
 
 import dearpygui.dearpygui as dpg
@@ -1669,6 +1670,41 @@ def _routes_touching(patch: PatchGraph, instance_id: str) -> tuple[
     return tuple(routes)
 
 
+def _wet_an_effect_on_a_send(runtime: AppRuntime, cable: Cable) -> bool:
+    """An effect fed from a send should be all wet, so it is made so.
+
+    A reverb straight in a signal path mixes its room with the dry sound. On a
+    send the dry sound is already on the channel, and a return that carried it
+    again would double it -- so when a cable from a master send lands on a
+    module with a mix, the mix goes to full and the status bar says so. It is
+    still a knob: turn it back if that is not what was meant.
+    """
+    if cable.source.module_id != MASTER_ID or not cable.source.port_id.startswith("send_"):
+        return False
+    module = runtime.patch.modules.get(cable.target.module_id)
+    parameters = getattr(module, "parameters", None)
+    if parameters is None or not hasattr(parameters, "mix"):
+        return False
+    try:
+        if float(parameters.mix) >= 0.999:
+            return False
+        _set_dynamic_parameter(module, ("mix",), 1.0)
+    except Exception:
+        return False
+    knob = f"{INSTANCE_NODE_TAGS.get(cable.target.module_id)}.control.mix"
+    if knob in KNOB_INTERACTION.bindings:
+        binding = KNOB_INTERACTION.bindings[knob]
+        _set_knob_position(
+            knob, _control_position(1.0, binding.minimum, binding.maximum, binding.logarithmic)
+        )
+        if dpg.does_item_exist(binding.value_label):
+            dpg.set_value(binding.value_label, binding.formatter(1.0))
+    _set_patch_status(
+        f"{module.manifest.name.upper()} SET FULLY WET  ·  IT IS ON A SEND"
+    )
+    return True
+
+
 def _record_edit(
     description: str,
     undo: Callable[[], None],
@@ -1765,9 +1801,10 @@ def _patch_link_created(
             undo=lambda: _erase_route(runtime, cable),
             redo=lambda: _restore_route(runtime, cable),
         )
-        _set_patch_status(
-            f"PATCHED  {source.name.upper()}  →  {target.name.upper()}"
-        )
+        if not _wet_an_effect_on_a_send(runtime, cable):
+            _set_patch_status(
+                f"PATCHED  {source.name.upper()}  →  {target.name.upper()}"
+            )
     except (PatchError, ValueError) as exc:
         _set_patch_status(f"CAN'T PATCH: {exc}", error=True)
     except Exception as exc:
@@ -3688,6 +3725,33 @@ def _press_once(
     return handle
 
 
+SPACE_TAP: dict[str, float | bool] = {"down_at": 0.0, "panned": False, "down": False}
+SPACE_TAP_SECONDS = 0.35
+"""A press of space shorter than this, with no pan in it, is a tap: play or stop.
+
+Space held while dragging is the pan modifier and stays so; a tap that turned
+into a pan is not a tap. This is the one gesture every DAW shares.
+"""
+
+
+def _space_pressed(_sender: int | str, _app_data: object, _runtime: AppRuntime) -> None:
+    if _keyboard_is_captured():
+        return
+    SPACE_TAP["down"] = True
+    SPACE_TAP["down_at"] = time.monotonic()
+    SPACE_TAP["panned"] = False
+
+
+def _space_released(_sender: int | str, _app_data: object, runtime: AppRuntime) -> None:
+    if not SPACE_TAP["down"]:
+        return
+    SPACE_TAP["down"] = False
+    held = time.monotonic() - float(SPACE_TAP["down_at"])
+    if SPACE_TAP["panned"] or held > SPACE_TAP_SECONDS or _keyboard_is_captured():
+        return
+    _toggle_playback(0, None, runtime)
+
+
 def _release_stale_key_latches() -> None:
     """Let go of any latched key that is no longer down.
 
@@ -4040,7 +4104,8 @@ def _begin_knob_drag(
     if dpg.is_key_down(dpg.mvKey_Spacebar) and _mouse_is_over_rack():
         # Dragging pans. Space is not a second way to pan: it is the modifier
         # that lets the same drag start from over a module rather than only
-        # from empty background.
+        # from empty background. And a space that panned was not a tap.
+        SPACE_TAP["panned"] = True
         CANVAS_INTERACTION.arm_pan(mouse_position)
         _begin_canvas_pan(mouse_position)
         return
@@ -4531,6 +4596,15 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
                 callback=_press_once(key, action),
                 user_data=runtime,
             )
+        # A tap of space plays or stops; space held while dragging still pans.
+        dpg.add_key_press_handler(
+            dpg.mvKey_Spacebar,
+            callback=_press_once(dpg.mvKey_Spacebar, _space_pressed),
+            user_data=runtime,
+        )
+        dpg.add_key_release_handler(
+            dpg.mvKey_Spacebar, callback=_space_released, user_data=runtime
+        )
 
 
 def _add_knob(
@@ -4835,6 +4909,24 @@ def _format_dynamic_value(value: float) -> str:
     return f"{value:.3f}"
 
 
+def _control_tag(module: object, field_path: tuple[str | int, ...]) -> int | str:
+    """A stable tag for one module's control, so it can be found again.
+
+    ``<node>.control.<field.path>`` -- the same shape the hand-built panels
+    use, so anything that addresses a knob by name addresses every knob.
+    """
+    for instance_id, node in INSTANCE_NODE_TAGS.items():
+        if module is _module_by_instance(instance_id):
+            return f"{node}.control.{'.'.join(str(part) for part in field_path)}"
+    return 0
+
+
+def _module_by_instance(instance_id: str) -> object | None:
+    if ACTIVE_RUNTIME:
+        return ACTIVE_RUNTIME[0].patch.modules.get(instance_id)
+    return None
+
+
 def _add_dynamic_float_control(
     module: object,
     field_info: object,
@@ -4845,6 +4937,9 @@ def _add_dynamic_float_control(
 ) -> int | str:
     minimum, maximum = _dynamic_parameter_bounds(field_info, value)
     logarithmic = minimum > 0.0 and maximum / minimum >= 100.0
+    tag = _control_tag(module, field_path)
+    if tag and dpg.does_item_exist(tag):
+        tag = 0
     return _add_knob(
         value,
         label,
@@ -4856,6 +4951,7 @@ def _add_dynamic_float_control(
         ),
         logarithmic=logarithmic,
         size=KNOB_SIZE,
+        tag=tag,
     )
 
 
