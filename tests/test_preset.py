@@ -16,7 +16,7 @@ from noodler.preset import (
 
 
 def test_patch_preset_round_trips_as_readable_versioned_json(tmp_path) -> None:
-    runtime = build_runtime()
+    runtime = build_runtime(starter_patch=True)
     view = RackViewPreset(
         zoom=0.82,
         rails={"control": 24.0, "audio": 540.0},

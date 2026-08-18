@@ -7,7 +7,21 @@ patch graph, and callback-driven output to the default system audio device.
 
 ## Default patch
 
-The application starts with this prepared patch:
+The application opens as **Untitled Patch** with an empty `PatchGraph`: no DSP
+modules, cables, or system-output taps. The one permanent rack object is System
+Output, placed at the end of the audio rail. This makes startup silent and
+leaves the user's first musical decision to the `Add Module` browser instead
+of presenting a large composition as a blank template.
+
+System Output still has explicit Start and Stop controls, but starting an empty
+patch produces silence. Its default master gain is 0.8. A first audible patch
+can be as small as an oscillator connected directly to `Mono / Both`.
+
+## Hirajoshi Garden reference patch
+
+The earlier composed init remains available to tests and development through
+`build_ui(starter_patch=True)`. It is a deterministic generative instrument,
+not the application default:
 
 ```text
                          HIRAJOSHI GARDEN
@@ -30,8 +44,7 @@ Woggle Burst ──────────────────────�
                                                        left / right ──> System
 ```
 
-The init patch is a deterministic generative instrument named **Hirajoshi
-Garden**. PyTheory prepares A Hirajoshi and a seeded melodic-wander traversal.
+PyTheory prepares A Hirajoshi and a seeded melodic-wander traversal.
 Unlike independent random-note selection, the walk favors neighboring tones,
 visits interior anchors halfway through each phrase, and returns to a tonic at
 eight-event boundaries. Wogglebug supplies its 0.47 Hz clock, so the same seed
@@ -50,9 +63,8 @@ melody before allowing new sound back into the field. The reverb starts at a
 52% equal-power mix with an 8.5-second tail and sends its decorrelated left and
 right fields to the corresponding device channels.
 
-Audio does not start automatically. The System Output node has explicit Start
-and Stop controls so opening the app cannot produce a surprise tone. Its init
-gain is 0.72, after deliberately conservative levels throughout the patch.
+Audio does not start automatically. The reference patch uses a 0.72 master
+gain after deliberately conservative levels throughout its signal path.
 
 The system bus preserves stereo. Its `Mono / Both` jack still makes a single
 source available equally on both channels, while the separate `Left` and
@@ -92,15 +104,15 @@ and low latency.
 audio driver can be used by making it the system default. Explicit device and
 channel selection belongs in a later audio settings panel.
 
-To hear the default patch:
+To build a first patch:
 
 ```console
 uv run noodler
 ```
 
-Then click **Start** in the System Output node. Frequency, level, mixer gain,
-reverb controls, and master level changes are audible while the stream is
-running.
+Then click **Add Module**, choose an oscillator, reveal its patch bay, and drag
+an audio output to System Output's `Mono / Both` jack. Click **Start** only when
+the route and levels are ready.
 
 ## Real-time limitations
 

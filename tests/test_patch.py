@@ -169,3 +169,32 @@ def test_patch_prepares_stateful_modules() -> None:
     patch.prepare(48_000.0, 256)
 
     assert reverb.sample_rate == 48_000.0
+
+
+def test_removing_a_module_takes_its_cables_and_taps_with_it() -> None:
+    vco = ComplexVCO(ComplexVCOParameters(frequency=100.0, amplitude=0.2))
+    mixer = PolarizingMixer(
+        PolarizingMixerParameters(channels=2, gains=(0.5, 0.0))
+    )
+    patch = PatchGraph()
+    patch.add_module("vco", vco)
+    patch.add_module("mixer", mixer)
+    patch.connect("vco", "sine", "mixer", "input_1")
+    patch.connect_output("mixer", "output")
+    patch.connect_output("vco", "sine")
+
+    removed = patch.remove_module("mixer")
+
+    assert removed == 2
+    assert "mixer" not in patch.modules
+    assert patch.cables == ()
+    assert [tap.source.module_id for tap in patch.output_taps] == ["vco"]
+    assert patch.processing_order == ("vco",)
+    # The surviving graph still renders.
+    assert patch.render(8, 800.0).shape == (8,)
+
+
+def test_removing_an_unknown_module_is_rejected() -> None:
+    patch = PatchGraph()
+    with pytest.raises(PatchError, match="unknown module instance"):
+        patch.remove_module("nothing")

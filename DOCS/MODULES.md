@@ -25,21 +25,39 @@ factory today, and the patch loader can share the same construction path later
 without prematurely requiring external providers to adopt an untested factory
 protocol.
 
-## Module browser
+## Module library
 
-The rack's searchable `Add Module` browser is derived directly from the
-provider manifest, so the visible catalog cannot silently drift from the
-constructible module registry. Entries are grouped by category and include
-their manifest descriptions and patch-point counts. Adding an entry creates a
-unique instance such as `state_variable_filter` or
+The default workspace keeps a live tree of the current rack on the left and
+the freeform patch rack on the right. Its `Signal Flow` branch follows cables
+backward from System Output through every upstream module. Modules that have
+not reached an output appear separately under `Unpatched`, divided into
+control/modulation and audio-path lanes. This tree is rebuilt from the real
+`PatchGraph` after every add, remove, patch, unpatch, or unplug-all operation.
+Each module entry includes a small removal button backed by the same graph-safe
+operation as the close target on the module's rack title. System Output is the
+one permanent entry and cannot be removed.
+
+The searchable module catalog sits beneath that rack outline. It is derived
+directly from the provider manifest, so the visible catalog cannot silently
+drift from the constructible module registry. Its high-level shelves follow
+musical intent: `Compose & Modulate`, `Generate`, `Shape & Control`, and `Mix &
+Space`. Provider categories remain nested beneath those shelves, and search
+opens only the relevant branches.
+
+Selecting an entry adds it directly to the rack without dismissing the tree.
+It creates a unique instance such as `state_variable_filter` or
 `state_variable_filter_2`, places it on the control or audio rail, and exposes
-its declared ports through the same compact patch bay used elsewhere.
+its declared ports through the same compact patch bay used elsewhere. Entries
+also retain their manifest descriptions and patch-point counts as tooltips.
 
 For modules without a bespoke panel, Noodler generates controls from the
 module's Pydantic parameter model. Nested models, validated numeric ranges,
 enums, booleans, strings, and numeric tuples all remain attached to the real
-module state. Bespoke musical panels can progressively replace these generated
-views without changing the module or preset contracts.
+module state. Consecutive numeric controls are packed three across and the
+manifest description moves into the category tooltip, keeping generated
+modules closer to Eurorack proportions than to vertical settings inspectors.
+Bespoke musical panels can progressively replace these generated views without
+changing the module or preset contracts.
 
 ## Signal compatibility
 
@@ -97,10 +115,9 @@ first library expansion:
 | Effects | `echo_delay` | Fractional four-second echo with bipolar feedback, damping, drive, CV, and freeze |
 
 The provider factory and patch graph can instantiate and connect every catalog
-entry now. The rack still lacks its add-module browser, so the artistic init
-patch remains the only set mounted by the current hard-coded UI. Expanding the
-init patch into a showroom would obscure its signal hierarchy; a searchable
-browser is the appropriate UI boundary for the rest of the catalog.
+entry. The persistent library exposes that same catalog while the default rack
+starts with no DSP modules at all, avoiding both a hard-coded showroom and a
+cosmetic picker disconnected from the executable graph.
 
 ## PyTheory musical brains
 
@@ -283,12 +300,13 @@ to the tonic and transpose applies a continuous octave offset. Outputs are:
 - raw PyTheory `Frequency` in hertz and normalized `Degree` CV; and
 - a held `Gate` plus one-sample change `Trigger`.
 
-The default patch uses a 220 Hz voltage reference matching the VCO's base
-frequency. Wogglebug Clock advances a seeded A3 Hirajoshi melodic wander and
-the generator's pitch output drives the VCO, while Woggle CV adds a much
-smaller layer of pitch movement. Rich object-valued musical blocks remain a
-future protocol change; the initial numeric Note output makes the semantic
-cable type testable without placing Python objects in the callback.
+The Hirajoshi Garden reference patch uses a 220 Hz voltage reference matching
+the VCO's base frequency. Wogglebug Clock advances a seeded A3 Hirajoshi
+melodic wander and the generator's pitch output drives the VCO, while Woggle
+CV adds a much smaller layer of pitch movement. Rich object-valued musical
+blocks remain a future protocol change; the initial numeric Note output makes
+the semantic cable type testable without placing Python objects in the
+callback.
 
 Reference: [PyTheory](https://pytheory.org)
 
@@ -303,9 +321,9 @@ exponential `Decay CV` keep both dimensions patchable.
 
 The module exposes its response as an `Envelope` CV as well as its shaped audio
 output. It is an intentionally playable digital interpretation, not a vactrol
-or circuit model. In Hirajoshi Garden, each scale-generator trigger strikes
-the mixed voice before it enters the reverb, giving the default patch acoustic
-breath instead of a permanently open oscillator.
+or circuit model. In the Hirajoshi Garden reference patch, each scale-generator
+trigger strikes the mixed voice before it enters the reverb, giving the phrase
+acoustic breath instead of a permanently open oscillator.
 
 ## Stereo space reverb
 
@@ -320,8 +338,8 @@ freeze. `Mix CV` and `Decay CV` keep the effect playable from the rack, while a
 gate can engage freeze. Four outputs make its intent explicit:
 
 - `Wet Left` and `Wet Right` carry only the stereo late field;
-- `Left` and `Right` use equal-power wet/dry blending and are normalized to the
-  corresponding system output channels in the default patch.
+- `Left` and `Right` use equal-power wet/dry blending and feed the corresponding
+  system output channels in the Hirajoshi Garden reference patch.
 
 Delay storage is prepared at the audio device's actual sample rate before the
 stream starts. The design is a compact digital Schroeder/Freeverb-family

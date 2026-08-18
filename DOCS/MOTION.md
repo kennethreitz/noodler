@@ -1,11 +1,11 @@
 # Noodler motion
 
-**Status:** Proposed, 2026-08-17
+**Status:** Adopted, 2026-08-17
 
 Noodler is an instrument, so its interface is judged the way an instrument is
 judged: by how it responds, not by what it can do. This document describes why
-the current animation feels inconsistent, the model that replaces it in
-`noodler.motion`, and the specific places in `app.py` that should adopt it.
+the original animation felt inconsistent, the model in `noodler.motion` that
+replaced it, and how `app.py` now uses it.
 
 ## The problem
 
@@ -91,72 +91,105 @@ units, so `pixel_spring` (settles below half a pixel) and `unit_spring`
 (normalized quantities such as zoom) exist to keep a rack threshold from being
 applied to the 0.55–1.65 zoom range, where it would swallow the entire travel.
 
+## Sub-pixel state and integer positions
+
+Dear PyGui stores node positions as integers: `set_item_pos(node, [x, 570.75])`
+reads back as `570`. Any animation that re-reads the item position each frame to
+continue from it therefore discards its own sub-pixel state, and the truncation
+bias accumulates — once per frame, so the error depends on how many frames the
+motion took. That is a second, quieter way for a frame rate to change the
+result, and it is part of why the original easing needed a snap threshold to
+finish at all.
+
+The same applies to moving the whole rack. A sprung or gliding camera asks for
+a fraction of a pixel per frame, and truncating that on every module, every
+frame, makes the camera fall short of where it was sent. `_translate_rack`
+therefore carries the remainder and only ever writes whole pixels, so a slow
+move arrives exactly where a fast one does.
+
+The spring therefore owns the position and the node is only its rendering.
+`_settle_rack_rails` re-syncs a spring from its item **only** when the two
+differ by more than a pixel, which means something outside the animation moved
+the module: a drag, a loaded preset. Camera moves are handled by transforming
+the springs themselves — `_translate_rack` offsets them with the pan, and
+`_set_rack_zoom` scales them about the same anchor as the nodes — so the camera
+never looks like an external move.
+
 ## Adoption in `app.py`
 
-Each of these is independent and can be taken separately.
+All six points are in place, and `tests/test_rack_feel.py` covers them.
 
-**1. A timestep.** `_refresh_frame` is already the per-frame hook. Give it a
-delta and pass it to the settle functions:
+1. **A timestep.** `_refresh_frame` derives one `clamp_timestep(get_delta_time())`
+   per frame and passes it to every settle function.
+2. **Rails.** `RAIL_SPRINGS` holds one `pixel_spring` pair per node, cleared in
+   `build_ui` and dropped when a module is removed. The `0.24` easing and the
+   `0.75` px snap are gone; a settled module lands exactly on its rail.
+3. **Zoom.** `CanvasInteraction.zoom_spring` is a `unit_spring`; pointer
+   anchoring is unchanged. Rack nodes select a zoom-sized font locally instead
+   of changing Dear PyGui's global font scale, so the toolbar, zoom selector,
+   rack outline, and module library remain fixed workspace chrome.
+4. **Pan momentum.** `_track_pan_velocity` smooths the pointer velocity during a
+   drag, `_release_pan_momentum` hands it to a `Glide` pair on release, and
+   `_glide_rack` carries the rack to rest in about 1.4 s. Any fresh press
+   catches a gliding canvas, the way a finger does.
+5. **Knobs.** `KnobDrag` replaced `_vertical_drag_position`. Resolution now
+   follows pointer speed, so a slow movement resolves fine detail and a fast
+   sweep crosses the range from the same gesture; Shift remains as a deliberate
+   choice rather than a requirement. Double-clicking a control restores the
+   value its module was built with.
+6. **Meter.** `MeterBallistics` gives the output meter instant attack, a 280 ms
+   release, and a held recent maximum shown as `PK` in the overlay.
 
-```python
-dt = clamp_timestep(dpg.get_delta_time())
-```
+## The camera has a way home
 
-**2. Rails.** Keep one spring pair per node beside `CANVAS_INTERACTION`, reset
-in `build_ui` alongside the other interaction resets, and drop entries when a
-module is removed:
+Momentum makes it possible to send the rack somewhere the window is not, and an
+empty starting rack means a newly added module can land outside the view. Both
+are answered by one sprung camera offset:
 
-```python
-RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
+- `_frame_rack` (**F**) fits every module in the window and centres it, zoom
+  included.
+- `_reveal_node` moves the shortest distance that makes a single module fully
+  visible, and runs whenever a module is added, so an add is never silent.
+- Any press on the rack cancels a move in flight, so the camera never fights
+  the pointer.
 
-# inside the _settle_rack_rails loop, replacing `easing` and the 0.75 snap:
-spring_x, spring_y = _rail_springs(node, current_x, current_y)
-if node == active_node:
-    spring_x.snap(current_x)      # the pointer owns a dragged module
-    spring_y.snap(current_y)
-    continue
-spring_x.value = current_x        # the item position stays the source of truth
-spring_y.value = current_y
-spring_x.retarget(target_x)
-spring_y.retarget(target_y)
-next_x = spring_x.advance(dt)
-next_y = spring_y.advance(dt)
-```
+Both feed `CanvasInteraction.recenter_x/y`, advanced by `_settle_recenter` and
+applied through `_translate_rack` — so framing obeys the same half-life, the
+same clamped timestep, and the same sub-pixel accounting as everything else.
 
-Assigning `.value` each frame re-syncs the spring if anything else moved the
-node — a drag, a loaded preset — while preserving the velocity it had.
+## The keyboard
 
-**3. Zoom.** Replace `remaining * 0.3` and the `0.001` snap with a
-`unit_spring(zoom, ZOOM_HALF_LIFE)` whose target is `zoom_target`; advance it
-and hand the result to `_set_rack_zoom` with the existing anchor, so the
-pointer-anchored behaviour is unchanged.
+The rack advertised `SELECT CABLE + DELETE TO UNPATCH` while `app.py` registered
+no key handlers at all — only mouse ones. Delete and Escape are now wired, and
+because most Mac keyboards send Backspace for the key labelled Delete, both are
+bound and both stand down while the module browser is open so the search field
+keeps its own editing keys.
 
-**4. Pan momentum.** `_pan_rack` moves every node by the pointer delta and
-stops dead on release. Track pointer velocity while panning, hand it to a
-`Glide` pair in `_end_knob_drag`, and apply `glide.advance(dt)` per frame using
-the same offset loop `_pan_rack` already uses — including the `rail_y` shift.
-The rack is large and mostly empty; without inertia every pan across it costs a
-second gesture.
-
-**5. Knobs.** `_drag_knob` is already incremental, so `KnobDrag` drops into the
-place `_vertical_drag_position` occupies, with `interaction.drag_position`
-becoming the `KnobDrag`. It adds velocity-adaptive resolution: a slow,
-deliberate movement resolves fine detail and a fast sweep crosses the range,
-from one gesture. Shift stays, as a deliberate choice rather than a
-requirement.
-
-**6. Meter.** `_refresh_ui` writes the raw per-block peak into the progress
-bar, which flickers. `MeterBallistics` gives it instant attack, a 280 ms
-release, and a held recent maximum, which is how a peak-programme meter is
-read.
+Delete removes selected cables and selected modules; module removal is backed by
+`PatchGraph.remove_module`, which drops every cable and output tap that touched
+the instance and recompiles the processing order. The system output refuses to
+be removed. The title-bar and current-rack-tree close targets call that same
+path. `⌘K` focuses the module library, `F` frames the rack, and Escape clears
+the search or the selection. The guard covers the save-patch dialog as well as
+the library: typing a patch name must not cost the rack a module.
 
 ## Deliberately not here
 
-Cable rendering, module fold/unfold, and browser transitions are left alone
-until the settling model above is in place; they should use the same springs
-rather than grow their own constants.
+Cable rendering, module fold/unfold, and browser transitions still animate with
+their own constants or not at all. They should adopt the same springs rather
+than grow new ones.
 
-One unrelated observation belongs with the feel work: the rack's own status
-line advertises `SELECT CABLE + DELETE TO UNPATCH`, but `app.py` registers no
-key handlers at all — only mouse ones. The instrument currently tells the user
-to press a key that does nothing.
+**Pointer capture during a knob drag** is the one feel item deliberately left
+out. Holding the pointer still — hiding the cursor, disassociating it, and
+reading raw AppKit deltas — is what stops a long sweep dying at the top of the
+screen, and `macos_gestures.py` is the right home for it. It is left undone
+because none of it can be verified without a real window and a real cursor, and
+a half-correct version leaves the user's pointer hidden or frozen. It wants a
+hands-on pass, with an unconditional release in `_end_knob_drag`, in `main`'s
+`finally`, and a per-frame watchdog for a lost mouse-up.
+
+**Undo** is the largest remaining gap, and deletion made it urgent: one keypress
+can now remove a module and every cable attached to it. `PatchGraph` and the
+`.noodler` preset already describe a patch completely, so the shape is
+available; what is missing is a path that rebuilds the rack from a captured
+patch.

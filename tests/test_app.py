@@ -22,6 +22,8 @@ from noodler.app import (
     PRIMARY_WINDOW,
     RACK,
     RACK_NODES,
+    RACK_OUTLINE_BODY,
+    RACK_OUTLINE_STATUS,
     RACK_RAILS,
     REVERB_LEFT_OUTPUT_LINK,
     REVERB_NODE,
@@ -58,31 +60,80 @@ from noodler.app import (
     _drag_knob,
     _end_knob_drag,
     _filter_module_selector,
+    _module_library_category_tag,
+    _module_library_section_tag,
     _mouse_is_over_rack_background,
     _node_attributes,
     _pan_rack,
     _patch_link_created,
     _point_is_over_rack_background,
     _queue_rack_zoom,
+    _rack_font_tag,
     _rail_x_targets,
     _set_rack_zoom,
     _set_module_collapsed,
     _set_dynamic_parameter,
     _save_patch_dialog,
     _settle_rack_zoom,
-    _vertical_drag_position,
+    _knob_bounds,
     _zoomed_position,
     build_ui,
 )
 from noodler.module_providers.builtin import BUILTIN_PROVIDER_MANIFEST
+from noodler.motion import KnobDrag
 from noodler.patch import OutputChannel
 from noodler.preset import read_patch_preset
 
 
-def test_rack_ui_tracks_the_mixer_channel_count() -> None:
+def _descendant_labels(item: int | str) -> set[str]:
+    labels: set[str] = set()
+    for children in dpg.get_item_children(item).values():
+        for child in children:
+            label = dpg.get_item_label(child)
+            if label:
+                labels.add(label)
+            if dpg.get_item_type(child).endswith("mvText"):
+                labels.add(str(dpg.get_value(child)))
+            labels.update(_descendant_labels(child))
+    return labels
+
+
+def test_default_rack_starts_quiet_with_only_system_output() -> None:
     dpg.create_context()
     try:
-        runtime = build_ui(mixer_channels=6)
+        runtime = build_ui()
+
+        assert runtime.patch.modules == {}
+        assert runtime.patch.cables == ()
+        assert runtime.patch.output_taps == ()
+        assert RACK_NODES == [OUTPUT_NODE]
+        assert dpg.does_item_exist(OUTPUT_NODE)
+        assert not dpg.does_item_exist(VCO_NODE)
+        assert not dpg.does_item_exist(WOGGLE_NODE)
+        assert dpg.get_item_configuration(ADD_MODULE_BUTTON)["label"] == (
+            "+  ADD MODULE"
+        )
+        assert dpg.get_value(RACK_OUTLINE_STATUS) == "1 PANEL  ·  0 CABLES"
+        outline = _descendant_labels(RACK_OUTLINE_BODY)
+        assert {"SIGNAL FLOW", "SYSTEM OUTPUT", "NO SIGNAL CONNECTED"} <= (
+            outline
+        )
+
+        captured = _capture_current_preset(runtime, "Untitled Patch")
+        assert captured.modules == ()
+        assert captured.cables == ()
+        assert captured.output_taps == ()
+        assert [node.node_id for node in captured.view.nodes] == [
+            "system_output"
+        ]
+    finally:
+        dpg.destroy_context()
+
+
+def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(mixer_channels=6, starter_patch=True)
 
         for item in (
             PRIMARY_WINDOW,
@@ -159,8 +210,15 @@ def test_rack_ui_tracks_the_mixer_channel_count() -> None:
         assert runtime.scale_generator.parameters.system == "blues"
         assert runtime.scale_generator.parameters.scale_name == "minor pentatonic"
         start = _control_position(440.0, 1.0, 20_000.0, True)
-        coarse = _vertical_drag_position(start, -45.0, binding)
-        fine = _vertical_drag_position(start, -45.0, binding, fine=True)
+        minimum, maximum = _knob_bounds(binding)
+
+        def _sweep(delta_y: float, *, fine: bool) -> float:
+            drag = KnobDrag(minimum=minimum, maximum=maximum)
+            drag.begin(start)
+            return drag.advance(delta_y, 1.0 / 60.0, fine=fine)
+
+        coarse = _sweep(-45.0, fine=False)
+        fine = _sweep(-45.0, fine=True)
         assert coarse > fine > start
         assert KNOB_INTERACTION.tooltip_tags
         tooltip = KNOB_INTERACTION.tooltip_tags[0]
@@ -231,10 +289,22 @@ def test_module_selector_exposes_every_builtin_module() -> None:
         assert dpg.does_item_exist(ADD_MODULE_BUTTON)
         assert dpg.does_item_exist(MODULE_SELECTOR)
         assert dpg.does_item_exist(MODULE_SELECTOR_SEARCH)
+        assert dpg.get_item_type(MODULE_SELECTOR).endswith("mvChildWindow")
+        assert dpg.is_item_shown(MODULE_SELECTOR)
         assert dpg.get_value(MODULE_SELECTOR_STATUS) == (
             f"{len(BUILTIN_PROVIDER_MANIFEST.modules)} MODULES"
         )
+        for section in (
+            "COMPOSE & MODULATE",
+            "GENERATE",
+            "SHAPE & CONTROL",
+            "MIX & SPACE",
+        ):
+            assert dpg.does_item_exist(_module_library_section_tag(section))
         for manifest in BUILTIN_PROVIDER_MANIFEST.modules:
+            assert dpg.does_item_exist(
+                _module_library_category_tag(manifest.category)
+            )
             assert dpg.does_item_exist(
                 f"noodler.module_selector.item.{manifest.id}"
             )
@@ -247,12 +317,16 @@ def test_module_selector_adds_unique_executable_instances_to_the_rack() -> None:
     try:
         runtime = build_ui()
 
-        _add_selected_module(
-            "test",
-            None,
-            (runtime, "state_variable_filter"),
-        )
+        for module_id in (
+            "classic_vco",
+            "state_variable_filter",
+            "polarizing_mixer",
+        ):
+            _add_selected_module("test", None, (runtime, module_id))
 
+        assert dpg.is_item_shown(MODULE_SELECTOR)
+        assert dpg.get_value(RACK_OUTLINE_STATUS) == "4 PANELS  ·  0 CABLES"
+        assert "UNPATCHED" in _descendant_labels(RACK_OUTLINE_BODY)
         instance_id = "state_variable_filter"
         node = INSTANCE_NODE_TAGS[instance_id]
         assert instance_id in runtime.patch.modules
@@ -264,18 +338,41 @@ def test_module_selector_adds_unique_executable_instances_to_the_rack() -> None:
 
         _patch_link_created(
             "test",
-            (f"{VCO_NODE}.saw", f"{node}.audio"),
+            (
+                f"{INSTANCE_NODE_TAGS['classic_vco']}.saw",
+                f"{node}.audio",
+            ),
             runtime,
         )
         _patch_link_created(
             "test",
-            (f"{node}.low", f"{MIXER_NODE}.input_4"),
+            (
+                f"{node}.low",
+                f"{INSTANCE_NODE_TAGS['polarizing_mixer']}.input_1",
+            ),
+            runtime,
+        )
+        _patch_link_created(
+            "test",
+            (
+                f"{INSTANCE_NODE_TAGS['polarizing_mixer']}.output",
+                f"{OUTPUT_NODE}.mono",
+            ),
             runtime,
         )
         assert any(
             cable.source.module_id == "state_variable_filter"
             for cable in runtime.patch.cables
         )
+        assert runtime.patch.output_taps[0].source.module_id == (
+            "polarizing_mixer"
+        )
+        assert dpg.get_value(RACK_OUTLINE_STATUS) == "4 PANELS  ·  3 CABLES"
+        outline = _descendant_labels(RACK_OUTLINE_BODY)
+        assert "UNPATCHED" not in outline
+        assert any("POLARIZING MIXER" in label for label in outline)
+        assert any("STATE VARIABLE FILTER" in label for label in outline)
+        assert any("CLASSIC VCO" in label for label in outline)
         assert dpg.get_item_configuration(f"{node}.audio")["show"] is True
         assert dpg.get_item_configuration(f"{node}.low")["show"] is True
         rendered = runtime.patch.render(64, 48_000.0)
@@ -317,6 +414,13 @@ def test_module_selector_search_filters_names_categories_and_descriptions() -> N
         assert dpg.get_item_configuration(
             "noodler.module_selector.item.melody_brain"
         )["show"] is False
+        assert dpg.get_item_configuration(
+            _module_library_category_tag("Filters")
+        )["show"] is True
+        assert dpg.get_value(_module_library_category_tag("Filters")) is True
+        assert dpg.get_item_configuration(
+            _module_library_category_tag("Musical Brains")
+        )["show"] is False
         assert dpg.get_value(MODULE_SELECTOR_STATUS) == "2 MODULES"
     finally:
         dpg.destroy_context()
@@ -340,10 +444,35 @@ def test_generated_module_controls_update_validated_parameters() -> None:
         dpg.destroy_context()
 
 
+def test_generated_float_parameters_are_packed_three_across() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        existing = set(KNOB_INTERACTION.bindings)
+
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+
+        knobs = [
+            knob
+            for knob in KNOB_INTERACTION.bindings
+            if knob not in existing
+        ]
+        row_parents = [
+            dpg.get_item_parent(dpg.get_item_parent(knob))
+            for knob in knobs
+        ]
+        assert len(knobs) == 5
+        assert len(set(row_parents[:3])) == 1
+        assert len(set(row_parents[3:])) == 1
+        assert len(set(row_parents)) == 2
+    finally:
+        dpg.destroy_context()
+
+
 def test_patch_bays_start_with_only_live_signal_flow_visible() -> None:
     dpg.create_context()
     try:
-        build_ui()
+        build_ui(starter_patch=True)
 
         assert dpg.get_value(f"{VCO_NODE}.patch_bay.status") == (
             "SIGNAL PATH  ·  3 IN  →  2 OUT"
@@ -542,7 +671,7 @@ def test_module_drag_origin_is_never_promoted_to_canvas_pan(
 def test_module_title_collapse_preserves_graph_and_attribute_visibility() -> None:
     dpg.create_context()
     try:
-        runtime = build_ui()
+        runtime = build_ui(starter_patch=True)
         attributes = _node_attributes(VCO_NODE)
         visibility = {
             attribute: dpg.get_item_configuration(attribute)["show"]
@@ -586,7 +715,7 @@ def test_save_patch_dialog_writes_current_graph_controls_and_rack_view(
 ) -> None:
     dpg.create_context()
     try:
-        runtime = build_ui()
+        runtime = build_ui(starter_patch=True)
         _set_module_collapsed(WOGGLE_NODE, True, runtime)
         dpg.set_item_pos(VCO_NODE, [444.0, 666.0])
         destination = tmp_path / "Moon Garden"
@@ -641,6 +770,7 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
     try:
         build_ui()
         original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+        assert dpg.get_global_font_scale() == pytest.approx(1.0)
 
         _set_rack_zoom(1.12, screen_anchor=(0.0, 0.0))
 
@@ -649,6 +779,8 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
             node_x, node_y = dpg.get_item_pos(node)
             assert node_x == pytest.approx(original_x * 1.12, abs=1.0)
             assert node_y == pytest.approx(original_y * 1.12, abs=1.0)
+        assert dpg.get_global_font_scale() == pytest.approx(1.0)
+        assert dpg.get_item_font(OUTPUT_NODE) == _rack_font_tag(1.12)
         assert dpg.get_item_configuration(ZOOM_RESET_BUTTON)["label"] == "112%"
 
         zoom_in = dpg.get_item_configuration(ZOOM_IN_BUTTON)
@@ -683,7 +815,7 @@ def test_rail_layout_makes_room_without_changing_signal_order() -> None:
 def test_node_editor_repatches_the_live_graph() -> None:
     dpg.create_context()
     try:
-        runtime = build_ui()
+        runtime = build_ui(starter_patch=True)
         editor = dpg.get_item_configuration(RACK)
         link = editor["callback"]
         delink = editor["delink_callback"]
@@ -769,7 +901,7 @@ def test_node_editor_repatches_the_live_graph() -> None:
 def test_unplug_all_button_clears_visual_and_executable_cables() -> None:
     dpg.create_context()
     try:
-        runtime = build_ui()
+        runtime = build_ui(starter_patch=True)
         initial_count = len(runtime.patch.cables) + len(runtime.patch.output_taps)
         button = dpg.get_item_configuration(UNPLUG_ALL_BUTTON)
 

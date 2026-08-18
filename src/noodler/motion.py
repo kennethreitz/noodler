@@ -48,7 +48,7 @@ on a 60 Hz display, so the rack does not become slower — only consistent.
 ZOOM_HALF_LIFE = 0.05
 """Camera zoom. The viewport should feel attached to the pointer."""
 
-PAN_GLIDE_HALF_LIFE = 0.32
+PAN_GLIDE_HALF_LIFE = 0.25
 """Momentum left behind by a released canvas flick."""
 
 METER_RELEASE_HALF_LIFE = 0.28
@@ -200,7 +200,7 @@ class Glide:
 
     velocity: float = 0.0
     half_life: float = PAN_GLIDE_HALF_LIFE
-    minimum_speed: float = 8.0
+    minimum_speed: float = 20.0
 
     @property
     def moving(self) -> bool:

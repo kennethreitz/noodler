@@ -36,11 +36,18 @@ eventually requires one, but it is not part of the initial architecture.
 
 ## Rack hierarchy
 
-The default canvas uses two visual lanes. `Modulation / Control` contains
+The canvas uses two visual lanes. `Modulation / Control` contains
 function generators, LFOs, random voltage, clocks, and PyTheory sources. Their
-cables generally descend into parameters on the `Audio Path`, whose default
-left-to-right flow is VCO, mixer, low-pass gate, stereo reverb, and system
-output.
+cables generally descend into parameters on the `Audio Path`, whose modules
+read naturally from left to right toward system output.
+
+The default workspace is split into a persistent outline/library sidebar on
+the left and a freeform patch rack on the right. The outline is a live tree of
+the current rack: it traces signal flow upstream from System Output and groups
+anything not yet connected under `Unpatched`. The searchable module library
+sits beneath that current-rack tree. The rack itself is intentionally quiet:
+the executable graph has no modules, cables, or output taps, and only the
+permanent System Output panel appears on the audio rail.
 
 These lanes are now magnetic rails rather than initial-position suggestions.
 Dragging a module leaves it free to travel horizontally, while a spring pulls
@@ -62,14 +69,20 @@ outputs. Adding or removing a cable refreshes the compact view from the real
 The rack-level `Unplug All` control removes every module cable and system-output
 tap in one audio-safe graph edit, then clears the corresponding visual links.
 
-`Add Module` opens a searchable browser generated from the built-in provider
-manifest. Its 19 entries are grouped by musical role rather than presented as
-an engineering inventory. Selecting one constructs a real DSP module, assigns
-a unique instance ID, generates validated controls from its Pydantic parameter
-model, and places it on the appropriate semantic rail. The new module then
-participates in patching, folding, camera movement, audio rendering, and patch
-saving exactly like the init modules; repeated selections create numbered
-instances instead of replacing an existing voice.
+The current-rack tree is rebuilt from the real `PatchGraph` after every module
+or cable topology edit, so it cannot become a decorative outline that disagrees
+with the sounding patch. Beneath it, the searchable library is generated from
+the built-in provider manifest. Its 19 entries are first grouped into the
+musical workflow shelves `Compose & Modulate`, `Generate`, `Shape & Control`,
+and `Mix & Space`, then into their provider categories. `Add Module` and
+Command-K focus this catalog's search field rather than opening a second
+surface. Selecting an entry constructs a real DSP module, assigns a unique
+instance ID, generates validated controls from its Pydantic parameter model,
+and places it on the appropriate semantic rail while leaving the catalog
+available for the next addition. The new module then participates in patching,
+folding, camera movement, audio rendering, and patch saving exactly like any
+other rack module; repeated selections create numbered instances instead of
+replacing an existing voice.
 
 Dragging empty rack background treats every module as one rack view,
 preserving the lane hierarchy while moving around the canvas. The gesture is
@@ -84,7 +97,18 @@ and wheel input queue a smooth, pointer-anchored zoom. Visible minus,
 percentage/reset, and
 plus controls provide the same camera operation without a gesture. The rack
 camera scales node placement, typography, and rotary-control hit regions
-together, while the bottom-right minimap retains a complete overview.
+together, while the bottom-right minimap retains a complete overview. Rack
+fonts are bound per module, so the toolbar, zoom selector, current-rack tree,
+and module library remain at a stable interface scale while the canvas moves.
+
+Open modules favor horizontal control density over tall inspector-like stacks.
+Rotary controls are slightly smaller, generated numeric parameters pack three
+across, redundant faceplate descriptions live in tooltips, and tighter node
+padding preserves the instrument character without wasting vertical space.
+Every removable module also carries a close target at the right edge of its
+colored title. The same removal action appears beside the module in the live
+rack tree; both paths delete the executable module and every connected cable
+or output tap. System Output remains permanent and has no close target.
 
 Double-clicking a module's colored title bar folds every control and jack down
 to a narrow, colored book spine with a rotated title. This is visual state
@@ -211,14 +235,14 @@ envelopes, dynamics, delay, and reverb implement the numeric block protocol.
 The graph-level library test exercises a complete alternate voice from Harmony
 Brain through arpeggiation, oscillator, filter, ADSR/VCA, and echo.
 
-The next UI boundary is a module browser that creates instances through this
-factory. The current rack builders remain deliberately bespoke for the mounted
-init patch, rather than presenting twelve permanently mounted unused panels or
-a cosmetic catalog that cannot create graph modules.
+The module library creates instances directly through this factory. Generated
+Pydantic-backed panels cover the complete catalog, while bespoke panels remain
+available to the composed reference patch. The default rack consequently stays
+empty without reducing the executable module library to a cosmetic catalog.
 
-## Current audible slice
+## Composed reference patch
 
-The app now boots with a visible and executable patch:
+The optional Hirajoshi Garden starter exercises a visible, executable patch:
 
 ```text
 Function Utility Ch. 1 -> VCO morph CV
@@ -242,7 +266,7 @@ Output node owns master level and explicit Start/Stop controls.
 
 ## Vertical-slice follow-ups
 
-The executable init patch and alternate library voice now exercise the central
+The composed reference patch and alternate library voice exercise the central
 musical-to-audio path:
 
 ```text
@@ -253,23 +277,20 @@ LFO -------------------------------> Filter cutoff
                                          Filter -> Output
 ```
 
-The remaining product slice should support:
+The remaining product slice should improve:
 
-- creating, moving, and deleting modules;
-- connecting typed ports and removing cables;
 - editing parameters with immediate audible feedback;
 - starting and stopping transport;
-- a basic scope or level meter; and
-- saving and reopening the patch as versioned data.
+- expanding the current output meter into scopes; and
+- reopening saved patch documents.
 
-The module library has expanded behind the provider boundary. Before arbitrary
-catalog modules are exposed in the rack, the application still needs a module
-browser, versioned patch persistence, and continuous small-buffer testing while
-the UI is being manipulated.
+The module library, browser, executable cable editing, and versioned patch
+capture now meet on the same provider and graph boundaries. Continuous
+small-buffer testing while the UI is being manipulated remains necessary.
 
 ## Open decisions
 
-- The external-provider creation protocol and patch-file schema.
+- The external-provider creation protocol beyond the built-in factory.
 - The synchronization strategy between control state and the callback.
 - Packaging, signing, notarization, and whether Mac App Store sandboxing is a
   goal.

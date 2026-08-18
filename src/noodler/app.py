@@ -9,7 +9,7 @@ from pathlib import Path
 import dearpygui.dearpygui as dpg
 from pydantic import BaseModel
 
-from .module_providers import PortDirection
+from .module_providers import ModuleManifest, PortDirection
 from .module_providers.builtin import (
     BUILTIN_PROVIDER_MANIFEST,
     FUNCTION_UTILITY_MANIFEST,
@@ -39,6 +39,17 @@ from .module_providers.builtin import (
 )
 from .engine import SystemAudioEngine
 from .macos_gestures import MacMagnifyMonitor
+from .motion import (
+    Glide,
+    KnobDrag,
+    MeterBallistics,
+    RAIL_HALF_LIFE,
+    Spring,
+    ZOOM_HALF_LIFE,
+    clamp_timestep,
+    pixel_spring,
+    unit_spring,
+)
 from .patch import (
     Cable,
     Endpoint,
@@ -106,11 +117,32 @@ ADD_MODULE_BUTTON = "noodler.add_module"
 MODULE_SELECTOR = "noodler.module_selector"
 MODULE_SELECTOR_SEARCH = "noodler.module_selector.search"
 MODULE_SELECTOR_STATUS = "noodler.module_selector.status"
+RACK_OUTLINE_BODY = "noodler.rack_outline.body"
+RACK_OUTLINE_STATUS = "noodler.rack_outline.status"
+MODULE_LIBRARY_SECTIONS = (
+    (
+        "COMPOSE & MODULATE",
+        ("Musical Brains", "Sequencers", "Random & Chaos"),
+    ),
+    (
+        "GENERATE",
+        ("Sources", "Oscillators", "Noise & Random"),
+    ),
+    (
+        "SHAPE & CONTROL",
+        ("Filters", "Envelopes & Dynamics", "Dynamics"),
+    ),
+    (
+        "MIX & SPACE",
+        ("Utilities", "Effects"),
+    ),
+)
 ZOOM_OUT_BUTTON = "noodler.zoom_out"
 ZOOM_RESET_BUTTON = "noodler.zoom_reset"
 ZOOM_IN_BUTTON = "noodler.zoom_in"
 OUTPUT_METER = "noodler.output_meter"
 INPUT_HANDLERS = "noodler.input_handlers"
+MODULE_CLOSE_LAYER = "noodler.module_close_layer"
 VCO_MIXER_LINK = "noodler.link.vco_mixer"
 UTILITY_VCO_LINK = "noodler.link.utility_vco"
 WOGGLE_VCO_LINK = "noodler.link.woggle_vco"
@@ -176,14 +208,20 @@ SIGNAL_COLORS = {
     "musical": (163, 126, 205, 255),
 }
 DEFAULT_CONTROL_STATUS = (
-    "DRAG JACKS TO PATCH  ·  SELECT CABLE + DELETE TO UNPATCH  ·  "
-    "DRAG BACKGROUND = PAN  ·  PINCH / SCROLL = ZOOM  ·  "
-    "DOUBLE-CLICK TITLE = FOLD  ·  DRAG KNOBS ↑ ↓  ·  SHIFT = FINE"
+    "DRAG JACKS TO PATCH  ·  SELECT + DELETE TO UNPATCH OR REMOVE  ·  "
+    "⌘K = ADD MODULE  ·  F = FRAME ALL  ·  FLICK BACKGROUND = PAN  ·  "
+    "PINCH / SCROLL = ZOOM  ·  DOUBLE-CLICK TITLE = FOLD  ·  "
+    "DOUBLE-CLICK KNOB = RESET  ·  SHIFT = FINE"
 )
 KNOB_HINT_DRAG_LIMIT = 3
 MIN_RACK_ZOOM = 0.55
 MAX_RACK_ZOOM = 1.65
 RACK_ZOOM_STEP = 1.12
+FRAME_MARGIN = 56.0
+"""Breathing room left around the rack when the camera frames it."""
+MODULE_KNOB_SCALE = 0.84
+RACK_FONT_PREFIX = "noodler.font.rack"
+RACK_FONT_SIZES = tuple(range(9, 27))
 
 UTILITY_PORT_ORDER = (
     "channel_1",
@@ -216,15 +254,15 @@ UTILITY_PORT_ORDER = (
 class AppRuntime:
     """Live modules, patch graph, and audio device owned by the app."""
 
-    vco: ComplexVCO
-    mixer: PolarizingMixer
-    utility: FunctionUtility
-    wogglebug: Wogglebug
-    scale_generator: ScaleGenerator
-    low_pass_gate: LowPassGate
-    reverb: Reverb
     patch: PatchGraph
     audio: SystemAudioEngine
+    vco: ComplexVCO | None = None
+    mixer: PolarizingMixer | None = None
+    utility: FunctionUtility | None = None
+    wogglebug: Wogglebug | None = None
+    scale_generator: ScaleGenerator | None = None
+    low_pass_gate: LowPassGate | None = None
+    reverb: Reverb | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +277,8 @@ class KnobBinding:
     formatter: Callable[[float], str]
     logarithmic: bool = False
     size: int = 62
+    default_value: float | None = None
+    """The value the module was built with, restored by double-clicking."""
 
 
 @dataclass(slots=True)
@@ -248,6 +288,7 @@ class KnobInteraction:
     bindings: dict[int | str, KnobBinding] = field(default_factory=dict)
     active_knob: int | str | None = None
     drag_position: float = 0.0
+    drag: KnobDrag = field(default_factory=KnobDrag)
     last_mouse_y: float = 0.0
     tooltip_tags: list[int | str] = field(default_factory=list)
     completed_drags: int = 0
@@ -256,6 +297,7 @@ class KnobInteraction:
         self.bindings.clear()
         self.active_knob = None
         self.drag_position = 0.0
+        self.drag = KnobDrag()
         self.last_mouse_y = 0.0
         self.tooltip_tags.clear()
         self.completed_drags = 0
@@ -279,6 +321,17 @@ class CanvasInteraction:
     zoom_anchor: tuple[float, float] | None = None
     pending_magnification: float = 0.0
     rail_y: dict[str, float] = field(default_factory=dict)
+    zoom_spring: Spring = field(
+        default_factory=lambda: unit_spring(1.0, ZOOM_HALF_LIFE)
+    )
+    glide_x: Glide = field(default_factory=Glide)
+    glide_y: Glide = field(default_factory=Glide)
+    pan_velocity_x: float = 0.0
+    pan_velocity_y: float = 0.0
+    recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
+    recenter_y: Spring = field(default_factory=lambda: pixel_spring(0.0))
+    translate_residue_x: float = 0.0
+    translate_residue_y: float = 0.0
 
     def reset(self) -> None:
         self.panning = False
@@ -292,6 +345,19 @@ class CanvasInteraction:
         self.zoom_anchor = None
         self.pending_magnification = 0.0
         self.rail_y.clear()
+        self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
+        self.stop_glide()
+
+    def stop_glide(self) -> None:
+        """Cancel camera motion, as any fresh press on the rack should."""
+        self.glide_x.stop()
+        self.glide_y.stop()
+        self.pan_velocity_x = 0.0
+        self.pan_velocity_y = 0.0
+        self.recenter_x.snap(0.0)
+        self.recenter_y.snap(0.0)
+        self.translate_residue_x = 0.0
+        self.translate_residue_y = 0.0
 
     def arm_pan(self, screen_position: tuple[float, float]) -> None:
         self.pan_candidate = True
@@ -308,6 +374,24 @@ class CanvasInteraction:
 
 
 CANVAS_INTERACTION = CanvasInteraction()
+
+RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
+"""One critically damped spring pair per rack node, in rack coordinates."""
+
+METER_BALLISTICS = MeterBallistics()
+
+
+def _rail_springs(
+    node: int | str,
+    x: float,
+    y: float,
+) -> tuple[Spring, Spring]:
+    """Return the spring pair carrying one module toward its rail slot."""
+    springs = RAIL_SPRINGS.get(node)
+    if springs is None:
+        springs = (pixel_spring(x, RAIL_HALF_LIFE), pixel_spring(y, RAIL_HALF_LIFE))
+        RAIL_SPRINGS[node] = springs
+    return springs
 
 
 @dataclass(slots=True)
@@ -330,24 +414,28 @@ class ModuleCollapseInteraction:
 MODULE_COLLAPSE = ModuleCollapseInteraction()
 
 
-def _reset_rack_registry() -> None:
-    """Return mutable node registries to the built-in init rack."""
-    RACK_NODES[:] = BASE_RACK_NODES
+def _reset_rack_registry(*, starter_patch: bool) -> None:
+    """Return mutable node registries to the requested initial rack."""
+    RACK_NODES[:] = BASE_RACK_NODES if starter_patch else (OUTPUT_NODE,)
     INSTANCE_NODE_TAGS.clear()
-    INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
+    if starter_patch:
+        INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
     VIEW_NODE_TAGS.clear()
     VIEW_NODE_TAGS.update(INSTANCE_NODE_TAGS)
     VIEW_NODE_TAGS["system_output"] = OUTPUT_NODE
-    RACK_RAILS[CONTROL_RAIL][:] = [FUNCTION_NODE, WOGGLE_NODE, SCALE_NODE]
-    RACK_RAILS[AUDIO_RAIL][:] = [
-        VCO_NODE,
-        MIXER_NODE,
-        LPG_NODE,
-        REVERB_NODE,
-        OUTPUT_NODE,
-    ]
+    RACK_RAILS[CONTROL_RAIL][:] = (
+        [FUNCTION_NODE, WOGGLE_NODE, SCALE_NODE] if starter_patch else []
+    )
+    RACK_RAILS[AUDIO_RAIL][:] = (
+        [VCO_NODE, MIXER_NODE, LPG_NODE, REVERB_NODE, OUTPUT_NODE]
+        if starter_patch
+        else [OUTPUT_NODE]
+    )
     MODULE_ACCENTS.clear()
-    MODULE_ACCENTS.update(BASE_MODULE_ACCENTS)
+    if starter_patch:
+        MODULE_ACCENTS.update(BASE_MODULE_ACCENTS)
+    else:
+        MODULE_ACCENTS[OUTPUT_NODE] = OUTPUT_ACCENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +471,14 @@ def _configure_font() -> None:
         return
     with dpg.font_registry(tag=FONT_REGISTRY):
         dpg.add_font(str(SYSTEM_MONO_FONT), 16, tag=APP_FONT)
+        for size in RACK_FONT_SIZES:
+            if size == 16:
+                continue
+            dpg.add_font(
+                str(SYSTEM_MONO_FONT),
+                size,
+                tag=f"{RACK_FONT_PREFIX}.{size}",
+            )
     dpg.bind_font(APP_FONT)
 
 
@@ -459,8 +555,8 @@ def _configure_theme() -> None:
                 dpg.add_theme_color(theme_color, color)
             dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 7)
             dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 8)
-            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 5)
-            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 9, 7)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 7, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
         with dpg.theme_component(dpg.mvNode):
             for node_color, color in (
                 (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255)),
@@ -492,6 +588,12 @@ def _configure_theme() -> None:
                     value,
                     category=dpg.mvThemeCat_Nodes,
                 )
+            dpg.add_theme_style(
+                dpg.mvNodeStyleVar_NodePadding,
+                8,
+                5,
+                category=dpg.mvThemeCat_Nodes,
+            )
     _node_theme(UTILITY_THEME, UTILITY_ACCENT)
     _node_theme(VCO_THEME, VCO_ACCENT)
     _node_theme(MIXER_THEME, MIXER_ACCENT)
@@ -717,6 +819,7 @@ def _patch_link_created(
                 source.signal,
             )
             _refresh_patch_bays(runtime.patch)
+            _refresh_rack_outline(runtime)
             _set_patch_status(
                 f"PATCHED  {source.name.upper()}  →  {target.name.upper()}"
             )
@@ -745,6 +848,7 @@ def _patch_link_created(
             source.signal,
         )
         _refresh_patch_bays(runtime.patch)
+        _refresh_rack_outline(runtime)
         _set_patch_status(
             f"PATCHED  {source.name.upper()}  →  {target.name.upper()}"
         )
@@ -775,6 +879,7 @@ def _patch_link_deleted(
             raise PatchError("cable has no patch route")
         dpg.delete_item(link)
         _refresh_patch_bays(runtime.patch)
+        _refresh_rack_outline(runtime)
         _set_patch_status(f"UNPATCHED  {description.upper()}")
     except (PatchError, ValueError) as exc:
         _set_patch_status(f"CAN'T UNPATCH: {exc}", error=True)
@@ -804,6 +909,7 @@ def _unplug_all(
                 dpg.delete_item(item)
 
         _refresh_patch_bays(runtime.patch)
+        _refresh_rack_outline(runtime)
         noun = "CABLE" if removed == 1 else "CABLES"
         _set_patch_status(f"UNPLUGGED ALL  ·  {removed} {noun} REMOVED")
     except Exception as exc:
@@ -866,15 +972,26 @@ def _save_patch_dialog(
         _set_patch_status(f"SAVE ERROR: {exc}", error=True)
 
 
-def _refresh_ui(runtime: AppRuntime) -> None:
+def _decibels(level: float) -> str:
+    return "-∞" if level <= 0.00001 else f"{20.0 * math.log10(level):.0f}"
+
+
+def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
     """Copy inexpensive audio telemetry onto the UI thread."""
     if not dpg.does_item_exist(OUTPUT_METER):
         return
-    peak = min(max(runtime.audio.last_peak, 0.0), 1.0)
-    dpg.set_value(OUTPUT_METER, peak)
-    decibels = "-∞ dB" if peak <= 0.00001 else f"{20.0 * math.log10(peak):.0f} dB"
-    dpg.configure_item(OUTPUT_METER, overlay=decibels)
-    if dpg.does_item_exist(SCALE_NOTE_STATUS):
+    # The engine reports a per-block peak, which flickers when drawn raw.
+    # Peak-programme ballistics rise instantly and fall on a known slope.
+    level = min(1.0, METER_BALLISTICS.advance(runtime.audio.last_peak, dt))
+    dpg.set_value(OUTPUT_METER, level)
+    dpg.configure_item(
+        OUTPUT_METER,
+        overlay=f"{_decibels(level)} dB  ·  PK {_decibels(METER_BALLISTICS.peak)}",
+    )
+    if (
+        runtime.scale_generator is not None
+        and dpg.does_item_exist(SCALE_NOTE_STATUS)
+    ):
         generator = runtime.scale_generator
         dpg.set_value(
             SCALE_NOTE_STATUS,
@@ -889,10 +1006,17 @@ def _refresh_frame(
     _app_data: object,
     runtime: AppRuntime,
 ) -> None:
+    # One clamped timestep drives every animation, so the rack feels the same
+    # on a 60 Hz monitor as on a 120 Hz panel, and a frame hitch resumes
+    # motion rather than teleporting it.
+    dt = clamp_timestep(dpg.get_delta_time())
     _consume_macos_magnification()
-    _settle_rack_zoom()
-    _settle_rack_rails()
-    _refresh_ui(runtime)
+    _glide_rack(dt)
+    _settle_recenter(dt)
+    _settle_rack_zoom(dt)
+    _settle_rack_rails(dt)
+    _refresh_ui(runtime, dt)
+    _refresh_module_close_buttons()
     dpg.set_frame_callback(
         dpg.get_frame_count() + 1,
         _refresh_frame,
@@ -1056,20 +1180,6 @@ def _knob_bounds(binding: KnobBinding) -> tuple[float, float]:
     )
 
 
-def _vertical_drag_position(
-    start_position: float,
-    delta_y: float,
-    binding: KnobBinding,
-    *,
-    fine: bool = False,
-) -> float:
-    """Map upward mouse movement to a higher knob position."""
-    minimum, maximum = _knob_bounds(binding)
-    travel = 180.0 * (10.0 if fine else 1.0)
-    position = start_position - delta_y * (maximum - minimum) / travel
-    return min(maximum, max(minimum, position))
-
-
 def _set_knob_value(
     _sender: str,
     position: float,
@@ -1152,6 +1262,20 @@ def _rack_zoom_anchor(
     )
 
 
+def _rack_font_tag(zoom: float) -> str:
+    """Choose a rack-only font without scaling the surrounding workspace."""
+    size = min(RACK_FONT_SIZES[-1], max(RACK_FONT_SIZES[0], round(16 * zoom)))
+    return APP_FONT if size == 16 else f"{RACK_FONT_PREFIX}.{size}"
+
+
+def _bind_rack_node_font(node: int | str, zoom: float | None = None) -> None:
+    if dpg.does_item_exist(node):
+        dpg.bind_item_font(
+            node,
+            _rack_font_tag(CANVAS_INTERACTION.zoom if zoom is None else zoom),
+        )
+
+
 def _set_rack_zoom(
     requested_zoom: float,
     *,
@@ -1174,6 +1298,14 @@ def _set_rack_zoom(
             node,
             list(_zoomed_position(dpg.get_item_pos(node), anchor, ratio)),
         )
+        _bind_rack_node_font(node, new_zoom)
+    for spring_x, spring_y in RAIL_SPRINGS.values():
+        spring_x.value, spring_y.value = _zoomed_position(
+            (spring_x.value, spring_y.value), anchor, ratio
+        )
+        spring_x.target, spring_y.target = _zoomed_position(
+            (spring_x.target, spring_y.target), anchor, ratio
+        )
     for rail, rail_y in tuple(CANVAS_INTERACTION.rail_y.items()):
         CANVAS_INTERACTION.rail_y[rail] = _zoomed_position(
             (0.0, rail_y),
@@ -1188,7 +1320,6 @@ def _set_rack_zoom(
             )
 
     CANVAS_INTERACTION.zoom = new_zoom
-    dpg.set_global_font_scale(new_zoom)
     if dpg.does_item_exist(ZOOM_RESET_BUTTON):
         dpg.configure_item(ZOOM_RESET_BUTTON, label=f"{new_zoom:.0%}")
     _set_patch_status(
@@ -1228,20 +1359,23 @@ def _consume_macos_magnification() -> None:
     )
 
 
-def _settle_rack_zoom() -> None:
-    """Ease trackpad and wheel zoom while keeping the pointer anchored."""
+def _settle_rack_zoom(dt: float = 1.0 / 60.0) -> None:
+    """Spring trackpad and wheel zoom while keeping the pointer anchored."""
     interaction = CANVAS_INTERACTION
-    remaining = interaction.zoom_target - interaction.zoom
-    if math.isclose(remaining, 0.0, abs_tol=0.001):
-        if not math.isclose(interaction.zoom, interaction.zoom_target):
-            target = interaction.zoom_target
-            anchor = interaction.zoom_anchor
-            _set_rack_zoom(target, screen_anchor=anchor)
-        return
+    spring = interaction.zoom_spring
+    spring.value = interaction.zoom
+    spring.retarget(interaction.zoom_target)
+    # _set_rack_zoom re-derives the target from the value it is handed, so the
+    # real destination and its anchor are restored after every step.
     target = interaction.zoom_target
     anchor = interaction.zoom_anchor
-    next_zoom = interaction.zoom + remaining * 0.3
-    _set_rack_zoom(next_zoom, screen_anchor=anchor)
+    if spring.settled:
+        if not math.isclose(interaction.zoom, target, abs_tol=1e-6):
+            _set_rack_zoom(target, screen_anchor=anchor)
+            interaction.zoom_target = target
+            interaction.zoom_anchor = anchor
+        return
+    _set_rack_zoom(spring.advance(dt), screen_anchor=anchor)
     interaction.zoom_target = target
     interaction.zoom_anchor = anchor
 
@@ -1280,6 +1414,137 @@ def _reset_rack_zoom(
     _user_data: object,
 ) -> None:
     _set_rack_zoom(1.0)
+
+
+def _rack_content_bounds() -> tuple[float, float, float, float] | None:
+    """Return the editor-local box containing every mounted module."""
+    boxes = []
+    for node in RACK_NODES:
+        if not dpg.does_item_exist(node):
+            continue
+        node_x, node_y = (float(value) for value in dpg.get_item_pos(node))
+        width, height = (
+            float(value) for value in dpg.get_item_rect_size(node)
+        )
+        boxes.append(
+            (node_x, node_y, node_x + max(width, 1.0), node_y + max(height, 1.0))
+        )
+    if not boxes:
+        return None
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
+
+
+def _frame_rack(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    _user_data: object = None,
+) -> None:
+    """Bring the whole rack back into view, centred and fully visible.
+
+    Momentum makes it easy to send the rack somewhere the window is not, so
+    the camera needs a way home. The move is sprung rather than instant, which
+    also shows the user which direction their rack came back from.
+    """
+    if _keyboard_is_captured() or not dpg.does_item_exist(RACK):
+        return
+    bounds = _rack_content_bounds()
+    if bounds is None:
+        _set_patch_status("NOTHING TO FRAME  ·  THE RACK IS EMPTY")
+        return
+
+    interaction = CANVAS_INTERACTION
+    minimum_x, minimum_y, maximum_x, maximum_y = bounds
+    view_width, view_height = (
+        float(value) for value in dpg.get_item_rect_size(RACK)
+    )
+    content_width = max(1.0, maximum_x - minimum_x)
+    content_height = max(1.0, maximum_y - minimum_y)
+
+    if view_width > 1.0 and view_height > 1.0:
+        fit = min(
+            (view_width - FRAME_MARGIN * 2.0) / content_width,
+            (view_height - FRAME_MARGIN * 2.0) / content_height,
+        )
+        _queue_rack_zoom(interaction.zoom * max(0.05, fit), screen_anchor=None)
+        target_x = view_width * 0.5
+        target_y = view_height * 0.5
+    else:
+        # Without a laid-out viewport, centring is all that can be honoured.
+        target_x = (minimum_x + maximum_x) * 0.5
+        target_y = (minimum_y + maximum_y) * 0.5
+
+    interaction.recenter_x.snap(0.0)
+    interaction.recenter_y.snap(0.0)
+    interaction.recenter_x.retarget(target_x - (minimum_x + maximum_x) * 0.5)
+    interaction.recenter_y.retarget(target_y - (minimum_y + maximum_y) * 0.5)
+    _set_patch_status("FRAMED THE RACK  ·  PRESS F ANY TIME")
+
+
+def _reveal_node(node: int | str) -> bool:
+    """Bring one module into view if it arrived outside the window.
+
+    A module added while the rack is panned away lands somewhere the user is
+    not looking, which reads as nothing having happened. The camera moves the
+    shortest distance that makes the whole module visible, rather than
+    re-framing everything and losing the user's place.
+    """
+    if not dpg.does_item_exist(RACK) or not dpg.does_item_exist(node):
+        return False
+    view_width, view_height = (
+        float(value) for value in dpg.get_item_rect_size(RACK)
+    )
+    if view_width <= 1.0 or view_height <= 1.0:
+        return False
+
+    node_x, node_y = (float(value) for value in dpg.get_item_pos(node))
+    width, height = (float(value) for value in dpg.get_item_rect_size(node))
+    width = max(width, 1.0)
+    height = max(height, 1.0)
+
+    def _offset(near: float, far: float, extent: float) -> float:
+        if near < FRAME_MARGIN:
+            return FRAME_MARGIN - near
+        if far > extent - FRAME_MARGIN:
+            return max(
+                FRAME_MARGIN - near,
+                (extent - FRAME_MARGIN) - far,
+            )
+        return 0.0
+
+    delta_x = _offset(node_x, node_x + width, view_width)
+    delta_y = _offset(node_y, node_y + height, view_height)
+    if not delta_x and not delta_y:
+        return False
+
+    interaction = CANVAS_INTERACTION
+    interaction.recenter_x.snap(0.0)
+    interaction.recenter_y.snap(0.0)
+    interaction.recenter_x.retarget(delta_x)
+    interaction.recenter_y.retarget(delta_y)
+    return True
+
+
+def _settle_recenter(dt: float = 1.0 / 60.0) -> None:
+    """Advance a framing move, translating the rack by the difference."""
+    interaction = CANVAS_INTERACTION
+    spring_x = interaction.recenter_x
+    spring_y = interaction.recenter_y
+    if spring_x.settled and spring_y.settled:
+        return
+    previous_x, previous_y = spring_x.value, spring_y.value
+    _translate_rack(
+        spring_x.advance(dt) - previous_x,
+        spring_y.advance(dt) - previous_y,
+    )
+    if spring_x.settled and spring_y.settled:
+        # The offset has been fully applied; start the next move from zero.
+        spring_x.snap(0.0)
+        spring_y.snap(0.0)
 
 
 def _rail_x_targets(
@@ -1330,12 +1595,11 @@ def _dragged_rack_node() -> int | str | None:
     return None
 
 
-def _settle_rack_rails() -> None:
+def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
     """Spring modules onto semantic lanes and prevent horizontal overlap."""
     if CANVAS_INTERACTION.panning or not CANVAS_INTERACTION.rail_y:
         return
     active_node = _dragged_rack_node()
-    easing = 0.24
     gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
     for rail, nodes in RACK_RAILS.items():
         available = tuple(node for node in nodes if dpg.does_item_exist(node))
@@ -1358,17 +1622,28 @@ def _settle_rack_rails() -> None:
         target_y = CANVAS_INTERACTION.rail_y[rail]
         for node, current_x, target_x in zip(available, positions, targets):
             current_y = float(dpg.get_item_pos(node)[1])
-            next_x = (
-                current_x
-                if node == active_node
-                else current_x + (target_x - current_x) * easing
-            )
-            next_y = current_y + (target_y - current_y) * easing
-            if abs(next_x - target_x) < 0.75:
-                next_x = target_x
-            if abs(next_y - target_y) < 0.75:
-                next_y = target_y
-            if next_x != current_x or next_y != current_y:
+            spring_x, spring_y = _rail_springs(node, current_x, current_y)
+            if node == active_node:
+                # The pointer owns a dragged module; the spring only follows.
+                spring_x.snap(current_x)
+                spring_y.snap(current_y)
+                continue
+            # Dear PyGui stores node positions as integers, so the spring keeps
+            # the sub-pixel truth and the item is only its rendering. Re-syncing
+            # from the item every frame would accumulate truncation error and
+            # make settling depend on how many frames it took. A difference of
+            # more than a pixel means something else moved the module.
+            if abs(spring_x.value - current_x) > 1.0:
+                spring_x.snap(current_x)
+            if abs(spring_y.value - current_y) > 1.0:
+                spring_y.snap(current_y)
+            spring_x.retarget(target_x)
+            spring_y.retarget(target_y)
+            next_x = spring_x.advance(dt)
+            next_y = spring_y.advance(dt)
+            if round(next_x) != round(current_x) or round(next_y) != round(
+                current_y
+            ):
                 dpg.set_item_pos(node, [next_x, next_y])
 
 
@@ -1470,12 +1745,106 @@ def _sync_collapsed_link_visibility() -> None:
         dpg.configure_item(link, show=not hidden)
 
 
+def _module_title_height() -> float:
+    return max(24.0, min(44.0, 32.0 * CANVAS_INTERACTION.zoom))
+
+
+def _module_close_bounds(
+    node: int | str,
+) -> tuple[float, float, float, float] | None:
+    """Return the screen-space close target at a module title's right edge."""
+    if (
+        node == OUTPUT_NODE
+        or MODULE_COLLAPSE.is_collapsed(node)
+        or not dpg.does_item_exist(node)
+    ):
+        return None
+    try:
+        minimum_x, minimum_y = dpg.get_item_rect_min(node)
+        maximum_x, maximum_y = dpg.get_item_rect_max(node)
+    except (KeyError, SystemError):
+        return None
+    title_height = min(maximum_y - minimum_y, _module_title_height())
+    size = max(14.0, min(20.0, title_height - 8.0))
+    right = maximum_x - 5.0
+    left = right - size
+    top = minimum_y + max(3.0, (title_height - size) * 0.5)
+    bottom = top + size
+    try:
+        rack_left, rack_top = dpg.get_item_rect_min(RACK)
+        rack_right, rack_bottom = dpg.get_item_rect_max(RACK)
+    except (KeyError, SystemError):
+        return None
+    if (
+        left < rack_left
+        or top < rack_top
+        or right > rack_right
+        or bottom > rack_bottom
+    ):
+        return None
+    return (left, top, right, bottom)
+
+
+def _module_close_at(
+    screen_position: tuple[float, float],
+) -> int | str | None:
+    mouse_x, mouse_y = screen_position
+    for node in reversed(RACK_NODES):
+        bounds = _module_close_bounds(node)
+        if bounds is None:
+            continue
+        left, top, right, bottom = bounds
+        if left <= mouse_x <= right and top <= mouse_y <= bottom:
+            return node
+    return None
+
+
+def _refresh_module_close_buttons() -> None:
+    """Draw title-bar close affordances without changing node contents."""
+    if not dpg.does_item_exist(MODULE_CLOSE_LAYER):
+        return
+    dpg.delete_item(MODULE_CLOSE_LAYER, children_only=True)
+    mouse_position = tuple(dpg.get_mouse_pos(local=False))
+    hovered_node = _module_close_at(mouse_position)
+    for node in RACK_NODES:
+        bounds = _module_close_bounds(node)
+        if bounds is None:
+            continue
+        left, top, right, bottom = bounds
+        hovered = node == hovered_node
+        dpg.draw_rectangle(
+            (left, top),
+            (right, bottom),
+            parent=MODULE_CLOSE_LAYER,
+            color=(255, 241, 226, 155 if not hovered else 255),
+            fill=(30, 24, 22, 105) if not hovered else OUTPUT_ACCENT,
+            rounding=4.0,
+            thickness=1.0,
+        )
+        inset = max(4.0, (right - left) * 0.28)
+        line_color = (255, 246, 232, 235)
+        dpg.draw_line(
+            (left + inset, top + inset),
+            (right - inset, bottom - inset),
+            parent=MODULE_CLOSE_LAYER,
+            color=line_color,
+            thickness=1.7,
+        )
+        dpg.draw_line(
+            (right - inset, top + inset),
+            (left + inset, bottom - inset),
+            parent=MODULE_CLOSE_LAYER,
+            color=line_color,
+            thickness=1.7,
+        )
+
+
 def _module_title_at(
     screen_position: tuple[float, float],
 ) -> int | str | None:
     """Find the top title-bar strip under one screen-space point."""
     mouse_x, mouse_y = screen_position
-    title_height = max(24.0, min(44.0, 32.0 * CANVAS_INTERACTION.zoom))
+    title_height = _module_title_height()
     for node in reversed(RACK_NODES):
         if not dpg.does_item_exist(node):
             continue
@@ -1531,12 +1900,46 @@ def _set_module_collapsed(
     _set_patch_status(f"OPENED  {label}")
 
 
+def _reset_knob_to_default(knob: int | str, binding: KnobBinding) -> bool:
+    """Restore the value a control was built with, as a panel reset does."""
+    if binding.default_value is None:
+        return False
+    position = _control_position(
+        binding.default_value,
+        binding.minimum,
+        binding.maximum,
+        binding.logarithmic,
+    )
+    dpg.set_value(knob, position)
+    _set_knob_value(str(knob), position, binding)
+    _set_patch_status(
+        f"RESET  {binding.label.upper()}  "
+        f"{binding.formatter(binding.default_value)}"
+    )
+    return True
+
+
+def _hovered_knob() -> tuple[int | str, KnobBinding] | None:
+    """Return the topmost rotary control currently under the pointer."""
+    for knob, binding in reversed(tuple(KNOB_INTERACTION.bindings.items())):
+        if dpg.does_item_exist(knob) and dpg.is_item_hovered(knob):
+            return knob, binding
+    return None
+
+
 def _toggle_module_from_title(
     _sender: int | str,
     _app_data: object,
     runtime: AppRuntime,
 ) -> None:
-    """Fold the module whose title bar received a left double-click."""
+    """Resolve a left double-click on the rack.
+
+    A double-click over a control restores its default; over a module title it
+    folds the module down to its spine.
+    """
+    hovered = _hovered_knob()
+    if hovered is not None and _reset_knob_to_default(*hovered):
+        return
     node = _module_title_at(tuple(dpg.get_mouse_pos(local=False)))
     if node is None:
         return
@@ -1557,32 +1960,108 @@ def _begin_canvas_pan(
         dpg.set_value(CONTROL_STATUS, "PANNING  ·  RELEASE TO PLACE VIEW")
 
 
+def _translate_rack(delta_x: float, delta_y: float) -> None:
+    """Move every module and every rail by one screen-space offset.
+
+    Node positions are integers, so a sprung or gliding camera would lose the
+    fraction of a pixel it asked for on every frame, on every module. The
+    remainder is carried instead, and only whole pixels are ever written.
+    """
+    interaction = CANVAS_INTERACTION
+    requested_x = delta_x + interaction.translate_residue_x
+    requested_y = delta_y + interaction.translate_residue_y
+    delta_x = float(math.trunc(requested_x))
+    delta_y = float(math.trunc(requested_y))
+    interaction.translate_residue_x = requested_x - delta_x
+    interaction.translate_residue_y = requested_y - delta_y
+    if not delta_x and not delta_y:
+        return
+    for node in RACK_NODES:
+        if not dpg.does_item_exist(node):
+            continue
+        node_x, node_y = dpg.get_item_pos(node)
+        dpg.set_item_pos(node, [node_x + delta_x, node_y + delta_y])
+    for rail in tuple(CANVAS_INTERACTION.rail_y):
+        CANVAS_INTERACTION.rail_y[rail] += delta_y
+    # Carry the springs with the camera so they keep owning the sub-pixel
+    # position rather than re-syncing to a truncated one.
+    for spring_x, spring_y in RAIL_SPRINGS.values():
+        spring_x.value += delta_x
+        spring_x.target += delta_x
+        spring_y.value += delta_y
+        spring_y.target += delta_y
+
+
+def _track_pan_velocity(delta_x: float, delta_y: float) -> None:
+    """Smooth the pointer velocity that a released pan will carry away.
+
+    A single final frame is too noisy to become momentum on its own, so the
+    estimate is blended over the last few frames of the gesture.
+    """
+    interaction = CANVAS_INTERACTION
+    dt = clamp_timestep(dpg.get_delta_time())
+    if dt <= 0.0:
+        return
+    blend = 0.45
+    interaction.pan_velocity_x += (
+        delta_x / dt - interaction.pan_velocity_x
+    ) * blend
+    interaction.pan_velocity_y += (
+        delta_y / dt - interaction.pan_velocity_y
+    ) * blend
+
+
 def _pan_rack() -> None:
     interaction = CANVAS_INTERACTION
     _clear_rack_selection()
     mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
     delta_x = mouse_x - interaction.last_mouse_x
     delta_y = mouse_y - interaction.last_mouse_y
-    if delta_x or delta_y:
-        for node in RACK_NODES:
-            if not dpg.does_item_exist(node):
-                continue
-            node_x, node_y = dpg.get_item_pos(node)
-            dpg.set_item_pos(node, [node_x + delta_x, node_y + delta_y])
-        for rail in tuple(interaction.rail_y):
-            interaction.rail_y[rail] += delta_y
+    _translate_rack(delta_x, delta_y)
+    _track_pan_velocity(delta_x, delta_y)
     interaction.last_mouse_x = float(mouse_x)
     interaction.last_mouse_y = float(mouse_y)
+
+
+def _release_pan_momentum() -> None:
+    """Hand the pointer velocity measured during a pan to the glide."""
+    interaction = CANVAS_INTERACTION
+    interaction.glide_x.release(interaction.pan_velocity_x)
+    interaction.glide_y.release(interaction.pan_velocity_y)
+    interaction.pan_velocity_x = 0.0
+    interaction.pan_velocity_y = 0.0
+
+
+def _glide_rack(dt: float = 1.0 / 60.0) -> None:
+    """Carry a flicked rack to rest instead of stopping it dead."""
+    interaction = CANVAS_INTERACTION
+    if interaction.panning:
+        return
+    _translate_rack(
+        interaction.glide_x.advance(dt),
+        interaction.glide_y.advance(dt),
+    )
 
 
 def _begin_knob_drag(
     _sender: str,
     _app_data: object,
-    interaction: KnobInteraction,
+    interaction_data: KnobInteraction | tuple[KnobInteraction, AppRuntime],
 ) -> None:
+    runtime: AppRuntime | None = None
+    if isinstance(interaction_data, tuple):
+        interaction, runtime = interaction_data
+    else:
+        interaction = interaction_data
     if interaction.active_knob is not None:
         return
+    # Any press on the rack catches a gliding canvas, the way a finger does.
+    CANVAS_INTERACTION.stop_glide()
     mouse_position = tuple(dpg.get_mouse_pos(local=False))
+    close_node = _module_close_at(mouse_position)
+    if runtime is not None and close_node is not None:
+        _remove_module_node(close_node, runtime)
+        return
     if dpg.is_key_down(dpg.mvKey_Spacebar) and _mouse_is_over_rack():
         CANVAS_INTERACTION.arm_pan(mouse_position)
         _begin_canvas_pan(mouse_position)
@@ -1591,6 +2070,10 @@ def _begin_knob_drag(
         if dpg.does_item_exist(knob) and dpg.is_item_hovered(knob):
             interaction.active_knob = knob
             interaction.drag_position = float(dpg.get_value(knob))
+            minimum, maximum = _knob_bounds(binding)
+            interaction.drag.minimum = minimum
+            interaction.drag.maximum = maximum
+            interaction.drag.begin(interaction.drag_position)
             interaction.last_mouse_y = float(dpg.get_mouse_pos(local=False)[1])
             if dpg.does_item_exist(CONTROL_STATUS):
                 value = _control_value(interaction.drag_position, binding)
@@ -1636,10 +2119,9 @@ def _drag_knob(
     binding = interaction.bindings[knob]
     mouse_y = float(dpg.get_mouse_pos(local=False)[1])
     fine = dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift)
-    position = _vertical_drag_position(
-        interaction.drag_position,
+    position = interaction.drag.advance(
         mouse_y - interaction.last_mouse_y,
-        binding,
+        clamp_timestep(dpg.get_delta_time()),
         fine=fine,
     )
     interaction.drag_position = position
@@ -1662,6 +2144,7 @@ def _end_knob_drag(
 ) -> None:
     if CANVAS_INTERACTION.panning:
         _clear_rack_selection()
+        _release_pan_momentum()
         CANVAS_INTERACTION.stop_panning()
         if dpg.does_item_exist(CONTROL_STATUS):
             dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
@@ -1681,14 +2164,171 @@ def _end_knob_drag(
         dpg.set_value(CONTROL_STATUS, DEFAULT_CONTROL_STATUS)
 
 
+def _module_id_for_node(node: int | str) -> str | None:
+    """Find the graph instance a rack node stands for."""
+    for instance_id, tag in INSTANCE_NODE_TAGS.items():
+        if tag == node:
+            return instance_id
+    return None
+
+
+def _node_tag_for_item(item: int | str) -> int | str | None:
+    """Resolve a node-editor selection back to its registered rack tag."""
+    for node in RACK_NODES:
+        if not dpg.does_item_exist(node):
+            continue
+        if node == item or dpg.get_alias_id(node) == item:
+            return node
+    return None
+
+
+def _unregister_rack_node(node: int | str, instance_id: str) -> None:
+    """Forget every registry entry that referred to a removed module."""
+    if node in RACK_NODES:
+        RACK_NODES.remove(node)
+    INSTANCE_NODE_TAGS.pop(instance_id, None)
+    VIEW_NODE_TAGS.pop(instance_id, None)
+    MODULE_ACCENTS.pop(node, None)
+    RAIL_SPRINGS.pop(node, None)
+    PATCH_BAYS.pop(instance_id, None)
+    MODULE_COLLAPSE.attributes.pop(node, None)
+    MODULE_COLLAPSE.labels.pop(node, None)
+    for lane in RACK_RAILS.values():
+        if node in lane:
+            lane.remove(node)
+    # Rotary bindings are pruned by existence, so nested controls need no map.
+    for knob in tuple(KNOB_INTERACTION.bindings):
+        if not dpg.does_item_exist(knob):
+            del KNOB_INTERACTION.bindings[knob]
+
+
+def _remove_module_node(node: int | str, runtime: AppRuntime) -> bool:
+    """Remove one module from the executable graph and from the rack."""
+    if node == OUTPUT_NODE:
+        _set_patch_status("SYSTEM OUT CANNOT BE REMOVED", error=True)
+        return False
+    instance_id = _module_id_for_node(node)
+    if instance_id is None:
+        return False
+    module = runtime.patch.modules.get(instance_id)
+    name = module.manifest.name.upper() if module is not None else instance_id
+    try:
+        removed = _edit_patch(
+            runtime,
+            lambda: runtime.patch.remove_module(instance_id),
+        )
+    except (PatchError, ValueError) as exc:
+        _set_patch_status(f"CAN'T REMOVE: {exc}", error=True)
+        return False
+
+    for link in tuple(dpg.get_item_children(RACK).get(0, ())):
+        route = dpg.get_item_user_data(link)
+        if isinstance(route, Cable) and instance_id in (
+            route.source.module_id,
+            route.target.module_id,
+        ):
+            dpg.delete_item(link)
+        elif isinstance(route, OutputTap) and route.source.module_id == instance_id:
+            dpg.delete_item(link)
+
+    dpg.delete_item(node)
+    _unregister_rack_node(node, instance_id)
+    _refresh_patch_bays(runtime.patch)
+    _refresh_rack_outline(runtime)
+    noun = "CABLE" if removed == 1 else "CABLES"
+    _set_patch_status(f"REMOVED  {name}  ·  {removed} {noun} UNPATCHED")
+    return True
+
+
+def _keyboard_is_captured() -> bool:
+    """Report whether a text field should receive keys instead of the rack.
+
+    Most Mac keyboards send Backspace for the key labelled Delete, so the rack
+    must never claim it while a text field is open. A search box or a patch
+    name would otherwise lose a character — or the rack would lose a module.
+    """
+    if dpg.does_item_exist(SAVE_PATCH_DIALOG) and dpg.is_item_shown(
+        SAVE_PATCH_DIALOG
+    ):
+        return True
+    if not dpg.does_item_exist(MODULE_SELECTOR):
+        return False
+    if dpg.get_item_type(MODULE_SELECTOR).endswith("mvWindowAppItem"):
+        return dpg.is_item_shown(MODULE_SELECTOR)
+    return dpg.does_item_exist(MODULE_SELECTOR_SEARCH) and (
+        dpg.is_item_active(MODULE_SELECTOR_SEARCH)
+        or dpg.is_item_focused(MODULE_SELECTOR_SEARCH)
+    )
+
+
+def _delete_rack_selection(
+    _sender: int | str,
+    _app_data: object,
+    runtime: AppRuntime,
+) -> None:
+    """Unpatch selected cables and remove selected modules."""
+    if _keyboard_is_captured() or not dpg.does_item_exist(RACK):
+        return
+    links = tuple(dpg.get_selected_links(RACK))
+    nodes = tuple(dpg.get_selected_nodes(RACK))
+    if not links and not nodes:
+        _set_patch_status("NOTHING SELECTED  ·  CLICK A CABLE OR A MODULE FIRST")
+        return
+    for link in links:
+        _patch_link_deleted(RACK, link, runtime)
+    for item in nodes:
+        node = _node_tag_for_item(item)
+        if node is not None:
+            _remove_module_node(node, runtime)
+    _clear_rack_selection()
+
+
+def _dismiss_rack_focus(
+    _sender: int | str,
+    _app_data: object,
+    _runtime: AppRuntime,
+) -> None:
+    """Close the module browser, or drop the current rack selection."""
+    if (
+        dpg.does_item_exist(MODULE_SELECTOR)
+        and dpg.get_item_type(MODULE_SELECTOR).endswith("mvWindowAppItem")
+        and dpg.is_item_shown(MODULE_SELECTOR)
+    ):
+        dpg.hide_item(MODULE_SELECTOR)
+        return
+    if _keyboard_is_captured():
+        dpg.set_value(MODULE_SELECTOR_SEARCH, "")
+        _filter_module_selector("", "", None)
+        return
+    _clear_rack_selection()
+    _set_patch_status(DEFAULT_CONTROL_STATUS)
+
+
+def _open_module_selector_shortcut(
+    sender: int | str,
+    app_data: object,
+    runtime: AppRuntime,
+) -> None:
+    """Open the module browser on the platform's usual command chord."""
+    if not (
+        dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl)
+    ):
+        return
+    if not dpg.does_item_exist(MODULE_SELECTOR):
+        return
+    _show_module_selector(sender, app_data, runtime)
+
+
 def _configure_knob_handlers(runtime: AppRuntime) -> None:
+    if not dpg.does_item_exist(MODULE_CLOSE_LAYER):
+        dpg.add_viewport_drawlist(tag=MODULE_CLOSE_LAYER, front=True)
     if dpg.does_item_exist(INPUT_HANDLERS):
         return
     with dpg.handler_registry(tag=INPUT_HANDLERS):
         dpg.add_mouse_down_handler(
             button=dpg.mvMouseButton_Left,
             callback=_begin_knob_drag,
-            user_data=KNOB_INTERACTION,
+            user_data=(KNOB_INTERACTION, runtime),
         )
         dpg.add_mouse_drag_handler(
             button=dpg.mvMouseButton_Left,
@@ -1707,6 +2347,28 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             user_data=runtime,
         )
         dpg.add_mouse_wheel_handler(callback=_zoom_rack)
+        # The rack has always advertised these keys; now they are wired.
+        for delete_key in (dpg.mvKey_Delete, dpg.mvKey_Back):
+            dpg.add_key_press_handler(
+                delete_key,
+                callback=_delete_rack_selection,
+                user_data=runtime,
+            )
+        dpg.add_key_press_handler(
+            dpg.mvKey_Escape,
+            callback=_dismiss_rack_focus,
+            user_data=runtime,
+        )
+        dpg.add_key_press_handler(
+            dpg.mvKey_K,
+            callback=_open_module_selector_shortcut,
+            user_data=runtime,
+        )
+        dpg.add_key_press_handler(
+            dpg.mvKey_F,
+            callback=_frame_rack,
+            user_data=runtime,
+        )
 
 
 def _add_knob(
@@ -1722,6 +2384,7 @@ def _add_knob(
     tag: int | str = 0,
 ) -> int | str:
     """Add a compact rotary control with a separate live value readout."""
+    size = max(42, round(size * MODULE_KNOB_SCALE))
     position = _control_position(value, minimum, maximum, logarithmic)
     knob_minimum, knob_maximum = ((0.0, 1.0) if logarithmic else (minimum, maximum))
     with dpg.group():
@@ -1747,6 +2410,7 @@ def _add_knob(
             formatter=formatter,
             logarithmic=logarithmic,
             size=size,
+            default_value=value,
         ),
     )
     KNOB_INTERACTION.bindings[knob] = dpg.get_item_configuration(knob)["user_data"]
@@ -1832,15 +2496,63 @@ def _format_dynamic_value(value: float) -> str:
     return f"{value:.3f}"
 
 
+def _add_dynamic_float_control(
+    module: object,
+    field_info: object,
+    value: float,
+    field_path: tuple[str | int, ...],
+    label: str,
+) -> None:
+    minimum, maximum = _dynamic_parameter_bounds(field_info, value)
+    logarithmic = minimum > 0.0 and maximum / minimum >= 100.0
+    _add_knob(
+        value,
+        label,
+        minimum,
+        maximum,
+        _format_dynamic_value,
+        lambda changed, target=module, target_path=field_path: (
+            _set_dynamic_parameter(target, target_path, changed)
+        ),
+        logarithmic=logarithmic,
+        size=58,
+    )
+
+
 def _add_dynamic_parameter_controls(
     module: object,
     parameters: BaseModel,
     path: tuple[str | int, ...] = (),
 ) -> None:
+    pending_floats: list[
+        tuple[object, float, tuple[str | int, ...], str]
+    ] = []
+
+    def flush_float_row() -> None:
+        if not pending_floats:
+            return
+        with dpg.group(horizontal=True):
+            for field_info, value, field_path, label in pending_floats:
+                _add_dynamic_float_control(
+                    module,
+                    field_info,
+                    value,
+                    field_path,
+                    label,
+                )
+        pending_floats.clear()
+
     for field_name, field_info in type(parameters).model_fields.items():
         value = getattr(parameters, field_name)
         field_path = (*path, field_name)
         label = field_name.replace("_", " ").title()
+        if isinstance(value, float):
+            pending_floats.append((field_info, value, field_path, label))
+            if len(pending_floats) == 3:
+                flush_float_row()
+            continue
+
+        flush_float_row()
         if isinstance(value, BaseModel):
             dpg.add_text(label.upper(), color=MUTED_TEXT)
             _add_dynamic_parameter_controls(module, value, field_path)
@@ -1866,22 +2578,6 @@ def _add_dynamic_parameter_controls(
                 ),
                 user_data=(module, field_path),
                 width=180,
-            )
-            continue
-        if isinstance(value, float):
-            minimum, maximum = _dynamic_parameter_bounds(field_info, value)
-            logarithmic = minimum > 0.0 and maximum / minimum >= 100.0
-            _add_knob(
-                value,
-                label,
-                minimum,
-                maximum,
-                _format_dynamic_value,
-                lambda changed, target=module, target_path=field_path: (
-                    _set_dynamic_parameter(target, target_path, changed)
-                ),
-                logarithmic=logarithmic,
-                size=58,
             )
             continue
         if isinstance(value, int):
@@ -1932,6 +2628,8 @@ def _add_dynamic_parameter_controls(
             continue
         dpg.add_text(f"{label}: {value}", color=MUTED_TEXT, wrap=260)
 
+    flush_float_row()
+
 
 def _build_generic_module_node(
     instance_id: str,
@@ -1943,8 +2641,12 @@ def _build_generic_module_node(
     port_ids = tuple(port.id for port in manifest.ports)
     with dpg.node(parent=RACK, tag=node, label=manifest.name.upper()):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            dpg.add_text(manifest.category.upper(), color=MODULE_ACCENTS[node])
-            dpg.add_text(manifest.description, color=MUTED_TEXT, wrap=280)
+            summary = dpg.add_text(
+                manifest.category.upper(),
+                color=MODULE_ACCENTS[node],
+            )
+            with dpg.tooltip(summary):
+                dpg.add_text(manifest.description, color=MUTED_TEXT, wrap=280)
             parameters = getattr(module, "parameters", None)
             if isinstance(parameters, BaseModel):
                 _add_dynamic_parameter_controls(module, parameters)
@@ -1998,7 +2700,6 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
     with dpg.node(tag=VCO_NODE, label="TRIANGLE CORE VCO"):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             parameters = vco.parameters
-            dpg.add_text("TRIANGLE CORE / COMPLEX VOICE", color=VCO_ACCENT)
             with dpg.group(horizontal=True):
                 _add_knob(
                     parameters.frequency,
@@ -2121,7 +2822,6 @@ def _build_mixer_node(mixer: PolarizingMixer, patch: PatchGraph) -> None:
         label=f"POLARIZING MIXER / {mixer.parameters.channels}",
     ):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            dpg.add_text("POLARIZE / SUM", color=MIXER_ACCENT)
             _add_patch_bay_toggle(patch, "mixer", MIXER_NODE, port_ids)
         connected = _connected_port_ids(patch, "mixer")
         for channel, gain in enumerate(mixer.parameters.gains, start=1):
@@ -2181,7 +2881,6 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
     with dpg.node(tag=WOGGLE_NODE, label="WOGGLEBUG / UNCERTAINTY"):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             parameters = wogglebug.parameters
-            dpg.add_text("A MUSICAL SOURCE OF UNCERTAINTY", color=WOGGLE_ACCENT)
             with dpg.group(horizontal=True):
                 _add_knob(
                     parameters.clock_rate_hz,
@@ -2339,7 +3038,6 @@ def _build_scale_generator_node(
     with dpg.node(tag=SCALE_NODE, label="PYTHEORY / SCALE GENERATOR"):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             parameters = generator.parameters
-            dpg.add_text("CLOCKED MUSICAL VOLTAGE", color=SCALE_ACCENT)
             with dpg.group(horizontal=True):
                 with dpg.group():
                     dpg.add_text("SYSTEM", color=MUTED_TEXT)
@@ -2581,7 +3279,6 @@ def _build_low_pass_gate_node(
     with dpg.node(tag=LPG_NODE, label="BLOOM / LOW-PASS GATE"):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             parameters = low_pass_gate.parameters
-            dpg.add_text("STRUCK DYNAMICS / SPECTRAL DECAY", color=LPG_ACCENT)
             with dpg.group(horizontal=True):
                 _add_knob(
                     parameters.decay_seconds,
@@ -2663,7 +3360,6 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
     with dpg.node(tag=REVERB_NODE, label="SPACE / STEREO REVERB"):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             parameters = reverb.parameters
-            dpg.add_text("MONO IN / WIDE DECORRELATED FIELD", color=REVERB_ACCENT)
             with dpg.group(horizontal=True):
                 _add_knob(
                     parameters.mix,
@@ -2799,6 +3495,194 @@ def _module_selector_button_tag(module_id: str) -> str:
     return f"noodler.module_selector.item.{module_id}"
 
 
+def _module_library_slug(label: str) -> str:
+    """Return a stable Dear PyGui tag fragment for a library heading."""
+    normalized = "".join(
+        character.lower() if character.isalnum() else " "
+        for character in label
+    )
+    return "_".join(normalized.split())
+
+
+def _module_library_section_tag(section: str) -> str:
+    return f"noodler.module_selector.section.{_module_library_slug(section)}"
+
+
+def _module_library_category_tag(category: str) -> str:
+    return f"noodler.module_selector.category.{_module_library_slug(category)}"
+
+
+def _rack_outline_module_label(
+    runtime: AppRuntime,
+    instance_id: str,
+    connection: str | None = None,
+) -> str:
+    module = runtime.patch.modules[instance_id]
+    label = f"{module.manifest.name.upper()}  [{instance_id}]"
+    return f"{label}  ·  {connection}" if connection else label
+
+
+def _remove_module_from_outline(
+    _sender: int | str,
+    _app_data: object,
+    selection: tuple[AppRuntime, str],
+) -> None:
+    runtime, instance_id = selection
+    node = INSTANCE_NODE_TAGS.get(instance_id)
+    if node is not None:
+        _remove_module_node(node, runtime)
+
+
+def _add_rack_outline_remove_button(
+    parent: int | str,
+    runtime: AppRuntime,
+    instance_id: str,
+) -> None:
+    button = dpg.add_button(
+        label="×",
+        parent=parent,
+        width=22,
+        height=20,
+        callback=_remove_module_from_outline,
+        user_data=(runtime, instance_id),
+    )
+    with dpg.tooltip(button):
+        dpg.add_text(f"Remove {runtime.patch.modules[instance_id].manifest.name}")
+
+
+def _add_rack_outline_signal_branch(
+    parent: int | str,
+    runtime: AppRuntime,
+    instance_id: str,
+    connection: str,
+    reachable: set[str],
+    trail: frozenset[str] = frozenset(),
+) -> None:
+    """Draw one module and its upstream dependencies as a signal-flow tree."""
+    reachable.add(instance_id)
+    row = dpg.add_group(parent=parent, horizontal=True)
+    branch = dpg.add_tree_node(
+        label=_rack_outline_module_label(runtime, instance_id, connection),
+        parent=row,
+        default_open=True,
+    )
+    _add_rack_outline_remove_button(row, runtime, instance_id)
+    if instance_id in trail:
+        dpg.add_text("SHARED SIGNAL", parent=branch, color=MUTED_TEXT)
+        return
+    incoming = tuple(
+        cable
+        for cable in runtime.patch.cables
+        if cable.target.module_id == instance_id
+    )
+    if not incoming:
+        dpg.add_text("SOURCE / CONTROL ORIGIN", parent=branch, color=MUTED_TEXT)
+        return
+    next_trail = trail | {instance_id}
+    for cable in incoming:
+        _add_rack_outline_signal_branch(
+            branch,
+            runtime,
+            cable.source.module_id,
+            f"{cable.source.port_id}  →  {cable.target.port_id}",
+            reachable,
+            next_trail,
+        )
+
+
+def _rack_outline_unpatched_modules(
+    runtime: AppRuntime,
+    reachable: set[str],
+) -> dict[str, list[str]]:
+    grouped = {
+        "CONTROL / MODULATION": [],
+        "AUDIO PATH": [],
+    }
+    registered: set[str] = set()
+    for rail, heading in (
+        (CONTROL_RAIL, "CONTROL / MODULATION"),
+        (AUDIO_RAIL, "AUDIO PATH"),
+    ):
+        for node in RACK_RAILS[rail]:
+            instance_id = _module_id_for_node(node)
+            if (
+                instance_id is not None
+                and instance_id in runtime.patch.modules
+                and instance_id not in reachable
+            ):
+                grouped[heading].append(instance_id)
+                registered.add(instance_id)
+    for instance_id in runtime.patch.modules:
+        if instance_id not in reachable and instance_id not in registered:
+            grouped["AUDIO PATH"].append(instance_id)
+    return grouped
+
+
+def _refresh_rack_outline(runtime: AppRuntime) -> None:
+    """Rebuild the left outline from the real graph after a topology edit."""
+    if not dpg.does_item_exist(RACK_OUTLINE_BODY):
+        return
+    dpg.delete_item(RACK_OUTLINE_BODY, children_only=True)
+    reachable: set[str] = set()
+    signal_flow = dpg.add_tree_node(
+        label="SIGNAL FLOW",
+        parent=RACK_OUTLINE_BODY,
+        default_open=True,
+    )
+    system_output = dpg.add_tree_node(
+        label="SYSTEM OUTPUT",
+        parent=signal_flow,
+        default_open=True,
+    )
+    if runtime.patch.output_taps:
+        for tap in runtime.patch.output_taps:
+            _add_rack_outline_signal_branch(
+                system_output,
+                runtime,
+                tap.source.module_id,
+                f"{tap.source.port_id}  →  {tap.channel.value}",
+                reachable,
+            )
+    else:
+        dpg.add_text(
+            "NO SIGNAL CONNECTED",
+            parent=system_output,
+            color=MUTED_TEXT,
+        )
+
+    unpatched = _rack_outline_unpatched_modules(runtime, reachable)
+    if any(unpatched.values()):
+        unpatched_root = dpg.add_tree_node(
+            label="UNPATCHED",
+            parent=RACK_OUTLINE_BODY,
+            default_open=True,
+        )
+        for heading, instance_ids in unpatched.items():
+            if not instance_ids:
+                continue
+            lane = dpg.add_tree_node(
+                label=heading,
+                parent=unpatched_root,
+                default_open=True,
+            )
+            for instance_id in instance_ids:
+                row = dpg.add_group(parent=lane, horizontal=True)
+                dpg.add_text(
+                    _rack_outline_module_label(runtime, instance_id),
+                    parent=row,
+                )
+                _add_rack_outline_remove_button(row, runtime, instance_id)
+
+    panels = len(runtime.patch.modules) + 1
+    connections = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+    panel_noun = "PANEL" if panels == 1 else "PANELS"
+    cable_noun = "CABLE" if connections == 1 else "CABLES"
+    dpg.set_value(
+        RACK_OUTLINE_STATUS,
+        f"{panels} {panel_noun}  ·  {connections} {cable_noun}",
+    )
+
+
 def _module_appearance(module_id: str, category: str) -> tuple[str, str, tuple]:
     if module_id in {"melody_brain", "harmony_brain", "arpeggio_brain"}:
         return CONTROL_RAIL, SCALE_THEME, SCALE_ACCENT
@@ -2882,10 +3766,17 @@ def _add_selected_module(
         )
         _build_generic_module_node(instance_id, module, runtime.patch)
         dpg.bind_item_theme(node, theme)
+        _bind_rack_node_font(node)
         _add_spine_texture(node, manifest.name.upper())
         _add_module_spine(node)
         _place_dynamic_node(node, rail)
-        dpg.hide_item(MODULE_SELECTOR)
+        _reveal_node(node)
+        _refresh_rack_outline(runtime)
+        if (
+            dpg.does_item_exist(MODULE_SELECTOR)
+            and dpg.get_item_type(MODULE_SELECTOR).endswith("mvWindowAppItem")
+        ):
+            dpg.hide_item(MODULE_SELECTOR)
         _set_patch_status(
             f"ADDED  {manifest.name.upper()}  ·  INSTANCE {instance_id}"
         )
@@ -2902,6 +3793,7 @@ def _filter_module_selector(
 ) -> None:
     words = tuple(query.lower().split())
     visible = 0
+    category_matches: dict[str, int] = {}
     for manifest in BUILTIN_PROVIDER_MANIFEST.modules:
         haystack = " ".join(
             (manifest.id, manifest.name, manifest.category, manifest.description)
@@ -2909,6 +3801,24 @@ def _filter_module_selector(
         show = all(word in haystack for word in words)
         dpg.configure_item(_module_selector_button_tag(manifest.id), show=show)
         visible += int(show)
+        category_matches[manifest.category] = (
+            category_matches.get(manifest.category, 0) + int(show)
+        )
+    for section, categories in MODULE_LIBRARY_SECTIONS:
+        section_visible = False
+        for category in categories:
+            category_visible = category_matches.get(category, 0) > 0
+            section_visible = section_visible or category_visible
+            category_tag = _module_library_category_tag(category)
+            if dpg.does_item_exist(category_tag):
+                dpg.configure_item(category_tag, show=category_visible)
+                if words and category_visible:
+                    dpg.set_value(category_tag, True)
+        section_tag = _module_library_section_tag(section)
+        if dpg.does_item_exist(section_tag):
+            dpg.configure_item(section_tag, show=section_visible)
+            if words and section_visible:
+                dpg.set_value(section_tag, True)
     dpg.configure_item(MODULE_SELECTOR_STATUS, color=MUTED_TEXT)
     dpg.set_value(MODULE_SELECTOR_STATUS, f"{visible} MODULES")
 
@@ -2921,6 +3831,87 @@ def _show_module_selector(
     dpg.set_value(MODULE_SELECTOR_SEARCH, "")
     _filter_module_selector("", "", None)
     dpg.show_item(MODULE_SELECTOR)
+    dpg.focus_item(MODULE_SELECTOR_SEARCH)
+
+
+def _add_module_library_entry(
+    runtime: AppRuntime,
+    manifest: ModuleManifest,
+) -> None:
+    """Add one compact, descriptive module button to a browser surface."""
+    button = dpg.add_button(
+        label=manifest.name,
+        tag=_module_selector_button_tag(manifest.id),
+        callback=_add_selected_module,
+        user_data=(runtime, manifest.id),
+        width=-1,
+    )
+    with dpg.tooltip(button):
+        dpg.add_text(manifest.description, wrap=360)
+        dpg.add_text(
+            f"{len(manifest.ports)} PATCH POINTS  ·  {manifest.id}",
+            color=MUTED_TEXT,
+        )
+
+
+def _build_module_library(runtime: AppRuntime) -> None:
+    """Build the live rack outline and module catalog beside the canvas."""
+    manifests_by_category: dict[str, list[ModuleManifest]] = {}
+    for manifest in BUILTIN_PROVIDER_MANIFEST.modules:
+        manifests_by_category.setdefault(manifest.category, []).append(manifest)
+
+    with dpg.child_window(
+        tag=MODULE_SELECTOR,
+        width=330,
+        height=-1,
+        border=True,
+    ):
+        dpg.add_text("CURRENT RACK", color=SCALE_ACCENT)
+        dpg.add_text(
+            "1 PANEL  ·  0 CABLES",
+            tag=RACK_OUTLINE_STATUS,
+            color=MUTED_TEXT,
+        )
+        with dpg.child_window(
+            tag=RACK_OUTLINE_BODY,
+            height=220,
+            border=False,
+        ):
+            pass
+        _refresh_rack_outline(runtime)
+        dpg.add_separator()
+        dpg.add_text("MODULE LIBRARY", color=SCALE_ACCENT)
+        dpg.add_text("ADD TO THE FREEFORM RACK", color=MUTED_TEXT)
+        dpg.add_input_text(
+            tag=MODULE_SELECTOR_SEARCH,
+            hint="Search instruments, signals, effects…",
+            callback=_filter_module_selector,
+            width=-1,
+        )
+        dpg.add_text(
+            f"{len(BUILTIN_PROVIDER_MANIFEST.modules)} MODULES",
+            tag=MODULE_SELECTOR_STATUS,
+            color=MUTED_TEXT,
+        )
+        dpg.add_separator()
+        for section, categories in MODULE_LIBRARY_SECTIONS:
+            with dpg.tree_node(
+                tag=_module_library_section_tag(section),
+                label=section,
+                default_open=True,
+            ):
+                for category in categories:
+                    manifests = manifests_by_category.get(category, ())
+                    if not manifests:
+                        continue
+                    with dpg.tree_node(
+                        tag=_module_library_category_tag(category),
+                        label=category.upper(),
+                        default_open=category
+                        in {"Musical Brains", "Sources", "Oscillators"},
+                    ):
+                        for manifest in manifests:
+                            _add_module_library_entry(runtime, manifest)
 
 
 def _build_module_selector(runtime: AppRuntime) -> None:
@@ -2952,19 +3943,7 @@ def _build_module_selector(runtime: AppRuntime) -> None:
                         dpg.add_separator()
                     current_category = manifest.category
                     dpg.add_text(current_category.upper(), color=SCALE_ACCENT)
-                button = dpg.add_button(
-                    label=manifest.name,
-                    tag=_module_selector_button_tag(manifest.id),
-                    callback=_add_selected_module,
-                    user_data=(runtime, manifest.id),
-                    width=-1,
-                )
-                with dpg.tooltip(button):
-                    dpg.add_text(manifest.description, wrap=360)
-                    dpg.add_text(
-                        f"{len(manifest.ports)} PATCH POINTS  ·  {manifest.id}",
-                        color=MUTED_TEXT,
-                    )
+                _add_module_library_entry(runtime, manifest)
         dpg.add_button(
             label="CLOSE",
             callback=lambda _s, _a, _u: dpg.hide_item(MODULE_SELECTOR),
@@ -2981,8 +3960,16 @@ def build_runtime(
     reverb: Reverb | None = None,
     *,
     mixer_channels: int = 4,
+    starter_patch: bool = False,
 ) -> AppRuntime:
-    """Create Noodler's seeded, generative ambient instrument."""
+    """Create an empty rack or the optional generative starter instrument."""
+    patch = PatchGraph()
+    if not starter_patch:
+        return AppRuntime(
+            patch=patch,
+            audio=SystemAudioEngine(patch, master_gain=0.8),
+        )
+
     if vco is None:
         vco = ComplexVCO(
             ComplexVCOParameters(
@@ -3066,7 +4053,6 @@ def build_runtime(
         )
     )
 
-    patch = PatchGraph()
     patch.add_module("utility", utility)
     patch.add_module("vco", vco)
     patch.add_module("mixer", mixer)
@@ -3103,6 +4089,104 @@ def build_runtime(
     )
 
 
+def _build_empty_rack_ui(runtime: AppRuntime) -> AppRuntime:
+    """Build the quiet new-patch view around one permanent output module."""
+    with dpg.window(tag=PRIMARY_WINDOW, label="Noodler"):
+        with dpg.group(horizontal=True):
+            dpg.add_text("UNTITLED PATCH", color=SCALE_ACCENT)
+            dpg.add_text("EMPTY RACK  ·  ADD A MODULE TO BEGIN", color=TEXT)
+            dpg.add_spacer(width=24)
+            dpg.add_text("CV", color=SIGNAL_COLORS["cv"])
+            dpg.add_text("AUDIO", color=SIGNAL_COLORS["audio"])
+            dpg.add_spacer(width=16)
+            dpg.add_button(
+                label="−",
+                tag=ZOOM_OUT_BUTTON,
+                callback=_zoom_rack_button,
+                user_data=-1,
+            )
+            dpg.add_button(
+                label="100%",
+                tag=ZOOM_RESET_BUTTON,
+                callback=_reset_rack_zoom,
+            )
+            dpg.add_button(
+                label="+",
+                tag=ZOOM_IN_BUTTON,
+                callback=_zoom_rack_button,
+                user_data=1,
+            )
+            dpg.add_button(
+                label="UNPLUG ALL",
+                tag=UNPLUG_ALL_BUTTON,
+                callback=_unplug_all,
+                user_data=runtime,
+            )
+            with dpg.tooltip(UNPLUG_ALL_BUTTON):
+                dpg.add_text("Disconnect every cable from the live patch.")
+            dpg.add_button(
+                label="+  ADD MODULE",
+                tag=ADD_MODULE_BUTTON,
+                callback=_show_module_selector,
+            )
+            with dpg.tooltip(ADD_MODULE_BUTTON):
+                dpg.add_text("Browse all built-in instruments and utilities.")
+            dpg.add_button(
+                label="SAVE PATCH",
+                tag=SAVE_PATCH_BUTTON,
+                callback=_show_save_patch_dialog,
+            )
+            with dpg.tooltip(SAVE_PATCH_BUTTON):
+                dpg.add_text("Save modules, cables, controls, and rack view.")
+        with dpg.group(horizontal=True):
+            dpg.add_text("AUDIO RAIL", color=SIGNAL_COLORS["audio"])
+            dpg.add_text("BUILD LEFT TO RIGHT  →  SYSTEM OUT", color=TEXT)
+        dpg.add_text(
+            "ADD A MODULE TO BEGIN  ·  DRAG BACKGROUND = PAN  ·  "
+            "PINCH / SCROLL = ZOOM",
+            tag=CONTROL_STATUS,
+            color=MUTED_TEXT,
+        )
+        dpg.add_separator()
+        with dpg.group(horizontal=True):
+            _build_module_library(runtime)
+            with dpg.node_editor(
+                tag=RACK,
+                callback=_patch_link_created,
+                delink_callback=_patch_link_deleted,
+                user_data=runtime,
+                width=-1,
+                height=-1,
+                minimap=True,
+                minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
+            ):
+                _build_output_node(runtime.audio)
+                _add_module_spines(runtime)
+        dpg.bind_item_theme(OUTPUT_NODE, OUTPUT_THEME)
+        dpg.set_item_pos(OUTPUT_NODE, [900, 250])
+        CANVAS_INTERACTION.rail_y.update(
+            {
+                CONTROL_RAIL: 40.0,
+                AUDIO_RAIL: 250.0,
+            }
+        )
+    with dpg.file_dialog(
+        tag=SAVE_PATCH_DIALOG,
+        label="Save Noodler Patch",
+        show=False,
+        modal=True,
+        width=720,
+        height=460,
+        default_filename="Untitled Patch.noodler",
+        callback=_save_patch_dialog,
+        user_data=runtime,
+    ):
+        dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".*")
+    _configure_knob_handlers(runtime)
+    return runtime
+
+
 def build_ui(
     vco: ComplexVCO | None = None,
     mixer: PolarizingMixer | None = None,
@@ -3113,14 +4197,17 @@ def build_ui(
     reverb: Reverb | None = None,
     *,
     mixer_channels: int = 4,
+    starter_patch: bool = False,
 ) -> AppRuntime:
     """Build the initial rack and return its live application runtime."""
-    _reset_rack_registry()
+    _reset_rack_registry(starter_patch=starter_patch)
     KNOB_INTERACTION.reset()
     CANVAS_INTERACTION.reset()
     MODULE_COLLAPSE.reset()
     dpg.set_global_font_scale(1.0)
     PATCH_BAYS.clear()
+    RAIL_SPRINGS.clear()
+    METER_BALLISTICS.reset()
     _configure_font()
     _configure_theme()
     runtime = build_runtime(
@@ -3132,8 +4219,11 @@ def build_ui(
         low_pass_gate,
         reverb,
         mixer_channels=mixer_channels,
+        starter_patch=starter_patch,
     )
     _configure_spine_textures(runtime)
+    if not starter_patch:
+        return _build_empty_rack_ui(runtime)
     with dpg.window(tag=PRIMARY_WINDOW, label="Noodler"):
         with dpg.group(horizontal=True):
             dpg.add_text("HIRAJOSHI GARDEN", color=SCALE_ACCENT)

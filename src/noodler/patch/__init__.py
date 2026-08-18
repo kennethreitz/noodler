@@ -118,6 +118,30 @@ class PatchGraph:
         self._modules[instance_id] = module
         self._processing_order = self._compile_processing_order()
 
+    def remove_module(self, instance_id: str) -> int:
+        """Remove a module with every cable and tap that touched it.
+
+        Returns the number of connections removed, so the interface can report
+        what a deletion actually cost the patch.
+        """
+        if instance_id not in self._modules:
+            raise PatchError(f"unknown module instance: {instance_id}")
+        removed = [
+            cable
+            for cable in self._cables
+            if instance_id in (cable.source.module_id, cable.target.module_id)
+        ]
+        taps = [
+            tap for tap in self._output_taps if tap.source.module_id == instance_id
+        ]
+        for cable in removed:
+            self._cables.remove(cable)
+        for tap in taps:
+            self._output_taps.remove(tap)
+        del self._modules[instance_id]
+        self._processing_order = self._compile_processing_order()
+        return len(removed) + len(taps)
+
     def connect(
         self,
         source_module: str,

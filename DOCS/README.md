@@ -9,6 +9,12 @@ catalog. Decisions in these documents describe the intended first version and
 should be revisited when measurements or hands-on prototypes give us better
 evidence.
 
+Noodler opens to a quiet, mostly empty rack: System Output is present, while
+the executable graph contains no DSP modules or cables. A live tree of the
+current rack stays on the left, with the searchable module catalog beneath it,
+while the freeform patch rack occupies the right. A new instrument can be
+assembled without repeatedly opening and closing a catalog.
+
 ## Documents
 
 - [Architecture](ARCHITECTURE.md) — application structure, runtime boundaries,
@@ -17,5 +23,5 @@ evidence.
   the reasons behind them.
 - [Module interoperability](MODULES.md) — provider manifests, typed ports, and
   audio/CV cross-linking rules.
-- [Patch graph and system audio](AUDIO.md) — runtime module contract, default
-  audible patch, Core Audio output, and current real-time limitations.
+- [Patch graph and system audio](AUDIO.md) — empty-rack startup, the composed
+  reference patch, Core Audio output, and current real-time limitations.
