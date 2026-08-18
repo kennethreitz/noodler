@@ -63,6 +63,24 @@ purpose; the status line is for what just happened.
 or a menu — not all three. The status bar should say what just happened or what
 is in hand, not what is possible.
 
+## How big a knob is
+
+Dear PyGui's knob widget is drawn at a fixed forty pixels. Its `width`, its
+`height` and its font all change nothing about the picture, and asking is not
+an error — the number is accepted and ignored. Four separate rounds of "the
+knobs are too big" each shrank a constant that was never read.
+
+The knob is now a drawlist: a body, a track, a value arc and a pointer, painted
+at exactly the diameter it is asked for and repainted at the new one when the
+rack zooms. It has no value of its own — the position lives with the gesture
+state and the picture is redrawn from it — which turned out to be how the
+interaction layer already treated the widget: as a value store, a picture and
+a hover target. Only the picture changed.
+
+The lesson is general enough to write down: when a fix has been applied more
+than once and the complaint has not moved, the thing being changed is not the
+thing being seen. Measure the screen before adjusting the number.
+
 ## Where the rack starts
 
 Start-up positions were chosen before anything was laid out, against a window

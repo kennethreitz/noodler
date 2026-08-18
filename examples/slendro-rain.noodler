@@ -1,0 +1,577 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Slendro Rain",
+  "modules": [
+    {
+      "instance_id": "key",
+      "module_type": "key",
+      "provider": "builtin",
+      "parameters": {
+        "system": "slendro",
+        "tonic": "nem",
+        "octave": 3,
+        "scale_name": "slendro",
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "japanese",
+        "tonic": "A",
+        "octave": 4,
+        "scale_name": "in",
+        "style": "free random",
+        "phrase_length": 5,
+        "octave_range": 3,
+        "density": 0.42,
+        "step_bias": 0.78,
+        "rate_hz": 4.5,
+        "gate_length": 0.14,
+        "reference_frequency_hz": 220.0,
+        "seed": 5
+      }
+    },
+    {
+      "instance_id": "harmony",
+      "module_type": "harmony_brain",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "C",
+        "mode": "major",
+        "style": "tonic journey",
+        "length": 5,
+        "register_octave": 3,
+        "rate_hz": 0.16,
+        "gate_length": 0.9,
+        "reference_frequency_hz": 220.0,
+        "seed": 55
+      }
+    },
+    {
+      "instance_id": "arp",
+      "module_type": "arpeggio_brain",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "random",
+        "octave_range": 2,
+        "rate_hz": 7.8,
+        "gate_length": 0.12,
+        "fallback_pitches": [
+          0.0,
+          0.3333333333333333,
+          0.5833333333333334,
+          1.0
+        ],
+        "reference_midi": 57.0,
+        "seed": 555
+      }
+    },
+    {
+      "instance_id": "drift",
+      "module_type": "wogglebug",
+      "provider": "builtin",
+      "parameters": {
+        "clock_rate_hz": 0.14,
+        "chaos": 0.28,
+        "ego_id_balance": 0.4,
+        "woggle": 0.5,
+        "audio_level": 0.0,
+        "seed": 8675
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.27,
+        "feedback": 0.46,
+        "mix": 0.34,
+        "damping": 0.55,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "reverb",
+      "provider": "builtin",
+      "parameters": {
+        "mix": 0.58,
+        "decay_seconds": 9.0,
+        "damping": 0.5,
+        "diffusion": 0.92,
+        "pre_delay_ms": 40.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.6,
+          0.62,
+          0.62,
+          0.5,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.3,
+          -0.7,
+          0.7,
+          0.35,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "master": 0.5
+      }
+    },
+    {
+      "instance_id": "box_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "box",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "music_box",
+        "level": 0.4,
+        "release_ms": 600.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "kalimba_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "kalimba",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "kalimba",
+        "level": 0.32,
+        "release_ms": 300.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "marimba_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "marimba",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "marimba",
+        "level": 0.36,
+        "release_ms": 500.0,
+        "reference_frequency_hz": 220.0
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "box_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "box_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "box",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "box_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "box",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kalimba_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "kalimba",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "kalimba",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "marimba_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "marimba_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "marimba",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "bass"
+      },
+      "target": {
+        "module_id": "marimba_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "marimba",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "box",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kalimba",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "marimba",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "drift",
+        "port_id": "smooth"
+      },
+      "target": {
+        "module_id": "box_pitch",
+        "port_id": "transpose"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.7
+  },
+  "view": {
+    "zoom": 0.75,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "key",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 40.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmony",
+        "position": {
+          "x": 40.0,
+          "y": 660.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "arp",
+        "position": {
+          "x": 400.0,
+          "y": 660.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "drift",
+        "position": {
+          "x": 40.0,
+          "y": 1000.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1480.0,
+          "y": 660.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1160.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "box_pitch",
+        "position": {
+          "x": 420.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "box",
+        "position": {
+          "x": 800.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kalimba_pitch",
+        "position": {
+          "x": 420.0,
+          "y": 660.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kalimba",
+        "position": {
+          "x": 800.0,
+          "y": 660.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "marimba_pitch",
+        "position": {
+          "x": 420.0,
+          "y": 1000.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "marimba",
+        "position": {
+          "x": 800.0,
+          "y": 1000.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}

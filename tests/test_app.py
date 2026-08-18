@@ -222,7 +222,7 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
         assert dpg.does_item_exist(APP_THEME)
         assert dpg.does_item_exist(f"{MIXER_NODE}.input_6")
         frequency_control = f"{VCO_NODE}.control.frequency"
-        assert dpg.get_item_type(frequency_control).endswith("mvKnobFloat")
+        assert dpg.get_item_type(frequency_control).endswith("mvDrawlist")
         configuration = dpg.get_item_configuration(frequency_control)
         binding = configuration["user_data"]
         configuration["callback"](

@@ -295,14 +295,27 @@ because a rack is read by scanning across it, and a panel that will not fit
 beside its neighbour is a panel nobody can see in context.
 """
 
-KNOB_SIZE_MINIMUM = 16
+KNOB_SIZE_MINIMUM = 12
 """Smallest a rotary control is allowed to be drawn."""
 
-KNOB_SIZE = 22
-"""Diameter of a rotary control. Small enough to read a panel at a glance."""
+KNOB_SIZE = 18
+"""Diameter of a rotary control. Small enough to read a panel at a glance.
 
-KNOB_SIZE_LARGE = 26
+Drawn by hand, because Dear PyGui's knob is forty pixels whatever it is asked:
+its width, its height and its font all change nothing about the picture. Every
+"knobs are too big" fix before this one changed a number that was never read.
+"""
+
+KNOB_SIZE_LARGE = 24
 """For the one control on a panel that deserves the eye first."""
+
+KNOB_SWEEP_START = 0.75 * math.pi
+KNOB_SWEEP_END = 2.25 * math.pi
+"""A knob turns through 270 degrees, from seven o'clock round to five."""
+
+KNOB_TRACK = (58, 56, 50, 255)
+KNOB_BODY = (34, 35, 32, 255)
+KNOB_ARC = SCALE_ACCENT
 
 UNIT_SUFFIXES = (
     ("_hz", " Hz"),
@@ -321,7 +334,6 @@ MAX_RACK_ZOOM = 1.65
 RACK_ZOOM_STEP = 1.12
 FRAME_MARGIN = 56.0
 """Breathing room left around the rack when the camera frames it."""
-MODULE_KNOB_SCALE = 0.84
 RACK_FONT_PREFIX = "noodler.font.rack"
 RACK_FONT_SIZES = tuple(range(9, 27))
 
@@ -384,10 +396,24 @@ class KnobBinding:
 
 
 @dataclass(slots=True)
+class KnobArt:
+    """The drawn parts of one knob, kept so a change can repaint just them."""
+
+    size: int
+    body: int | str
+    track: int | str
+    arc: int | str
+    pointer: int | str
+
+
+@dataclass(slots=True)
 class KnobInteraction:
     """State shared by the global Ableton-style vertical knob gesture."""
 
     bindings: dict[int | str, KnobBinding] = field(default_factory=dict)
+    positions: dict[int | str, float] = field(default_factory=dict)
+    """Where each knob is, in its own units. The picture has no value of its own."""
+    art: dict[int | str, KnobArt] = field(default_factory=dict)
     active_knob: int | str | None = None
     drag_position: float = 0.0
     drag: KnobDrag = field(default_factory=KnobDrag)
@@ -397,6 +423,8 @@ class KnobInteraction:
 
     def reset(self) -> None:
         self.bindings.clear()
+        self.positions.clear()
+        self.art.clear()
         self.active_knob = None
         self.drag_position = 0.0
         self.drag = KnobDrag()
@@ -706,7 +734,7 @@ def _apply_transport_sync() -> None:
         except Exception:
             continue
         if dpg.does_item_exist(knob):
-            dpg.set_value(
+            _set_knob_position(
                 knob,
                 _control_position(
                     value, binding.minimum, binding.maximum, binding.logarithmic
@@ -2038,11 +2066,7 @@ def _set_rack_zoom(
             ratio,
         )[1]
     for knob, binding in KNOB_INTERACTION.bindings.items():
-        if dpg.does_item_exist(knob):
-            dpg.configure_item(
-                knob,
-                width=max(KNOB_SIZE_MINIMUM, round(binding.size * new_zoom)),
-            )
+        _resize_knob(knob, round(binding.size * new_zoom))
 
     CANVAS_INTERACTION.zoom = new_zoom
     if dpg.does_item_exist(ZOOM_RESET_BUTTON):
@@ -2937,7 +2961,7 @@ def _reset_knob_to_default(knob: int | str, binding: KnobBinding) -> bool:
         binding.maximum,
         binding.logarithmic,
     )
-    dpg.set_value(knob, position)
+    _set_knob_position(knob, position)
     _set_knob_value(str(knob), position, binding)
     _set_patch_status(
         f"RESET  {binding.label.upper()}  "
@@ -3401,7 +3425,7 @@ def _begin_knob_drag(
     for knob, binding in reversed(tuple(interaction.bindings.items())):
         if dpg.does_item_exist(knob) and dpg.is_item_hovered(knob):
             interaction.active_knob = knob
-            interaction.drag_position = float(dpg.get_value(knob))
+            interaction.drag_position = _knob_position(knob)
             minimum, maximum = _knob_bounds(binding)
             interaction.drag.minimum = minimum
             interaction.drag.maximum = maximum
@@ -3476,7 +3500,7 @@ def _drag_knob(
     )
     interaction.drag_position = position
     interaction.last_mouse_y = mouse_y
-    dpg.set_value(knob, position)
+    _set_knob_position(knob, position)
     _set_knob_value(str(knob), position, binding)
     if dpg.does_item_exist(CONTROL_STATUS):
         value = _control_value(position, binding)
@@ -3888,40 +3912,40 @@ def _add_knob(
     size: int = KNOB_SIZE,
     tag: int | str = 0,
 ) -> int | str:
-    """Add a compact rotary control with a separate live value readout."""
-    size = max(KNOB_SIZE_MINIMUM, round(size * MODULE_KNOB_SCALE))
+    """Add a compact rotary control with a separate live value readout.
+
+    The knob is a drawlist, not Dear PyGui's knob widget: that one is drawn at
+    a fixed forty pixels and ignores its width, which is how four rounds of
+    "make the knobs smaller" changed nothing. This one is exactly the size it
+    is asked to be. It keeps no value of its own -- the position lives in
+    KNOB_INTERACTION and the picture is repainted from it -- and the drag
+    gesture, the reset and the tooltip all go through the same helpers a
+    widget's own callbacks would have.
+    """
+    size = max(KNOB_SIZE_MINIMUM, int(size))
     position = _control_position(value, minimum, maximum, logarithmic)
-    knob_minimum, knob_maximum = ((0.0, 1.0) if logarithmic else (minimum, maximum))
     plain_formatter = formatter
     formatter = lambda shown, inner=plain_formatter: _fit_column(inner(shown))
-    with dpg.group():
+    with dpg.group() as cluster:
         dpg.add_text(_fit_column(label.upper()), color=MUTED_TEXT)
-        knob = dpg.add_knob_float(
-            label="",
-            tag=tag,
-            default_value=position,
-            min_value=knob_minimum,
-            max_value=knob_maximum,
-            width=size,
-        )
+        knob = dpg.add_drawlist(width=size, height=size, tag=tag)
         value_label = dpg.add_text(formatter(value), color=TEXT)
-    dpg.configure_item(
-        knob,
-        callback=_set_knob_value,
-        user_data=KnobBinding(
-            setter=setter,
-            label=label,
-            value_label=value_label,
-            minimum=minimum,
-            maximum=maximum,
-            formatter=formatter,
-            logarithmic=logarithmic,
-            size=size,
-            default_value=value,
-        ),
+    binding = KnobBinding(
+        setter=setter,
+        label=label,
+        value_label=value_label,
+        minimum=minimum,
+        maximum=maximum,
+        formatter=formatter,
+        logarithmic=logarithmic,
+        size=size,
+        default_value=value,
     )
-    KNOB_INTERACTION.bindings[knob] = dpg.get_item_configuration(knob)["user_data"]
-    with dpg.tooltip(knob) as tooltip:
+    dpg.configure_item(knob, callback=_set_knob_value, user_data=binding)
+    KNOB_INTERACTION.bindings[knob] = binding
+    KNOB_INTERACTION.positions[knob] = position
+    _paint_knob(knob, size)
+    with dpg.tooltip(cluster) as tooltip:
         dpg.add_text("DRAG UP / DOWN", color=TEXT)
         dpg.add_text(
             "Slow for fine detail · Shift for finer · Double-click to reset",
@@ -3929,6 +3953,125 @@ def _add_knob(
         )
     KNOB_INTERACTION.tooltip_tags.append(tooltip)
     return knob
+
+
+def _knob_geometry(
+    knob: int | str, size: int
+) -> tuple[tuple[float, float], float, float, list[tuple[float, float]]]:
+    """Centre, radius, pointer angle and value-arc points for one knob."""
+    binding = KNOB_INTERACTION.bindings[knob]
+    minimum, maximum = _knob_bounds(binding)
+    span = maximum - minimum
+    position = KNOB_INTERACTION.positions.get(knob, minimum)
+    fraction = 0.0 if span <= 0.0 else (position - minimum) / span
+    fraction = min(1.0, max(0.0, fraction))
+    centre = (size * 0.5, size * 0.5)
+    radius = size * 0.5 - 1.0
+    angle = KNOB_SWEEP_START + fraction * (KNOB_SWEEP_END - KNOB_SWEEP_START)
+    steps = max(2, int(24 * fraction))
+    arc = [
+        (
+            centre[0] + radius * math.cos(theta),
+            centre[1] + radius * math.sin(theta),
+        )
+        for theta in (
+            KNOB_SWEEP_START + (angle - KNOB_SWEEP_START) * step / steps
+            for step in range(steps + 1)
+        )
+    ]
+    return centre, radius, angle, arc
+
+
+def _knob_track_points(size: int) -> list[tuple[float, float]]:
+    centre = size * 0.5
+    radius = size * 0.5 - 1.0
+    return [
+        (
+            centre + radius * math.cos(theta),
+            centre + radius * math.sin(theta),
+        )
+        for theta in (
+            KNOB_SWEEP_START + (KNOB_SWEEP_END - KNOB_SWEEP_START) * step / 32
+            for step in range(33)
+        )
+    ]
+
+
+def _paint_knob(knob: int | str, size: int) -> None:
+    """Draw a knob from scratch at a size: body, track, value arc, pointer."""
+    art = KNOB_INTERACTION.art.get(knob)
+    if art is not None:
+        for part in (art.body, art.track, art.arc, art.pointer):
+            if dpg.does_item_exist(part):
+                dpg.delete_item(part)
+    centre, radius, angle, arc = _knob_geometry(knob, size)
+    thickness = max(1.0, size / 12.0)
+    body = dpg.draw_circle(
+        centre, radius, color=(0, 0, 0, 0), fill=KNOB_BODY, parent=knob
+    )
+    track = dpg.draw_polyline(
+        _knob_track_points(size), color=KNOB_TRACK, thickness=thickness, parent=knob
+    )
+    arc_item = dpg.draw_polyline(
+        arc, color=KNOB_ARC, thickness=thickness, parent=knob
+    )
+    pointer = dpg.draw_line(
+        (
+            centre[0] + radius * 0.25 * math.cos(angle),
+            centre[1] + radius * 0.25 * math.sin(angle),
+        ),
+        (
+            centre[0] + radius * 0.85 * math.cos(angle),
+            centre[1] + radius * 0.85 * math.sin(angle),
+        ),
+        color=TEXT,
+        thickness=thickness,
+        parent=knob,
+    )
+    KNOB_INTERACTION.art[knob] = KnobArt(size, body, track, arc_item, pointer)
+
+
+def _repaint_knob(knob: int | str) -> None:
+    """Move the value arc and the pointer; the body and track do not change."""
+    art = KNOB_INTERACTION.art.get(knob)
+    if art is None or not dpg.does_item_exist(art.pointer):
+        return
+    centre, radius, angle, arc = _knob_geometry(knob, art.size)
+    dpg.configure_item(art.arc, points=arc)
+    dpg.configure_item(
+        art.pointer,
+        p1=(
+            centre[0] + radius * 0.25 * math.cos(angle),
+            centre[1] + radius * 0.25 * math.sin(angle),
+        ),
+        p2=(
+            centre[0] + radius * 0.85 * math.cos(angle),
+            centre[1] + radius * 0.85 * math.sin(angle),
+        ),
+    )
+
+
+def _knob_position(knob: int | str) -> float:
+    """Where a knob is, in the units its binding drags in."""
+    return KNOB_INTERACTION.positions.get(knob, 0.0)
+
+
+def _set_knob_position(knob: int | str, position: float) -> None:
+    """Move a knob's picture. Says nothing to the module: that is the setter's job."""
+    KNOB_INTERACTION.positions[knob] = float(position)
+    _repaint_knob(knob)
+
+
+def _resize_knob(knob: int | str, size: int) -> None:
+    """Draw a knob again at a new size, as zooming asks for."""
+    size = max(KNOB_SIZE_MINIMUM, int(size))
+    if not dpg.does_item_exist(knob):
+        return
+    art = KNOB_INTERACTION.art.get(knob)
+    if art is not None and art.size == size:
+        return
+    dpg.configure_item(knob, width=size, height=size)
+    _paint_knob(knob, size)
 
 
 def _set_attribute(target: object, attribute: str) -> Callable[[float], None]:
@@ -5987,11 +6130,7 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
     for node in RACK_NODES:
         _bind_rack_node_font(node, zoom)
     for knob, binding in KNOB_INTERACTION.bindings.items():
-        if dpg.does_item_exist(knob):
-            dpg.configure_item(
-                knob,
-                width=max(KNOB_SIZE_MINIMUM, round(binding.size * zoom)),
-            )
+        _resize_knob(knob, round(binding.size * zoom))
     dpg.configure_item(ZOOM_RESET_BUTTON, label=f"{zoom:.0%}")
 
     for cable in runtime.patch.cables:

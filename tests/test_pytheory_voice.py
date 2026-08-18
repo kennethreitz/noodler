@@ -16,6 +16,8 @@ from noodler.module_providers.builtin.pytheory_voice import (
     ANCHOR_HZ,
     LOWEST_HZ,
     SEMITONES,
+    loop_region,
+    sustains,
 )
 
 
@@ -203,3 +205,69 @@ def test_an_unknown_instrument_settles_on_a_known_one() -> None:
 def test_the_panel_offers_every_instrument() -> None:
     voice = BuiltinProvider().create("pytheory_voice")
     assert len(voice.choices_for("instrument")) == len(INSTRUMENTS)
+
+
+def _held(name: str, seconds: float, release_ms: float = 200.0) -> np.ndarray:
+    voice = PyTheoryVoice(
+        PyTheoryVoiceParameters(instrument=name, release_ms=release_ms)
+    )
+    voice.prepare(48_000.0, 256)
+    held = int(seconds * 48_000)
+    gate = np.concatenate(
+        [np.ones(held, dtype=np.float32), np.zeros(48_000, dtype=np.float32)]
+    )
+    return _blocks(voice, gate[: len(gate) // 256 * 256])
+
+
+def test_the_render_says_whether_an_instrument_sustains() -> None:
+    """Told apart by the sound, not by a table of names."""
+    assert sustains(render_note("harmonium", 220.0))
+    assert sustains(render_note("cello", 220.0))
+    assert sustains(render_note("flute", 220.0))
+    assert not sustains(render_note("piano", 220.0))
+    assert not sustains(render_note("koto", 220.0))
+    assert not sustains(render_note("kalimba", 220.0))
+
+
+def test_a_sustaining_note_lasts_as_long_as_the_gate() -> None:
+    """PyTheory renders one second; a held organ note is not one second."""
+    played = _held("harmonium", 4.0)
+    by_second = [
+        float(np.sqrt(np.mean(played[i * 48_000 : (i + 1) * 48_000] ** 2)))
+        for i in range(4)
+    ]
+    assert all(level > 0.1 for level in by_second), by_second
+    # Steady, not decaying: within a fifth of the first second all the way.
+    assert min(by_second) > by_second[0] * 0.8
+
+
+def test_a_struck_note_ends_when_it_ends() -> None:
+    played = _held("piano", 4.0)
+    third_second = played[2 * 48_000 : 3 * 48_000]
+    assert float(np.max(np.abs(third_second))) < 1e-3, "a piano does not sustain"
+
+
+def test_looping_does_not_add_a_click() -> None:
+    """The seam is crossfaded: repeating it is no rougher than the render."""
+    raw = render_note("theremin", 220.0)
+    played = _held("theremin", 3.0)
+    looping = played[48_000 + 4_800 : 3 * 48_000 - 4_800]
+
+    assert float(np.max(np.abs(np.diff(looping)))) <= float(
+        np.max(np.abs(np.diff(raw)))
+    )
+
+
+def test_a_loop_region_is_at_the_end_of_the_note() -> None:
+    note = render_note("string_ensemble", 220.0)
+    region = loop_region(note)
+    assert region is not None
+    start, fade = region
+    assert 0 < start < note.size
+    assert 0 < fade < note.size - start
+    assert loop_region(render_note("piano", 220.0)) is None
+
+
+def test_releasing_a_held_note_still_lets_go() -> None:
+    played = _held("harmonium", 2.0, release_ms=100.0)
+    assert float(np.max(np.abs(played[-24_000:]))) < 1e-3

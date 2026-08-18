@@ -86,6 +86,69 @@ def _spread(count: int) -> list[int]:
 VOICE_OUTPUTS = ("audio", "envelope")
 SYNTH_BY_NAME = {member.value: member for member in Synth}
 
+LOOP_SECONDS = 0.35
+"""How much of the end of a sustaining note is looped while the gate is held."""
+
+LOOP_CROSSFADE_SECONDS = 0.06
+"""The seam of the loop, crossfaded so repeating it is not a click."""
+
+SUSTAINS_ABOVE = 0.15
+"""A note still this loud at its end, relative to its peak, is a sustaining one.
+
+PyTheory renders one second of every instrument. A plucked string has decayed
+to almost nothing by then and should end; a bowed one or an organ is still at
+full level and has only stopped because the render did. The two are told apart
+by the render itself rather than by a table of which instruments are which, and
+the threshold sits in a real gap: every guitar, piano and harp measures 0.13 or
+below, everything blown, bowed or sustained 0.16 or above.
+
+Long-ringing metal -- bells, glockenspiel, celesta -- lands on the sustaining
+side, and holding one loops its ring, which is what a held mallet roll sounds
+like. Letting go still releases it.
+"""
+
+
+def sustains(note: NDArray[np.float32]) -> bool:
+    """Whether a rendered note is still sounding when it runs out."""
+    if note.size < int(PYTHEORY_RATE * 0.5):
+        return False
+    tail = note[-int(PYTHEORY_RATE * 0.1) :]
+    peak = float(np.max(np.abs(note)))
+    return peak > 0.0 and float(np.sqrt(np.mean(tail * tail))) / peak >= SUSTAINS_ABOVE
+
+
+def loop_region(note: NDArray[np.float32]) -> tuple[int, int] | None:
+    """The stretch of a sustaining note that can be repeated while it is held.
+
+    The last third of a second, seamed with a crossfade: the end of the region
+    is faded into its beginning, so playback can jump from one to the other
+    with nothing to hear at the join.
+    """
+    if not sustains(note):
+        return None
+    length = min(note.size, int(PYTHEORY_RATE * LOOP_SECONDS))
+    fade = min(length // 2, int(PYTHEORY_RATE * LOOP_CROSSFADE_SECONDS))
+    start = note.size - length
+    return start, fade
+
+
+def seam(note: NDArray[np.float32], region: tuple[int, int]) -> NDArray[np.float32]:
+    """Return a copy of a note whose loop region has been crossfaded shut.
+
+    The last `fade` samples of the region are blended toward the first `fade`
+    samples, so that when playback wraps from the region's end to its start,
+    the waveform it lands on is the one it was already fading into.
+    """
+    start, fade = region
+    if fade <= 0:
+        return note
+    seamed = np.array(note, dtype=np.float32)
+    ramp = np.linspace(0.0, 1.0, fade, endpoint=False, dtype=np.float32)
+    head = seamed[start : start + fade]
+    tail = seamed[-fade:]
+    seamed[-fade:] = tail * (1.0 - ramp) + head * ramp
+    return seamed
+
 
 def render_note(instrument: str, hertz: float) -> NDArray[np.float64]:
     """Ask PyTheory for one note, as floating point between -1 and 1."""
@@ -104,7 +167,9 @@ def render_note(instrument: str, hertz: float) -> NDArray[np.float64]:
     loud = np.flatnonzero(np.abs(samples) > 1e-4)
     if loud.size:
         samples = samples[: int(loud[-1]) + 1]
-    return np.asarray(samples, dtype=np.float32)
+    samples = np.asarray(samples, dtype=np.float32)
+    region = loop_region(samples)
+    return seam(samples, region) if region is not None else samples
 
 
 class PyTheoryVoiceParameters(BaseModel):
@@ -156,6 +221,7 @@ class PyTheoryVoice:
         self._rendered_for: str | None = None
         self._sample_rate = 48_000.0
         self._note: NDArray[np.float64] | None = None
+        self._loop: tuple[int, int] | None = None
         self._position = 0.0
         self._step = 1.0
         self._gain = 0.0
@@ -299,6 +365,7 @@ class PyTheoryVoice:
         if note.size == 0:
             return
         self._note = note
+        self._loop = loop_region(note)
         self._position = 0.0
         self._step = (hertz / anchor) * (PYTHEORY_RATE / self._sample_rate)
         self._gain = 1.0
@@ -340,6 +407,17 @@ class PyTheoryVoice:
         note = self._note
         if note is not None and note.size and self._gain > 0.0:
             positions = self._position + np.arange(frame_count) * self._step
+            holding = self._gate_high or started
+            if self._loop is not None and holding:
+                # Held past the end of what was rendered: keep going round the
+                # seamed loop, so a bowed or blown note lasts as long as the
+                # gate does rather than as long as PyTheory's render did.
+                start, _fade = self._loop
+                length = note.size - 1 - start
+                over = positions >= start
+                positions = np.where(
+                    over, start + np.mod(positions - start, length), positions
+                )
             inside = positions < note.size - 1
             lower = np.clip(positions.astype(np.int64), 0, max(0, note.size - 2))
             fraction = positions - lower
@@ -370,6 +448,9 @@ class PyTheoryVoice:
 
 __all__ = [
     "ANCHOR_HZ",
+    "LOOP_SECONDS",
+    "loop_region",
+    "sustains",
     "PYTHEORY_RATE",
     "PYTHEORY_VOICE_MANIFEST",
     "PyTheoryVoice",
