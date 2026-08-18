@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 import math
+import sys
 import time
 from pathlib import Path
 
@@ -2088,6 +2089,25 @@ def _glow(colour: tuple[int, int, int, int], step: int) -> tuple[int, int, int, 
     ) + (255,)
 
 
+def _activity_of(block: object) -> float:
+    """How lit a jack should be for what is on it, zero to one.
+
+    Audio and control blocks light by their peak. A musical object -- a scale
+    crossing a cable -- is not a number at all; it is simply present, so its
+    jack is simply lit.
+    """
+    if block is None:
+        return 0.0
+    array = np.asarray(block)
+    if array.dtype.kind not in "fiub":
+        return 1.0
+    if array.ndim == 0:
+        return min(1.0, abs(float(array)))
+    if array.size == 0:
+        return 0.0
+    return min(1.0, float(np.max(np.abs(array))))
+
+
 def _refresh_jack_activity(runtime: AppRuntime) -> None:
     """Light every output jack as brightly as the signal on it.
 
@@ -2106,12 +2126,7 @@ def _refresh_jack_activity(runtime: AppRuntime) -> None:
         level = 0.0
         if playing:
             block = rendered.get(instance_id, {}).get(port_id)
-            if block is not None:
-                array = np.asarray(block)
-                if array.ndim == 0:
-                    level = min(1.0, abs(float(array)))
-                elif array.size:
-                    level = min(1.0, float(np.max(np.abs(array))))
+            level = _activity_of(block)
         held = max(level, PORT_ACTIVITY.get((instance_id, port_id), 0.0) * ACTIVITY_RELEASE)
         PORT_ACTIVITY[(instance_id, port_id)] = held
         step = min(ACTIVITY_STEPS, int(round(held * ACTIVITY_STEPS)))
@@ -2212,6 +2227,18 @@ def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
         )
 
 
+LAST_FRAME_ERROR: list[str] = [""]
+
+
+def _report_frame_error(exc: BaseException) -> None:
+    message = f"{type(exc).__name__}: {exc}"
+    if LAST_FRAME_ERROR[0] == message:
+        return
+    LAST_FRAME_ERROR[0] = message
+    _set_patch_status(f"FRAME ERROR  ·  {message}"[:110], error=True)
+    print(f"noodler: frame error: {message}", file=sys.stderr)
+
+
 def _refresh_frame(
     _sender: str,
     _app_data: object,
@@ -2230,23 +2257,30 @@ def _refresh_frame(
     if ACTIVE_RUNTIME:
         runtime = ACTIVE_RUNTIME[0]
     dt = clamp_timestep(dpg.get_delta_time())
-    _release_stale_key_latches()
-    _consume_scroll()
-    _reveal_rack_once()
-    _settle_library_layout()
-    _consume_macos_magnification()
-    _glide_rack(dt)
-    _settle_recenter(dt)
-    _settle_rack_zoom(dt)
-    _settle_rack_rails(dt)
-    _settle_console()
-    _refresh_clock(dt)
-    _refresh_ui(runtime, dt)
-    _refresh_transport_button(runtime)
-    _refresh_jack_activity(runtime)
-    _refresh_knob_hover()
-    _refresh_window_title_if_changed()
-    _refresh_module_close_buttons()
+    try:
+        _release_stale_key_latches()
+        _consume_scroll()
+        _reveal_rack_once()
+        _settle_library_layout()
+        _consume_macos_magnification()
+        _glide_rack(dt)
+        _settle_recenter(dt)
+        _settle_rack_zoom(dt)
+        _settle_rack_rails(dt)
+        _settle_console()
+        _refresh_clock(dt)
+        _refresh_ui(runtime, dt)
+        _refresh_transport_button(runtime)
+        _refresh_jack_activity(runtime)
+        _refresh_knob_hover()
+        _refresh_window_title_if_changed()
+        _refresh_module_close_buttons()
+    except Exception as exc:  # noqa: BLE001 - the heartbeat must not stop
+        # One bad frame must not take the interface with it: everything that
+        # moves -- scroll-to-pan, glide, the springs, the meters -- runs from
+        # here, and an exception that escaped would never schedule the next
+        # frame. Say what happened, once, and keep going.
+        _report_frame_error(exc)
     dpg.set_frame_callback(
         dpg.get_frame_count() + 1,
         _refresh_frame,

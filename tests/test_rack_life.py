@@ -323,3 +323,38 @@ def test_a_tap_of_space_toggles_playback_and_a_pan_does_not(monkeypatch) -> None
         assert toggled == [1], "a long hold is not a tap"
     finally:
         dpg.destroy_context()
+
+
+def test_a_musical_output_lights_its_jack_instead_of_crashing() -> None:
+    """The Key's scale is an object on a cable, not a number: it is simply lit."""
+    from noodler.preset import read_patch_preset
+    from pathlib import Path
+
+    dpg.create_context()
+    try:
+        runtime = build_ui(preset=read_patch_preset(Path("examples/pelog-bell-garden.noodler")))
+        _play(runtime)
+        _refresh_jack_activity(runtime)
+        assert PORT_STEPS[("key", "scale")] > 0
+    finally:
+        dpg.destroy_context()
+
+
+def test_one_bad_frame_does_not_stop_the_heartbeat(monkeypatch) -> None:
+    from noodler.app import _refresh_frame, LAST_FRAME_ERROR
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        scheduled = []
+        monkeypatch.setattr(dpg, "set_frame_callback", lambda *a, **k: scheduled.append(a))
+        monkeypatch.setattr("noodler.app._refresh_knob_hover", lambda: 1 / 0)
+
+        _refresh_frame("frame", None, runtime)
+
+        assert scheduled, "the next frame was still scheduled"
+        assert "ZeroDivisionError" in LAST_FRAME_ERROR[0]
+        assert "FRAME ERROR" in dpg.get_value(CONTROL_STATUS)
+    finally:
+        LAST_FRAME_ERROR[0] = ""
+        dpg.destroy_context()
