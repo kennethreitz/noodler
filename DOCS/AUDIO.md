@@ -125,3 +125,31 @@ is running.
 Before targeting very small buffers, Noodler should add reusable buffers,
 compile input routing outside the callback, measure callback load and xruns,
 and atomically swap prepared graph snapshots at block boundaries.
+
+## Control-rate work stays off the sample clock
+
+Rendering the reference patch was taking 92% of a 256-frame callback at the
+median and passing 100% at the 95th percentile, which is audible as dropouts:
+any scheduling jitter at all lands past the deadline. Raising the block size
+bought nothing — the ratio held near 90% from 256 through 2048 frames — which
+is the signature of a cost that is purely per-sample Python.
+
+Nearly half of it was the function utility, a *control* source shaping contours
+measured in tens of seconds while stepping its stage machine once per sample.
+Running free it now advances in strides and interpolates between decisions,
+which is inaudible on a slow contour and is asserted as such: the strided
+output is compared against the per-sample one and must not drift.
+
+The stride stands down whenever something sub-stride could change the outcome —
+a signal to slew, a trigger, a cycle gate — and shrinks with the contour, since
+these channels reach audio rate, where a stage lasts a handful of samples and
+every one of them is the shape. A fast channel renders bit-for-bit identically
+to the per-sample path.
+
+Measured on the same patch afterwards: 51% of budget at the median, and 54% at
+the maximum rather than 171%. The tail matters more than the median here — a
+callback only has to miss once to be heard.
+
+The remaining cost is in the modules that genuinely need a sample clock: the
+reverb's delay network and the low-pass gate. Vectorising those is the next
+move if the callback ever needs more room.

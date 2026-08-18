@@ -50,6 +50,26 @@ class FunctionChannelParameters(BaseModel):
     attenuverter: float = Field(default=1.0, ge=-1.0, le=1.0)
 
 
+CONTROL_STRIDE = 32
+"""Samples per decision when a channel is running free.
+
+A function generator is a control source: its contours are measured in seconds,
+not samples, so stepping its stage machine once per sample spends most of a
+patch's CPU deciding nothing has changed. Running free it advances in strides
+and interpolates between decisions, which is inaudible on a contour and leaves
+the audio callback the headroom it actually needs.
+
+Striding is only ever used when nothing sub-stride can change the outcome: a
+signal to slew, a trigger, or a cycle gate all put the channel back on a
+per-sample loop. The stride also shrinks with the contour, because these
+channels reach audio rate, where a stage lasts a handful of samples and every
+one of them is the shape.
+"""
+
+MIN_STEPS_PER_STAGE = 256
+"""Decisions guaranteed per rise or fall, however fast it has been set."""
+
+
 class FunctionUtilityParameters(BaseModel):
     """Serializable controls for all four utility channels."""
 
@@ -388,6 +408,48 @@ class FunctionUtility:
         output = np.empty(frame_count, dtype=np.float64)
         eor = np.empty(frame_count, dtype=np.float64)
         eoc = np.empty(frame_count, dtype=np.float64)
+
+        free_running = (
+            signal is None
+            and f"{prefix}_trigger" not in inputs
+            and f"{prefix}_cycle" not in inputs
+        )
+        stride = 1
+        if free_running and frame_count:
+            stage_samples = (
+                min(float(rise_times.min()), float(fall_times.min())) * sample_rate
+            )
+            stride = int(
+                min(CONTROL_STRIDE, max(1.0, stage_samples // MIN_STEPS_PER_STAGE))
+            )
+        if stride > 1:
+            cycle_enabled = parameters.cycle
+            index = 0
+            while index < frame_count:
+                span = min(stride, frame_count - index)
+                previous = state.value
+                if state.stage is FunctionStage.IDLE and cycle_enabled:
+                    self._begin_stage(state, FunctionStage.RISING)
+                self._function_step(
+                    state,
+                    float(rise_times[index]),
+                    float(fall_times[index]),
+                    parameters.curve,
+                    cycle_enabled,
+                    sample_rate / span,
+                )
+                output[index : index + span] = np.linspace(
+                    previous,
+                    state.value,
+                    span,
+                    endpoint=False,
+                )
+                falling = state.stage is FunctionStage.FALLING
+                eor[index : index + span] = 1.0 if falling else 0.0
+                eoc[index : index + span] = 0.0 if falling else 1.0
+                index += span
+            return output, eor, eoc
+
         for index in range(frame_count):
             trigger_high = bool(trigger[index] > 0.0)
             trigger_edge = trigger_high and not state.trigger_high

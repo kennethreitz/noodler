@@ -199,3 +199,61 @@ def test_audio_can_patch_into_a_function_signal_input() -> None:
 
     assert assessment.compatible is True
     assert assessment.disposition is ConnectionDisposition.CROSS_SIGNAL
+
+
+def test_a_strided_contour_matches_the_per_sample_one() -> None:
+    """Striding is an optimisation, so it has to be inaudible.
+
+    A connected trigger puts the channel back on the per-sample loop, which
+    gives an exact reference to compare the free-running contour against.
+    """
+    settings = FunctionUtilityParameters(
+        channel_1=FunctionChannelParameters(
+            rise_seconds=11.0,
+            fall_seconds=17.0,
+            curve=0.22,
+            cycle=True,
+            attenuverter=1.0,
+        )
+    )
+    strided = FunctionUtility(settings.model_copy(deep=True))
+    exact = FunctionUtility(settings.model_copy(deep=True))
+
+    sample_rate = 48_000.0
+    block = 512
+    silent_trigger = np.zeros(block, dtype=np.float32)
+    worst = 0.0
+    for _ in range(120):
+        fast = strided.process(block, sample_rate)["channel_1_unity"]
+        slow = exact.process(
+            block,
+            sample_rate,
+            {"channel_1_trigger": silent_trigger},
+        )["channel_1_unity"]
+        worst = max(worst, float(np.max(np.abs(np.asarray(fast) - np.asarray(slow)))))
+
+    assert worst < 2e-3, f"contour drifted by {worst}"
+
+
+def test_an_audio_rate_channel_keeps_every_sample() -> None:
+    """Fast stages are all shape, so the stride must not engage at all."""
+    settings = FunctionUtilityParameters(
+        channel_1=FunctionChannelParameters(
+            rise_seconds=0.0005,
+            fall_seconds=0.0005,
+            cycle=True,
+            attenuverter=1.0,
+        )
+    )
+    free = FunctionUtility(settings.model_copy(deep=True))
+    exact = FunctionUtility(settings.model_copy(deep=True))
+    silent_trigger = np.zeros(64, dtype=np.float32)
+
+    for _ in range(8):
+        rendered = np.asarray(free.process(64, 48_000.0)["channel_1_unity"])
+        reference = np.asarray(
+            exact.process(64, 48_000.0, {"channel_1_trigger": silent_trigger})[
+                "channel_1_unity"
+            ]
+        )
+        np.testing.assert_array_equal(rendered, reference)
