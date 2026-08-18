@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 noodler = "noodler.app:main"
+noodler-ui = "noodler.ui.shell:main"
 
 [dependency-groups]
 dev = [
