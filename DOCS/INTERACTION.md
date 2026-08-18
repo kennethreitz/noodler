@@ -123,9 +123,14 @@ brightens; the one being turned brightens more. Each strip's ring meter is the
 same peak-programme ballistics as the master's, so a channel's level and its
 loudness are read in one glance at one dial.
 
-Right-clicking a module asks it the four things done to one: fold, reset its
-controls, unplug every cable from it, remove it. Each existed as a gesture or a
-menu; each was one more thing to know.
+Every cable glows with what is on it, in the same steps as the jack that feeds
+it, so a signal can be followed by eye from source to console.
+
+Right-clicking a module asks it the five things done to one: fold, duplicate
+(settings and all, never cables — a copy that arrived already patched into the
+same places would double every signal), reset its controls, unplug every cable
+from it, remove it. Each existed as a gesture or a menu; each was one more thing
+to know.
 
 ## What this is not
 

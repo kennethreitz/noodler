@@ -41,6 +41,9 @@ class EditHistory:
     limit: int = DEFAULT_HISTORY_LIMIT
     done: list[Edit] = field(default_factory=list)
     undone: list[Edit] = field(default_factory=list)
+    revision: int = 0
+    """Moves on with every record, undo and redo, so "unsaved changes" is
+    whether it still equals what it was when the document was last written."""
 
     @property
     def can_undo(self) -> bool:
@@ -58,6 +61,7 @@ class EditHistory:
         """
         self._discard_all(self.undone)
         self.done.append(edit)
+        self.revision += 1
         while len(self.done) > max(1, self.limit):
             self._discard(self.done.pop(0))
 
@@ -68,6 +72,7 @@ class EditHistory:
         edit = self.done.pop()
         edit.undo()
         self.undone.append(edit)
+        self.revision += 1
         return edit
 
     def redo(self) -> Edit | None:
@@ -77,6 +82,7 @@ class EditHistory:
         edit = self.undone.pop()
         edit.redo()
         self.done.append(edit)
+        self.revision += 1
         return edit
 
     def clear(self) -> None:

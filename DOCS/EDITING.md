@@ -64,10 +64,16 @@ panels that were never touched. Inverse operations only disturb what actually
 changed, which is also what makes an undo read as *that edit* being lifted
 rather than the patch being replaced.
 
-Recorded today: patching a cable or an output tap, unpatching one, `UNPLUG ALL`,
-adding a module, and removing one. Continuous control movements are not
-recorded — a knob sweep would fill the history with hundreds of entries, and
-double-clicking a control already restores its default.
+Recorded today: patching a cable or an output tap, unpatching one, `UNPLUG ALL`
+and unplugging one module, adding a module, duplicating one, removing one, and
+turning a knob. A turn is one edit however many frames it took — the position
+where the drag began and the position where it let go — so a sweep is one entry
+and ⌘Z lifts the whole sweep. Resetting a control by double-click is the same
+kind of edit.
+
+The window title carries the patch name and a dot while there are edits since
+the last save; the dot is a comparison of history revisions, not a flag anyone
+has to remember to set.
 
 ### Removing a module keeps its panel
 

@@ -1,7 +1,7 @@
 """Noodler's application entry point."""
 
 import argparse
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 import math
@@ -461,6 +461,8 @@ class KnobInteraction:
 
     bindings: dict[int | str, KnobBinding] = field(default_factory=dict)
     positions: dict[int | str, float] = field(default_factory=dict)
+    drag_start: float = 0.0
+    """Where the knob was when the drag began, so the whole turn is one edit."""
     """Where each knob is, in its own units. The picture has no value of its own."""
     art: dict[int | str, KnobArt] = field(default_factory=dict)
     active_knob: int | str | None = None
@@ -587,8 +589,46 @@ PENDING_OPEN: list[PatchPreset] = []
 """A document waiting to replace the rack at the start of the next frame."""
 
 
+PATCH_NAME: list[str] = ["Untitled Patch"]
+SAVED_REVISION: list[int] = [0]
+"""The history revision at the last save; anything else is unsaved work."""
+
+
 def _remember_patch_path(path: Path) -> None:
     CURRENT_PATCH_PATH[:] = [path]
+
+
+def _mark_saved(name: str | None = None) -> None:
+    if name:
+        PATCH_NAME[:] = [name]
+    SAVED_REVISION[:] = [RACK_HISTORY.revision]
+    _refresh_window_title()
+
+
+def _has_unsaved_changes() -> bool:
+    return RACK_HISTORY.revision != SAVED_REVISION[0]
+
+
+LAST_TITLE: list[str] = [""]
+
+
+def _refresh_window_title_if_changed() -> None:
+    marker = "  •" if _has_unsaved_changes() else ""
+    title = f"Noodler — {PATCH_NAME[0]}{marker}"
+    if LAST_TITLE[0] != title:
+        LAST_TITLE[0] = title
+        _refresh_window_title()
+
+
+def _refresh_window_title() -> None:
+    """The title bar names the patch and, with a dot, whether it is saved."""
+    marker = "  •" if _has_unsaved_changes() else ""
+    title = f"Noodler — {PATCH_NAME[0]}{marker}"
+    try:
+        dpg.set_viewport_title(title)
+    except Exception:
+        # No viewport yet, or none at all in a test: nothing to title.
+        return
 
 
 def _save_patch_to(runtime: AppRuntime, destination: Path) -> None:
@@ -596,6 +636,7 @@ def _save_patch_to(runtime: AppRuntime, destination: Path) -> None:
     name = destination.stem or "Untitled Patch"
     written = write_patch_preset(_capture_current_preset(runtime, name), destination)
     _remember_patch_path(written)
+    _mark_saved(name)
     _set_patch_status(f"SAVED  ·  {written.name}")
 
 
@@ -1201,6 +1242,10 @@ def _configure_theme() -> None:
     _link_theme(AUDIO_LINK_THEME, SIGNAL_COLORS["audio"])
     _link_theme(GATE_LINK_THEME, SIGNAL_COLORS["gate"])
     _link_theme(MUSICAL_LINK_THEME, SIGNAL_COLORS["musical"])
+    # A cable glows with what is on it, in the same steps as its jack.
+    for signal, colour in SIGNAL_COLORS.items():
+        for step in range(ACTIVITY_STEPS + 1):
+            _link_theme(_link_glow_theme(signal, step), _glow(colour, step))
     with dpg.theme(tag=CONSOLE_THEME):
         # The console is furniture, not a module: darker, squarer, quieter,
         # with the one warm line of its title to say which strip is which.
@@ -1412,6 +1457,7 @@ def _add_visual_link(
         "musical": MUSICAL_LINK_THEME,
     }.get(signal, CV_LINK_THEME)
     dpg.bind_item_theme(link, theme)
+    CABLE_INDEX_KEY.clear()
     return link
 
 
@@ -1965,6 +2011,37 @@ def _index_port_texts(runtime: AppRuntime) -> None:
                     break
 
 
+def _link_glow_theme(signal: str, step: int) -> str:
+    return f"noodler.theme.link.{signal}.glow{step}"
+
+
+CABLE_SOURCES: dict[int | str, tuple[str, str, str]] = {}
+"""Each drawn cable, by the output that feeds it and the signal it carries."""
+CABLE_INDEX_KEY: list[int] = []
+CABLE_STEPS: dict[int | str, int] = {}
+
+
+def _index_cables() -> None:
+    """Know which output feeds each drawn cable, re-read when the count changes."""
+    if not dpg.does_item_exist(RACK):
+        return
+    links = dpg.get_item_children(RACK).get(0, ())
+    if CABLE_INDEX_KEY and CABLE_INDEX_KEY[0] == len(links) and CABLE_SOURCES:
+        return
+    CABLE_INDEX_KEY[:] = [len(links)]
+    CABLE_SOURCES.clear()
+    CABLE_STEPS.clear()
+    for link in links:
+        route = dpg.get_item_user_data(link)
+        source = getattr(route, "source", None)
+        if source is None:
+            continue
+        signal = "cv"
+        if ACTIVE_RUNTIME:
+            signal = _endpoint_signal(ACTIVE_RUNTIME[0].patch, source)
+        CABLE_SOURCES[link] = (source.module_id, source.port_id, signal)
+
+
 def _glow(colour: tuple[int, int, int, int], step: int) -> tuple[int, int, int, int]:
     """A jack colour between dim and lit, in a few even steps."""
     weight = 0.38 + 0.62 * (step / ACTIVITY_STEPS)
@@ -2006,6 +2083,19 @@ def _refresh_jack_activity(runtime: AppRuntime) -> None:
         PORT_STEPS[(instance_id, port_id)] = step
         if dpg.does_item_exist(text):
             dpg.configure_item(text, color=_glow(SIGNAL_COLORS.get(signal, TEXT), step))
+    _refresh_cable_glow()
+
+
+def _refresh_cable_glow() -> None:
+    """Rebind each cable to the glow of the jack that feeds it, on change."""
+    _index_cables()
+    for link, (module_id, port_id, signal) in CABLE_SOURCES.items():
+        step = PORT_STEPS.get((module_id, port_id), 0)
+        if CABLE_STEPS.get(link) == step:
+            continue
+        CABLE_STEPS[link] = step
+        if dpg.does_item_exist(link):
+            dpg.bind_item_theme(link, _link_glow_theme(signal if signal in SIGNAL_COLORS else "cv", step))
 
 
 def _refresh_knob_hover() -> None:
@@ -2118,6 +2208,7 @@ def _refresh_frame(
     _refresh_transport_button(runtime)
     _refresh_jack_activity(runtime)
     _refresh_knob_hover()
+    _refresh_window_title_if_changed()
     _refresh_module_close_buttons()
     dpg.set_frame_callback(
         dpg.get_frame_count() + 1,
@@ -3150,6 +3241,10 @@ def _add_module_context_menu(node: int | str, runtime: AppRuntime) -> None:
             ),
         )
         dpg.add_menu_item(
+            label="Duplicate",
+            callback=lambda: _duplicate_module(node, runtime),
+        )
+        dpg.add_menu_item(
             label="Reset controls",
             callback=lambda: _reset_module_controls(node),
         )
@@ -3438,6 +3533,29 @@ def _set_module_collapsed(
     _set_patch_status(f"OPENED  {label}")
 
 
+def _move_knob(knob: int | str, position: float) -> None:
+    """Put a knob at a position and tell its module: what undo and redo do."""
+    binding = KNOB_INTERACTION.bindings.get(knob)
+    if binding is None or not dpg.does_item_exist(knob):
+        return
+    _set_knob_position(knob, position)
+    _set_knob_value(str(knob), position, binding)
+
+
+def _record_knob_turn(knob: int | str, before: float, after: float) -> None:
+    """One whole turn of a knob is one edit, however many frames it took."""
+    if abs(after - before) < 1e-9:
+        return
+    binding = KNOB_INTERACTION.bindings.get(knob)
+    if binding is None:
+        return
+    _record_edit(
+        f"TURN {binding.label.upper()}",
+        undo=lambda: _move_knob(knob, before),
+        redo=lambda: _move_knob(knob, after),
+    )
+
+
 def _reset_knob_to_default(knob: int | str, binding: KnobBinding) -> bool:
     """Restore the value a control was built with, as a panel reset does."""
     if binding.default_value is None:
@@ -3448,8 +3566,10 @@ def _reset_knob_to_default(knob: int | str, binding: KnobBinding) -> bool:
         binding.maximum,
         binding.logarithmic,
     )
+    before = _knob_position(knob)
     _set_knob_position(knob, position)
     _set_knob_value(str(knob), position, binding)
+    _record_knob_turn(knob, before, position)
     _set_patch_status(
         f"RESET  {binding.label.upper()}  "
         f"{binding.formatter(binding.default_value)}"
@@ -3928,6 +4048,7 @@ def _begin_knob_drag(
         if dpg.does_item_exist(knob) and dpg.is_item_hovered(knob):
             interaction.active_knob = knob
             interaction.drag_position = _knob_position(knob)
+            interaction.drag_start = interaction.drag_position
             minimum, maximum = _knob_bounds(binding)
             interaction.drag.minimum = minimum
             interaction.drag.maximum = maximum
@@ -4031,7 +4152,9 @@ def _end_knob_drag(
     CANVAS_INTERACTION.stop_panning()
     if interaction.active_knob is None:
         return
+    knob = interaction.active_knob
     interaction.active_knob = None
+    _record_knob_turn(knob, interaction.drag_start, interaction.drag_position)
     if dpg.does_item_exist(CONTROL_STATUS):
         dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
         dpg.set_value(CONTROL_STATUS, DEFAULT_CONTROL_STATUS)
@@ -6388,6 +6511,47 @@ def _place_dynamic_node(node: int | str, rail: str) -> None:
     dpg.set_item_pos(node, [x, CANVAS_INTERACTION.rail_y[rail]])
 
 
+def _mount_new_module(
+    runtime: AppRuntime,
+    module_id: str,
+    parameters: Mapping[str, object] | None = None,
+    *,
+    beside: int | str | None = None,
+) -> int | str:
+    """Create a module, mount its panel, and make the addition undoable.
+
+    With ``parameters`` it is a copy rather than a fresh one, and ``beside``
+    puts it a little down and right of another node instead of on the rail.
+    """
+    provider = BuiltinProvider()
+    module = provider.create(module_id, parameters)
+    manifest = module.manifest
+    instance_id = _next_module_instance_id(module_id, runtime.patch)
+    _edit_patch(runtime, lambda: runtime.patch.add_module(instance_id, module))
+    node, rail, theme = _register_dynamic_node(instance_id, module_id, manifest.category)
+    _build_generic_module_node(instance_id, module, runtime.patch)
+    dpg.bind_item_theme(node, theme)
+    _bind_rack_node_font(node)
+    _add_spine_texture(node, manifest.name.upper())
+    _add_module_spine(node)
+    _add_module_context_menu(node, runtime)
+    if beside is not None and dpg.does_item_exist(beside):
+        x, y = dpg.get_item_pos(beside)
+        dpg.set_item_pos(node, [x + 36, y + 36])
+    else:
+        _place_dynamic_node(node, rail)
+    _reveal_node(node)
+    _refresh_rack_outline(runtime)
+    registration = _capture_node_registration(node, instance_id)
+    _record_edit(
+        f"ADD {manifest.name.upper()}",
+        undo=lambda: _remove_module_node(node, runtime, record=False),
+        redo=lambda: _restore_module_node(runtime, registration, module, ()),
+        discard=lambda: _discard_retained_node(runtime, registration),
+    )
+    return node
+
+
 def _add_selected_module(
     _sender: int | str,
     _app_data: object,
@@ -6395,35 +6559,9 @@ def _add_selected_module(
 ) -> None:
     runtime, module_id = selection
     try:
-        provider = BuiltinProvider()
-        module = provider.create(module_id)
-        manifest = module.manifest
-        instance_id = _next_module_instance_id(module_id, runtime.patch)
-        _edit_patch(
-            runtime,
-            lambda: runtime.patch.add_module(instance_id, module),
-        )
-        node, rail, theme = _register_dynamic_node(
-            instance_id,
-            module_id,
-            manifest.category,
-        )
-        _build_generic_module_node(instance_id, module, runtime.patch)
-        dpg.bind_item_theme(node, theme)
-        _bind_rack_node_font(node)
-        _add_spine_texture(node, manifest.name.upper())
-        _add_module_spine(node)
-        _add_module_context_menu(node, runtime)
-        _place_dynamic_node(node, rail)
-        _reveal_node(node)
-        _refresh_rack_outline(runtime)
-        registration = _capture_node_registration(node, instance_id)
-        _record_edit(
-            f"ADD {manifest.name.upper()}",
-            undo=lambda: _remove_module_node(node, runtime, record=False),
-            redo=lambda: _restore_module_node(runtime, registration, module, ()),
-            discard=lambda: _discard_retained_node(runtime, registration),
-        )
+        node = _mount_new_module(runtime, module_id)
+        instance_id = _module_id_for_node(node)
+        manifest = runtime.patch.modules[instance_id].manifest
         if (
             dpg.does_item_exist(MODULE_SELECTOR)
             and dpg.get_item_type(MODULE_SELECTOR).endswith("mvWindowAppItem")
@@ -6436,6 +6574,35 @@ def _add_selected_module(
         if dpg.does_item_exist(MODULE_SELECTOR_STATUS):
             dpg.configure_item(MODULE_SELECTOR_STATUS, color=OUTPUT_ACCENT)
             dpg.set_value(MODULE_SELECTOR_STATUS, f"COULD NOT ADD: {exc}")
+
+
+def _duplicate_module(node: int | str, runtime: AppRuntime) -> None:
+    """A copy of a module, settings and all, a little down and right of it.
+
+    Cables are not copied: a copy that came already patched into the same
+    places would double every signal it received and sent, which is never
+    what a copy is for. The settings are the point.
+    """
+    instance_id = _module_id_for_node(node)
+    if instance_id is None:
+        return
+    module = runtime.patch.modules.get(instance_id)
+    parameters = getattr(module, "parameters", None)
+    if module is None or not isinstance(parameters, BaseModel):
+        return
+    try:
+        copy = _mount_new_module(
+            runtime,
+            module.manifest.id,
+            parameters.model_dump(mode="json"),
+            beside=node,
+        )
+    except Exception as exc:
+        _set_patch_status(f"COULD NOT DUPLICATE: {exc}", error=True)
+        return
+    _set_patch_status(
+        f"DUPLICATED  {module.manifest.name.upper()}  ·  {_module_id_for_node(copy)}"
+    )
 
 
 def _filter_module_selector(
@@ -6963,6 +7130,9 @@ def build_ui(
     PORT_ACTIVITY.clear()
     PORT_STEPS.clear()
     PORT_INDEX_KEY.clear()
+    CABLE_SOURCES.clear()
+    CABLE_INDEX_KEY.clear()
+    CABLE_STEPS.clear()
     CONSOLE_BALLISTICS.clear()
     RETURN_BALLISTICS.clear()
     CANVAS_INTERACTION.reset()
@@ -6973,6 +7143,9 @@ def build_ui(
     TIDY_TARGETS.clear()
     METER_BALLISTICS.reset()
     RACK_HISTORY.clear()
+    PATCH_NAME[:] = [preset.name if preset is not None else "Untitled Patch"]
+    SAVED_REVISION[:] = [RACK_HISTORY.revision]
+    LAST_TITLE[:] = [""]
     RATE_SYNCS.clear()
     WORD_CONTROLS.clear()
     KEY_LATCH.clear()

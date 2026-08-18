@@ -7,7 +7,16 @@ import dearpygui.dearpygui as dpg
 import pytest
 
 from noodler.app import (
+    CABLE_SOURCES,
+    CABLE_STEPS,
     CONTROL_STATUS,
+    INSTANCE_NODE_TAGS,
+    _add_selected_module,
+    _duplicate_module,
+    _has_unsaved_changes,
+    _record_knob_turn,
+    _set_knob_position,
+    _set_knob_value,
     EMPTY_RACK_STATUS,
     KNOB_ARC,
     KNOB_INTERACTION,
@@ -171,5 +180,80 @@ def test_an_empty_rack_says_what_to_do_with_itself() -> None:
         _new_patch()
         _consume_pending_open()
         assert dpg.get_value(CONTROL_STATUS) == EMPTY_RACK_STATUS
+    finally:
+        dpg.destroy_context()
+
+
+def test_cables_glow_with_the_jack_that_feeds_them() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        _play(runtime)
+        _refresh_jack_activity(runtime)
+        assert CABLE_SOURCES, "every drawn cable knows its source"
+        assert sum(1 for step in CABLE_STEPS.values() if step > 0) > 5
+        # A cable's glow is its source jack's step, exactly.
+        for link, (module_id, port_id, _signal) in CABLE_SOURCES.items():
+            assert CABLE_STEPS[link] == PORT_STEPS.get((module_id, port_id), 0)
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_whole_knob_turn_is_one_undoable_edit() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        knob = f"{VCO_NODE}.control.frequency"
+        binding = KNOB_INTERACTION.bindings[knob]
+        assert not _has_unsaved_changes()
+
+        before = KNOB_INTERACTION.positions[knob]
+        after = _control_position(880.0, 1.0, 20_000.0, True)
+        _set_knob_position(knob, after)
+        _set_knob_value(str(knob), after, binding)
+        _record_knob_turn(knob, before, after)
+
+        assert runtime.vco.parameters.frequency == pytest.approx(880.0)
+        assert _has_unsaved_changes()
+        assert RACK_HISTORY.done[-1].description == "TURN FREQUENCY"
+        RACK_HISTORY.undo()
+        assert runtime.vco.parameters.frequency == pytest.approx(220.0)
+        RACK_HISTORY.redo()
+        assert runtime.vco.parameters.frequency == pytest.approx(880.0)
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_turn_that_went_nowhere_is_not_an_edit() -> None:
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        knob = f"{VCO_NODE}.control.frequency"
+        position = KNOB_INTERACTION.positions[knob]
+        _record_knob_turn(knob, position, position)
+        assert not RACK_HISTORY.can_undo
+    finally:
+        dpg.destroy_context()
+
+
+def test_duplicate_copies_the_settings_and_not_the_cables() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "pytheory_voice"))
+        original = runtime.patch.modules["pytheory_voice"]
+        original.parameters.instrument = "sitar"
+        original.parameters.level = 0.31
+        cables_before = len(runtime.patch.cables)
+
+        _duplicate_module(INSTANCE_NODE_TAGS["pytheory_voice"], runtime)
+
+        copy = runtime.patch.modules["pytheory_voice_2"]
+        assert copy is not original
+        assert copy.parameters.instrument == "sitar"
+        assert copy.parameters.level == pytest.approx(0.31)
+        assert len(runtime.patch.cables) == cables_before
+        RACK_HISTORY.undo()
+        assert "pytheory_voice_2" not in runtime.patch.modules
     finally:
         dpg.destroy_context()
