@@ -71,8 +71,10 @@ from .preset import (
 )
 from .spine import render_spine_texture
 from .transport import (
+    BEAT_UNITS,
     CHOICES as CLOCK_CHOICES,
     FREE,
+    MAX_BEATS_PER_BAR,
     MAX_BPM,
     MIN_BPM,
     Transport,
@@ -140,6 +142,10 @@ RACK_SUMMARY = "noodler.rack_summary"
 CLOCK_READOUT = "noodler.clock.readout"
 CLOCK_BPM_INPUT = "noodler.clock.bpm"
 CLOCK_RUN_ITEM = "noodler.clock.run"
+CLOCK_BEATS_INPUT = "noodler.clock.beats"
+CLOCK_UNIT_INPUT = "noodler.clock.unit"
+CLOCK_SPACER = "noodler.clock.spacer"
+CLOCK_MARGIN = 18.0
 MODULE_LIBRARY_HEADER = "noodler.module_library.header"
 LIBRARY_PANE_BUTTON = "noodler.library_pane"
 MODULE_LIBRARY_SECTIONS = (
@@ -534,8 +540,10 @@ def _refresh_clock(dt: float) -> None:
     marker = "●" if TRANSPORT.running and TRANSPORT.on_beat() else "○"
     dpg.set_value(
         CLOCK_READOUT,
-        f"{marker} {TRANSPORT.bpm:.0f} BPM  ·  {TRANSPORT.beat}/{TRANSPORT.beats_per_bar}",
+        f"{marker}  {TRANSPORT.bpm:.0f} BPM  ·  {TRANSPORT.signature}"
+        f"  ·  BEAT {TRANSPORT.beat}",
     )
+    _settle_clock_readout()
     dpg.configure_item(
         CLOCK_READOUT,
         color=SCALE_ACCENT if TRANSPORT.running and TRANSPORT.on_beat() else MUTED_TEXT,
@@ -545,6 +553,39 @@ def _refresh_clock(dt: float) -> None:
 def _set_clock_bpm(_sender: int | str, value: float, _user_data: object) -> None:
     TRANSPORT.set_bpm(value)
     _set_patch_status(f"TEMPO  {TRANSPORT.bpm:.0f} BPM")
+
+
+def _set_clock_signature(_sender: int | str, _value: object, _u: object) -> None:
+    """Read both halves of the signature from their controls."""
+    beats = TRANSPORT.beats_per_bar
+    unit = TRANSPORT.beat_unit
+    if dpg.does_item_exist(CLOCK_BEATS_INPUT):
+        beats = int(dpg.get_value(CLOCK_BEATS_INPUT))
+    if dpg.does_item_exist(CLOCK_UNIT_INPUT):
+        unit = int(dpg.get_value(CLOCK_UNIT_INPUT))
+    _set_patch_status(f"TIME SIGNATURE  {TRANSPORT.set_signature(beats, unit)}")
+
+
+def _settle_clock_readout() -> None:
+    """Keep the transport readout against the right edge of the menu bar.
+
+    Dear PyGui lays a menu bar out left to right with no notion of alignment,
+    so the gap before the readout is measured and corrected each frame. It
+    converges immediately and follows the window when it is resized.
+    """
+    if not (
+        dpg.does_item_exist(CLOCK_SPACER) and dpg.does_item_exist(CLOCK_READOUT)
+    ):
+        return
+    width = float(dpg.get_item_rect_size(CLOCK_READOUT)[0])
+    if width <= 1.0:
+        return
+    left = float(dpg.get_item_rect_min(CLOCK_READOUT)[0])
+    wanted = float(dpg.get_viewport_client_width()) - width - CLOCK_MARGIN
+    gap = float(dpg.get_item_configuration(CLOCK_SPACER)["width"])
+    adjusted = max(1.0, gap + (wanted - left))
+    if abs(adjusted - gap) >= 1.0:
+        dpg.configure_item(CLOCK_SPACER, width=round(adjusted))
 
 
 def _toggle_clock(_sender: int | str = 0, _app_data: object = None, _u: object = None) -> None:
@@ -1948,6 +1989,15 @@ def _frame_rack(
     _set_patch_status("FRAMED THE RACK  ·  PRESS F ANY TIME")
 
 
+MIN_REVEAL_VIEWPORT = 320.0
+"""Editor size below which a reveal is not believable, in pixels.
+
+A viewport reports a small non-zero size for the first frames of its life. Two
+pixels passes any "is it laid out yet" test that only rejects zero, and centring
+against it moves the rack almost exactly as far left as the panel started —
+which is precisely where the system output kept appearing, clipped by the edge.
+"""
+
 REVEAL_PATIENCE = 240
 """Frames to wait for panels to be measured before centring anyway."""
 
@@ -1986,7 +2036,7 @@ def _reveal_rack_once() -> None:
     view_width, view_height = (
         float(value) for value in dpg.get_item_rect_size(RACK)
     )
-    if view_width <= 1.0 or view_height <= 1.0:
+    if view_width < MIN_REVEAL_VIEWPORT or view_height < MIN_REVEAL_VIEWPORT:
         return
 
     interaction.reveal_attempts += 1
@@ -2850,23 +2900,6 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
     worth a key rather than permanent space beside the controls used constantly.
     """
     with dpg.menu_bar(tag=RACK_MENU_BAR):
-        with dpg.menu(label="Clock"):
-            dpg.add_slider_float(
-                tag=CLOCK_BPM_INPUT,
-                label="BPM",
-                default_value=TRANSPORT.bpm,
-                min_value=MIN_BPM,
-                max_value=MAX_BPM,
-                format="%.0f",
-                width=180,
-                callback=_set_clock_bpm,
-            )
-            dpg.add_menu_item(
-                label="Run / Stop",
-                tag=CLOCK_RUN_ITEM,
-                shortcut="Space",
-                callback=_toggle_clock,
-            )
         with dpg.menu(label="View"):
             dpg.add_menu_item(
                 label="Frame All",
@@ -2910,6 +2943,43 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 callback=_unplug_all,
                 user_data=runtime,
             )
+        with dpg.menu(label="Clock"):
+            dpg.add_slider_float(
+                tag=CLOCK_BPM_INPUT,
+                label="Tempo",
+                default_value=TRANSPORT.bpm,
+                min_value=MIN_BPM,
+                max_value=MAX_BPM,
+                format="%.0f BPM",
+                width=190,
+                callback=_set_clock_bpm,
+            )
+            dpg.add_input_int(
+                tag=CLOCK_BEATS_INPUT,
+                label="Beats per bar",
+                default_value=TRANSPORT.beats_per_bar,
+                min_value=1,
+                max_value=MAX_BEATS_PER_BAR,
+                min_clamped=True,
+                max_clamped=True,
+                width=110,
+                callback=_set_clock_signature,
+            )
+            dpg.add_combo(
+                [str(unit) for unit in BEAT_UNITS],
+                tag=CLOCK_UNIT_INPUT,
+                label="Beat unit",
+                default_value=str(TRANSPORT.beat_unit),
+                width=110,
+                callback=_set_clock_signature,
+            )
+            dpg.add_menu_item(
+                label="Run / Stop",
+                tag=CLOCK_RUN_ITEM,
+                callback=_toggle_clock,
+            )
+        # Pushed to the right edge each frame, where a transport belongs.
+        dpg.add_spacer(tag=CLOCK_SPACER, width=1)
         dpg.add_text("", tag=CLOCK_READOUT, color=MUTED_TEXT)
 
 

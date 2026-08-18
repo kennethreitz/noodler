@@ -974,3 +974,40 @@ def test_centring_gives_up_waiting_rather_than_never_happening(monkeypatch) -> N
         assert CANVAS_INTERACTION.pending_reveal is False
     finally:
         dpg.destroy_context()
+
+
+def test_a_barely_laid_out_viewport_is_not_believed(monkeypatch) -> None:
+    """A viewport reports a small non-zero size for its first frames.
+
+    Centring against two pixels moves the rack almost exactly as far left as
+    the panel started, which is how the system output kept arriving clipped by
+    the left edge.
+    """
+    dpg.create_context()
+    try:
+        build_ui()
+        placed = tuple(dpg.get_item_pos(OUTPUT_NODE))
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [2, 2] if item == RACK else [232, 300],
+        )
+
+        for _ in range(20):
+            _reveal_rack_once()
+
+        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == placed
+        assert CANVAS_INTERACTION.pending_reveal is True, "still waiting"
+
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [950, 700] if item == RACK else [232, 300],
+        )
+        _reveal_rack_once()
+
+        x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
+        assert x + 116.0 == pytest.approx(475.0, abs=1.0)
+        assert y + 150.0 == pytest.approx(350.0, abs=1.0)
+    finally:
+        dpg.destroy_context()
