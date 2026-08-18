@@ -2,6 +2,8 @@ import dearpygui.dearpygui as dpg
 import pytest
 
 from noodler.app import (
+    CONSOLE_MASTER_LEVEL,
+    CONSOLE_STRIP,
     ADD_MODULE_BUTTON,
     APP_FONT,
     APP_THEME,
@@ -115,11 +117,13 @@ def test_default_rack_starts_quiet_with_only_the_master() -> None:
             "right",
         }
         # The console: eight strips and the master, and nothing else.
-        # Eight strips, the master, two effect strips, and fourteen jack
-        # posts: one per channel, and a send out and a return L and R per effect.
+        # Eight strips, two effect strips, and fourteen jack posts: one per
+        # channel, and a send out and a return L and R per effect. No master
+        # strip: the master's level lives in the status bar.
         assert set(RACK_NODES) == set(PINNED_NODES)
-        assert len(PINNED_NODES) == 25
-        assert dpg.does_item_exist(OUTPUT_NODE)
+        assert len(PINNED_NODES) == 24
+        assert not dpg.does_item_exist(OUTPUT_NODE)
+        assert dpg.does_item_exist(CONSOLE_MASTER_LEVEL)
         assert not dpg.does_item_exist(VCO_NODE)
         assert not dpg.does_item_exist(WOGGLE_NODE)
         # Adding a module is the library pane's job, and saving is the File
@@ -143,7 +147,7 @@ def test_default_rack_starts_quiet_with_only_the_master() -> None:
             "left",
             "right",
         }
-        assert [node.node_id for node in captured.view.nodes] == ["master"]
+        assert captured.view.nodes == (), "the console has no position to save"
     finally:
         dpg.destroy_context()
 
@@ -190,7 +194,6 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
             VCO_NODE,
             MIXER_NODE,
             FUNCTION_NODE,
-            OUTPUT_NODE,
             WOGGLE_NODE,
             SCALE_NODE,
             LPG_NODE,
@@ -215,7 +218,7 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
             OUTPUT_METER,
             INPUT_HANDLERS,
         ):
-            assert dpg.does_item_exist(item)
+            assert dpg.does_item_exist(item), item
         assert runtime.mixer.parameters.channels == 6
         assert runtime.mixer.parameters.gains[:3] == (0.48, 0.14, 0.12)
         assert runtime.utility.parameters.channel_1.cycle is True
@@ -703,9 +706,9 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
         original = {
             node: tuple(dpg.get_item_pos(node))
             for node in RACK_NODES
-            if node != OUTPUT_NODE
+            if node not in PINNED_NODES
         }
-        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
+        pinned = tuple(dpg.get_item_pos(CONSOLE_STRIP.format(channel=1)))
         assert dpg.get_global_font_scale() == pytest.approx(1.0)
 
         _set_rack_zoom(1.12, screen_anchor=(0.0, 0.0))
@@ -718,8 +721,9 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
         assert dpg.get_global_font_scale() == pytest.approx(1.0)
         # Modules take the zoomed font; the console does not zoom at all.
         assert dpg.get_item_font(module_node) == _rack_font_tag(1.12)
-        assert not dpg.get_item_info(OUTPUT_NODE)["font"], "the console keeps its own"
-        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == pinned
+        strip = CONSOLE_STRIP.format(channel=1)
+        assert not dpg.get_item_info(strip)["font"], "the console keeps its own"
+        assert tuple(dpg.get_item_pos(strip)) == pinned
         assert dpg.get_item_configuration(ZOOM_RESET_BUTTON)["label"] == "112%"
 
         zoom_in = dpg.get_item_configuration(ZOOM_IN_BUTTON)

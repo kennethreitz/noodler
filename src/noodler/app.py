@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import math
 import sys
+import threading
 import time
 import typing
 from pathlib import Path
@@ -191,7 +192,6 @@ BASE_RACK_NODES = (
     MIXER_NODE,
     LPG_NODE,
     REVERB_NODE,
-    OUTPUT_NODE,
 )
 BASE_INSTANCE_NODE_TAGS = {
     "utility": FUNCTION_NODE,
@@ -209,7 +209,7 @@ CONTROL_RAIL = "control"
 AUDIO_RAIL = "audio"
 RACK_RAILS = {
     CONTROL_RAIL: [FUNCTION_NODE, WOGGLE_NODE, SCALE_NODE],
-    AUDIO_RAIL: [VCO_NODE, MIXER_NODE, LPG_NODE, REVERB_NODE, OUTPUT_NODE],
+    AUDIO_RAIL: [VCO_NODE, MIXER_NODE, LPG_NODE, REVERB_NODE],
 }
 RACK_RAIL_GAP = 48.0
 AUDIO_STATUS = "noodler.audio_status"
@@ -225,6 +225,13 @@ TIDY_RACK_BUTTON = "noodler.tidy_rack"
 SAVE_PATCH_DIALOG = "noodler.save_patch_dialog"
 OPEN_PATCH_DIALOG = "noodler.open_patch_dialog"
 NEW_PATCH_MENU_ITEM = "noodler.menu.new_patch"
+EXPORT_MENU = "noodler.menu.export"
+EXPORT_DIALOG = "noodler.export_dialog"
+EXPORT_BAR_CHOICES = (4, 8, 16, 32)
+EXPORT_TAIL_SECONDS = 3.0
+EXPORT_BARS: list[int] = [8]
+EXPORT_MESSAGES: list[tuple[str, bool]] = []
+"""Progress from the bounce thread, shown by the frame loop, in order."""
 EXAMPLES_MENU = "noodler.menu.examples"
 OPEN_PATCH_MENU_ITEM = "noodler.menu.open"
 SAVE_PATCH_MENU_ITEM = "noodler.menu.save"
@@ -529,6 +536,8 @@ class CanvasInteraction:
 
     panning: bool = False
     pan_candidate: bool = False
+    pan_moved: bool = False
+    """Whether the current pan has actually moved the rack yet."""
     press_x: float = 0.0
     press_y: float = 0.0
     last_mouse_x: float = 0.0
@@ -954,8 +963,10 @@ def default_rack_preset() -> PatchPreset:
         zoom=1.0,
         rails={},
         nodes=(
-            RackNodePreset(node_id="delay", position=Point(x=40.0, y=40.0)),
-            RackNodePreset(node_id="reverb", position=Point(x=420.0, y=40.0)),
+            # Collapsed: they are furniture until they are wanted, and a
+            # collapsed module is its name and the jacks that are patched.
+            RackNodePreset(node_id="delay", position=Point(x=40.0, y=40.0), collapsed=True),
+            RackNodePreset(node_id="reverb", position=Point(x=300.0, y=40.0), collapsed=True),
         ),
     )
     return capture_patch_preset(
@@ -1000,8 +1011,12 @@ def _consume_pending_open() -> AppRuntime | None:
         PRIMARY_WINDOW,
         INPUT_HANDLERS,
         MODULE_CLOSE_LAYER,
+        CONSOLE_CABLES,
+        OUTLINE_LAYER,
         SAVE_PATCH_DIALOG,
         OPEN_PATCH_DIALOG,
+        EXPORT_DIALOG,
+        UNSAVED_DIALOG,
     ):
         if dpg.does_item_exist(item):
             dpg.delete_item(item)
@@ -1299,7 +1314,7 @@ def adopt_output_taps(patch: PatchGraph) -> None:
 
 def _reset_rack_registry(*, starter_patch: bool) -> None:
     """Return mutable node registries to the requested initial rack."""
-    RACK_NODES[:] = BASE_RACK_NODES if starter_patch else (OUTPUT_NODE,)
+    RACK_NODES[:] = BASE_RACK_NODES if starter_patch else ()
     INSTANCE_NODE_TAGS.clear()
     if starter_patch:
         INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
@@ -1315,10 +1330,11 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
     for bus in SENDS:
         posts.append(CONSOLE_POST.format(name=f"send_{bus}"))
         posts += [CONSOLE_POST.format(name=port) for port in RETURN_PORTS[bus]]
-    # Channels, then the master, then the two effect strips -- each of which
-    # carries its own send out and its return in, so a send and its return
-    # are one thing on the desk, and the master is only its level.
-    PINNED_NODES[:] = [*strips, OUTPUT_NODE, *returns, *posts]
+    # Channels, then the two effect strips -- each of which carries its own
+    # send out and its return in, so a send and its return are one thing on
+    # the desk. There is no master strip: the master's level lives in the
+    # status bar, and OUTPUT_NODE is only the prefix its jacks are tagged by.
+    PINNED_NODES[:] = [*strips, *returns, *posts]
     strips = strips + returns + posts
     for strip in strips:
         if strip not in RACK_NODES:
@@ -1329,15 +1345,13 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
         [FUNCTION_NODE, WOGGLE_NODE, SCALE_NODE] if starter_patch else []
     )
     RACK_RAILS[AUDIO_RAIL][:] = (
-        [VCO_NODE, MIXER_NODE, LPG_NODE, REVERB_NODE, OUTPUT_NODE]
-        if starter_patch
-        else [OUTPUT_NODE]
+        [VCO_NODE, MIXER_NODE, LPG_NODE, REVERB_NODE] if starter_patch else []
     )
     MODULE_ACCENTS.clear()
     if starter_patch:
         MODULE_ACCENTS.update(BASE_MODULE_ACCENTS)
     else:
-        MODULE_ACCENTS[OUTPUT_NODE] = OUTPUT_ACCENT
+        pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -1567,6 +1581,13 @@ def _configure_theme() -> None:
         (CONSOLE_RETURN_THEME, RETURN_JACK_INSET),
     ):
         _console_theme(tag, inset)
+    with dpg.theme(tag=OUTLINE_LINK_THEME):
+        with dpg.theme_component(dpg.mvSelectable):
+            dpg.add_theme_color(dpg.mvThemeCol_Text, SCALE_ACCENT)
+            dpg.add_theme_color(dpg.mvThemeCol_Header, (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (135, 119, 211, 40))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (135, 119, 211, 70))
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0)
     with dpg.theme(tag=JACK_POST_THEME):
         # A jack post is not seen, only its pin: no body, no title, no border.
         with dpg.theme_component(dpg.mvNode):
@@ -2268,12 +2289,67 @@ def _save_patch_dialog(
         if not isinstance(selected, str) or not selected:
             raise ValueError("choose a patch filename")
         requested_path = Path(selected)
-        name = requested_path.stem or "Untitled Patch"
-        preset = _capture_current_preset(runtime, name)
-        destination = write_patch_preset(preset, requested_path)
-        _set_patch_status(f"SAVED PATCH  ·  {destination.name}")
+        _save_patch_to(runtime, requested_path)
+        _set_patch_status(f"SAVED PATCH  ·  {requested_path.name}")
     except (OSError, TypeError, ValueError) as exc:
         _set_patch_status(f"SAVE ERROR: {exc}", error=True)
+
+
+def _choose_export(_sender: int | str, _app_data: object, data: tuple[AppRuntime, int]) -> None:
+    """Remember how many bars, and ask where the file goes."""
+    _runtime, bars = data
+    EXPORT_BARS[:] = [int(bars)]
+    if dpg.does_item_exist(EXPORT_DIALOG):
+        dpg.configure_item(EXPORT_DIALOG, default_filename=f"{PATCH_NAME[0]}.wav")
+        dpg.show_item(EXPORT_DIALOG)
+
+
+def _export_dialog(_sender: int | str, app_data: object, runtime: AppRuntime) -> None:
+    """Bounce the current patch to the chosen file, on a thread, from bar one."""
+    try:
+        if not isinstance(app_data, dict):
+            raise ValueError("the file dialog did not return a destination")
+        selected = app_data.get("file_path_name")
+        if not isinstance(selected, str) or not selected:
+            raise ValueError("choose a file to export to")
+    except (TypeError, ValueError) as exc:
+        _set_patch_status(f"EXPORT ERROR: {exc}", error=True)
+        return
+    destination = Path(selected)
+    preset = _capture_current_preset(runtime, PATCH_NAME[0])
+    bars = EXPORT_BARS[0]
+    sample_rate = runtime.audio.sample_rate if runtime.audio.is_running else 48_000.0
+
+    def work() -> None:
+        from .bounce import bounce, write_wav
+
+        try:
+            EXPORT_MESSAGES.append((f"BOUNCING  ·  {bars} BARS AT {preset.transport.bpm:.0f} BPM", False))
+            audio = bounce(
+                preset,
+                bars=bars,
+                tail_seconds=EXPORT_TAIL_SECONDS,
+                sample_rate=float(sample_rate),
+                progress=lambda done, total: EXPORT_MESSAGES.append(
+                    (f"BOUNCING  ·  BAR {done}/{total}", False)
+                ),
+            )
+            written = write_wav(destination, audio, float(sample_rate))
+            seconds = audio.shape[0] / float(sample_rate)
+            EXPORT_MESSAGES.append(
+                (f"EXPORTED  ·  {written.name}  ·  {seconds:.1f} s", False)
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the user, not raised on a thread
+            EXPORT_MESSAGES.append((f"EXPORT ERROR: {exc}", True))
+
+    threading.Thread(target=work, name="noodler-bounce", daemon=True).start()
+
+
+def _show_export_messages() -> None:
+    """Say what the bounce thread said, from the frame loop."""
+    while EXPORT_MESSAGES:
+        message, error = EXPORT_MESSAGES.pop(0)
+        _set_patch_status(message, error=error)
 
 
 def _decibels(level: float) -> str:
@@ -2790,6 +2866,9 @@ def _refresh_frame(
         _refresh_transport_button(runtime)
         _refresh_jack_activity(runtime)
         _refresh_console_cables(runtime)
+        _show_export_messages()
+        _refresh_outline_parameters()
+        _refresh_outline_links()
         _refresh_knob_hover()
         _refresh_window_title_if_changed()
         _refresh_module_close_buttons()
@@ -3297,8 +3376,12 @@ def _rack_view_size() -> tuple[float, float]:
 
 
 def _is_pinned(node: int | str) -> bool:
-    """Whether a node belongs to the console rather than to the rack."""
-    return node in PINNED_NODES
+    """Whether a node belongs to the console rather than to the rack.
+
+    OUTPUT_NODE is the master's tag and has no node of its own any more; it
+    still counts, so nothing tries to move or remove the console through it.
+    """
+    return node == OUTPUT_NODE or node in PINNED_NODES
 
 
 def _is_console_control(knob: int | str) -> bool:
@@ -3353,6 +3436,7 @@ def _frame_rack(
     interaction = CANVAS_INTERACTION
     minimum_x, minimum_y, maximum_x, maximum_y = bounds
     view_width, view_height = _rack_view_size()
+    pan_x, pan_y = _editor_pan()
     content_width = max(1.0, maximum_x - minimum_x)
     content_height = max(1.0, maximum_y - minimum_y)
 
@@ -3362,8 +3446,8 @@ def _frame_rack(
             (view_height - FRAME_MARGIN * 2.0) / content_height,
         )
         _queue_rack_zoom(interaction.zoom * max(0.05, fit), screen_anchor=None)
-        target_x = view_width * 0.5
-        target_y = view_height * 0.5
+        target_x = view_width * 0.5 - pan_x
+        target_y = view_height * 0.5 - pan_y
     else:
         # Without a laid-out viewport, centring is all that can be honoured.
         target_x = (minimum_x + maximum_x) * 0.5
@@ -3411,6 +3495,45 @@ def _rack_content_is_measured() -> bool:
     return measured
 
 
+EDITOR_PAN_BASELINE: list[tuple[tuple[float, float], tuple[float, float]]] = []
+"""What the editor's grid origin measured as, on screen, when nothing was panned:
+(origin, rack size). Re-taken when the rack's size or layout changes."""
+
+
+def _reset_editor_pan_baseline() -> None:
+    EDITOR_PAN_BASELINE.clear()
+
+
+def _editor_pan() -> tuple[float, float]:
+    """How far imnodes has panned the whole editor by itself, on screen.
+
+    Dear PyGui does not expose the editor's own panning -- middle-drag, or a
+    trackpad gesture that lands there -- and it moves every node's picture
+    without changing any node's position. It is measured instead: a strip's
+    screen rectangle less its grid position is the grid origin plus the pan,
+    and the pan is that less what it measured when nothing had been panned.
+    """
+    strip = CONSOLE_STRIP.format(channel=1)
+    if not (dpg.does_item_exist(strip) and dpg.does_item_exist(RACK)):
+        return 0.0, 0.0
+    try:
+        screen = dpg.get_item_rect_min(strip)
+        grid = dpg.get_item_pos(strip)
+        size = dpg.get_item_rect_size(RACK)
+    except (KeyError, SystemError):
+        return 0.0, 0.0
+    if float(size[0]) <= 1.0 or float(size[1]) <= 1.0:
+        return 0.0, 0.0
+    origin = (float(screen[0]) - float(grid[0]), float(screen[1]) - float(grid[1]))
+    measured_size = (float(size[0]), float(size[1]))
+    if not EDITOR_PAN_BASELINE or EDITOR_PAN_BASELINE[0][1] != measured_size:
+        # A new size means a new layout; take the origin as it is now.
+        EDITOR_PAN_BASELINE[:] = [(origin, measured_size)]
+        return 0.0, 0.0
+    baseline = EDITOR_PAN_BASELINE[0][0]
+    return origin[0] - baseline[0], origin[1] - baseline[1]
+
+
 def _settle_console() -> None:
     """Hold the console strips in a row along the bottom edge of the canvas.
 
@@ -3423,6 +3546,7 @@ def _settle_console() -> None:
     view_width, view_height = (float(v) for v in dpg.get_item_rect_size(RACK))
     if view_width < MIN_REVEAL_VIEWPORT or view_height < MIN_REVEAL_VIEWPORT:
         return
+    pan_x, pan_y = _editor_pan()
     x = CONSOLE_MARGIN
     for node in PINNED_NODES:
         if node in POST_ANCHORS or not dpg.does_item_exist(node):
@@ -3430,7 +3554,8 @@ def _settle_console() -> None:
         width, height = (float(v) for v in dpg.get_item_rect_size(node))
         if width <= 1.0 or height <= 1.0:
             return
-        wanted = [x, view_height - height - CONSOLE_MARGIN]
+        # Wanted on screen, less whatever the editor has panned by itself.
+        wanted = [x - pan_x, view_height - height - CONSOLE_MARGIN - pan_y]
         if [round(v) for v in dpg.get_item_pos(node)] != [round(v) for v in wanted]:
             dpg.set_item_pos(node, wanted)
         x += width + CONSOLE_GAP
@@ -3475,9 +3600,10 @@ def _reveal_rack_once() -> None:
     if bounds is None:
         return
     minimum_x, minimum_y, maximum_x, maximum_y = bounds
+    pan_x, pan_y = _editor_pan()
     _translate_rack(
-        view_width * 0.5 - (minimum_x + maximum_x) * 0.5,
-        view_height * 0.5 - (minimum_y + maximum_y) * 0.5,
+        view_width * 0.5 - pan_x - (minimum_x + maximum_x) * 0.5,
+        view_height * 0.5 - pan_y - (minimum_y + maximum_y) * 0.5,
     )
 
 
@@ -3496,6 +3622,9 @@ def _reveal_node(node: int | str) -> bool:
         return False
 
     node_x, node_y = (float(value) for value in dpg.get_item_pos(node))
+    pan_x, pan_y = _editor_pan()
+    node_x += pan_x
+    node_y += pan_y
     width, height = (float(value) for value in dpg.get_item_rect_size(node))
     width = max(width, 1.0)
     height = max(height, 1.0)
@@ -4370,10 +4499,13 @@ def _begin_canvas_pan(
     mouse_x, mouse_y = origin or tuple(dpg.get_mouse_pos(local=False))
     CANVAS_INTERACTION.panning = True
     CANVAS_INTERACTION.pan_candidate = True
+    CANVAS_INTERACTION.pan_moved = False
     RACK_CURSOR.grab()
     CANVAS_INTERACTION.last_mouse_x = float(mouse_x)
     CANVAS_INTERACTION.last_mouse_y = float(mouse_y)
-    _clear_rack_selection()
+    # The selection is not cleared here. A press on empty canvas may be a
+    # click on a cable -- which selects it, so that a double-click can unpatch
+    # it -- and only a press that goes on to move is a pan.
     if dpg.does_item_exist(CONTROL_STATUS):
         dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
         dpg.set_value(CONTROL_STATUS, "PANNING  ·  RELEASE TO PLACE VIEW")
@@ -4439,6 +4571,11 @@ def _pan_rack(*, clear_selection: bool = True) -> None:
     mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
     delta_x = mouse_x - interaction.last_mouse_x
     delta_y = mouse_y - interaction.last_mouse_y
+    if (delta_x or delta_y) and not interaction.pan_moved:
+        # The first frame that actually moves is when a press became a pan,
+        # and the moment a selection made by that press is let go of.
+        interaction.pan_moved = True
+        _clear_rack_selection()
     _translate_rack(delta_x, delta_y)
     _track_pan_velocity(delta_x, delta_y)
     interaction.last_mouse_x = float(mouse_x)
@@ -4492,6 +4629,14 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 callback=_show_save_patch_dialog,
                 user_data=runtime,
             )
+            dpg.add_separator()
+            with dpg.menu(label="Export Audio", tag=EXPORT_MENU):
+                for bars in EXPORT_BAR_CHOICES:
+                    dpg.add_menu_item(
+                        label=f"{bars} bars…",
+                        callback=_choose_export,
+                        user_data=(runtime, bars),
+                    )
             dpg.add_separator()
             dpg.add_menu_item(
                 label="Exit",
@@ -4764,7 +4909,8 @@ def _end_knob_drag(
     CANVAS_INTERACTION.press_consumed = False
     RACK_CURSOR.reset()
     if CANVAS_INTERACTION.panning:
-        _clear_rack_selection()
+        if CANVAS_INTERACTION.pan_moved:
+            _clear_rack_selection()
         _release_pan_momentum()
         CANVAS_INTERACTION.stop_panning()
         if dpg.does_item_exist(CONTROL_STATUS):
@@ -6794,29 +6940,10 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
         _build_strip(channel, master)
     for bus in SENDS:
         _build_return_strip(bus, master)
-    with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
-        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            level = master.parameters.master
-            with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
-                _add_level_dial(
-                    CONSOLE_MASTER_LEVEL,
-                    level,
-                    "Master",
-                    lambda value: _master_level_changed(master, value),
-                )
-                dpg.add_text(
-                    _fader_readout(level), tag=CONSOLE_MASTER_READOUT, color=MUTED_TEXT
-                )
-            # The peak-programme meter the tests read; the ring is what is seen.
-            dpg.add_progress_bar(
-                tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
-            )
     for node in PINNED_NODES:
         if not dpg.does_item_exist(node) or node in POST_ANCHORS:
             continue
-        if node == OUTPUT_NODE:
-            theme = CONSOLE_THEME
-        elif str(node).startswith(CONSOLE_PREFIX + "return_"):
+        if str(node).startswith(CONSOLE_PREFIX + "return_"):
             theme = CONSOLE_RETURN_THEME
         else:
             theme = CONSOLE_STRIP_THEME
@@ -6836,6 +6963,29 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
         _build_jack_post(f"send_{bus}", f"{OUTPUT_NODE}.send_{bus}", strip, 0.2, output=True)
         _build_jack_post(left_port, f"{OUTPUT_NODE}.{left_port}", strip, 0.5)
         _build_jack_post(right_port, f"{OUTPUT_NODE}.{right_port}", strip, 0.78)
+
+
+def _add_master_control(master: MasterMixer) -> None:
+    """The master level, in the status bar: a dial with its ring meter.
+
+    There is no master strip. What a master strip held was a level and a
+    meter, and the bottom bar has room for both beside the scope, where the
+    output is already being watched.
+    """
+    dpg.add_spacer(width=14)
+    dpg.add_text("MASTER", color=MUTED_TEXT)
+    level = master.parameters.master
+    _add_level_dial(
+        CONSOLE_MASTER_LEVEL,
+        level,
+        "Master",
+        lambda value: _master_level_changed(master, value),
+    )
+    dpg.add_text(_fader_readout(level), tag=CONSOLE_MASTER_READOUT, color=MUTED_TEXT)
+    # The peak-programme meter the tests read; the ring is what is seen.
+    dpg.add_progress_bar(
+        tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
+    )
 
 
 def _console_titles(patch: PatchGraph) -> None:
@@ -6914,6 +7064,107 @@ def _rack_outline_module_label(
     return f"{label}  ·  {connection}" if connection else label
 
 
+OUTLINE_LINK_THEME = "noodler.theme.outline_link"
+OUTLINE_LINKS: dict[int | str, int] = {}
+"""Each outline link and how wide its name is, for the underline on hover."""
+OUTLINE_LAYER = "noodler.outline_layer"
+
+
+def _refresh_outline_links() -> None:
+    """Underline the outline link under the pointer, and only that one.
+
+    Drawn on an overlay at the link's own rectangle, two pixels above its
+    bottom edge, so it sits against the letters rather than a row below.
+    """
+    if not dpg.does_item_exist(OUTLINE_LAYER):
+        dpg.add_viewport_drawlist(tag=OUTLINE_LAYER, front=True)
+    dpg.delete_item(OUTLINE_LAYER, children_only=True)
+    for link, width in tuple(OUTLINE_LINKS.items()):
+        if not dpg.does_item_exist(link):
+            OUTLINE_LINKS.pop(link, None)
+            continue
+        if not dpg.is_item_hovered(link):
+            continue
+        try:
+            left, _top = dpg.get_item_rect_min(link)
+            _right, bottom = dpg.get_item_rect_max(link)
+        except (KeyError, SystemError):
+            continue
+        y = float(bottom) - 2.0
+        dpg.draw_line(
+            (float(left), y), (float(left) + width, y),
+            color=SCALE_ACCENT, thickness=1.0, parent=OUTLINE_LAYER,
+        )
+        break
+OUTLINE_CHAR_PX = 9
+"""The rack's monospace face at sixteen pixels is nine wide: an underline
+drawn as a rule under a label of n characters is nine n long."""
+
+
+def _add_module_link(
+    parent: int | str, runtime: AppRuntime, instance_id: str, connection: str | None = None
+) -> None:
+    """The module's name in the outline as a link: underlined, and a click on
+    it brings the module to the middle of the view.
+
+    The outline is where the rack is *read*, and reading a name should lead
+    to the thing. The tree's own arrow still opens the ports beneath.
+    """
+    module = runtime.patch.modules[instance_id]
+    name = f"{module.manifest.name.upper()}  [{instance_id}]"
+    with dpg.group(parent=parent):
+        with dpg.group(horizontal=True, horizontal_spacing=0):
+            link = dpg.add_selectable(
+                label=name,
+                width=len(name) * OUTLINE_CHAR_PX + 4,
+                callback=_centre_module_from_outline,
+                user_data=(runtime, instance_id),
+            )
+            dpg.bind_item_theme(link, OUTLINE_LINK_THEME)
+            if connection:
+                dpg.add_text(f"  ·  {connection}", color=MUTED_TEXT)
+    # The underline appears only under the pointer, as a web link's does, drawn
+    # on the overlay right against the letters; the colour says link otherwise.
+    OUTLINE_LINKS[link] = len(name) * OUTLINE_CHAR_PX
+
+
+def _centre_module_from_outline(
+    _sender: int | str, _app_data: object, data: tuple[AppRuntime, str]
+) -> None:
+    runtime, instance_id = data
+    node = INSTANCE_NODE_TAGS.get(instance_id)
+    if node is None or not dpg.does_item_exist(node):
+        return
+    _centre_node(node)
+    _clear_rack_selection()
+    try:
+        dpg.set_value(f"{node}.selected", True)
+    except Exception:
+        pass
+    label = runtime.patch.modules[instance_id].manifest.name.upper()
+    _set_patch_status(f"HERE  ·  {label}  [{instance_id}]")
+
+
+def _centre_node(node: int | str) -> None:
+    """Glide the camera so one module sits in the middle of the view."""
+    if not dpg.does_item_exist(RACK):
+        return
+    view_width, view_height = _rack_view_size()
+    if view_width <= 1.0 or view_height <= 1.0:
+        return
+    node_x, node_y = (float(v) for v in dpg.get_item_pos(node))
+    width, height = (float(v) for v in dpg.get_item_rect_size(node))
+    centre_x = node_x + max(width, 1.0) * 0.5
+    centre_y = node_y + max(height, 1.0) * 0.5
+    pan_x, pan_y = _editor_pan()
+    interaction = CANVAS_INTERACTION
+    interaction.stop_glide()
+    interaction.recenter_x.snap(0.0)
+    interaction.recenter_y.snap(0.0)
+    interaction.recenter_x.retarget(view_width * 0.5 - pan_x - centre_x)
+    interaction.recenter_y.retarget(view_height * 0.5 - pan_y - centre_y)
+
+
 def _remove_module_from_outline(
     _sender: int | str,
     _app_data: object,
@@ -6942,12 +7193,84 @@ def _add_rack_outline_remove_button(
         dpg.add_text(f"Remove {runtime.patch.modules[instance_id].manifest.name}")
 
 
+OUTLINE_PARAMETER_TEXTS: dict[tuple[str, str], tuple[int | str, object, tuple[str | int, ...]]] = {}
+"""Each parameter readout in the outline: its text item, module and field path,
+so the values can be kept current while the tree is open."""
+
+
+def _outline_parameter_rows(module: object) -> list[tuple[str, tuple[str | int, ...], object]]:
+    """(label, field path, value) for every leaf of a module's parameters."""
+    parameters = getattr(module, "parameters", None)
+    if not isinstance(parameters, BaseModel):
+        return []
+    rows: list[tuple[str, tuple[str | int, ...], object]] = []
+
+    def walk(model: BaseModel, path: tuple[str | int, ...]) -> None:
+        for name in type(model).model_fields:
+            value = getattr(model, name)
+            if isinstance(value, BaseModel):
+                walk(value, (*path, name))
+            elif isinstance(value, tuple) and value and all(isinstance(v, (int, float, bool)) for v in value):
+                rows.append((name, (*path, name), value))
+            else:
+                rows.append((name, (*path, name), value))
+
+    walk(parameters, ())
+    return rows
+
+
+def _outline_value_text(value: object) -> str:
+    if isinstance(value, bool):
+        return "ON" if value else "OFF"
+    if isinstance(value, float):
+        return _format_dynamic_value(value)
+    if isinstance(value, tuple):
+        return "  ".join(_outline_value_text(v) for v in value)
+    if isinstance(value, StrEnum):
+        return str(value.value)
+    return str(value)
+
+
+def _add_rack_outline_parameters(parent: int | str, runtime: AppRuntime, instance_id: str) -> None:
+    """List every parameter with its current value, under the ports."""
+    module = runtime.patch.modules[instance_id]
+    rows = _outline_parameter_rows(module)
+    if not rows:
+        return
+    root = dpg.add_tree_node(label=f"PARAMETERS  ·  {len(rows)}", parent=parent, default_open=False)
+    for label, path, value in rows:
+        with dpg.group(parent=root, horizontal=True):
+            dpg.add_text(label.replace("_", " ").upper() + "  ", color=MUTED_TEXT)
+            text = dpg.add_text(_outline_value_text(value), color=TEXT)
+        OUTLINE_PARAMETER_TEXTS[(instance_id, ".".join(str(p) for p in path))] = (text, module, path)
+
+
+def _refresh_outline_parameters() -> None:
+    """Keep the outline's parameter readouts current, a few times a second."""
+    if dpg.get_frame_count() % 8:
+        return
+    for key, (text, module, path) in tuple(OUTLINE_PARAMETER_TEXTS.items()):
+        if not dpg.does_item_exist(text):
+            OUTLINE_PARAMETER_TEXTS.pop(key, None)
+            continue
+        value: object = getattr(module, "parameters", None)
+        try:
+            for part in path:
+                value = value[part] if isinstance(part, int) else getattr(value, part)
+        except (AttributeError, IndexError, TypeError):
+            continue
+        shown = _outline_value_text(value)
+        if dpg.get_value(text) != shown:
+            dpg.set_value(text, shown)
+
+
 def _add_rack_outline_ports(
     parent: int | str,
     runtime: AppRuntime,
     instance_id: str,
 ) -> None:
     """List every module jack and whether the live graph currently uses it."""
+    _add_rack_outline_parameters(parent, runtime, instance_id)
     module = runtime.patch.modules[instance_id]
     connected = _connected_port_ids(runtime.patch, instance_id)
     ports_root = dpg.add_tree_node(
@@ -7000,13 +7323,22 @@ def _add_rack_outline_signal_branch(
 ) -> None:
     """Draw one module and its upstream dependencies as a signal-flow tree."""
     reachable.add(instance_id)
+    if instance_id == MASTER_ID:
+        # The console is not a module in the rack: it has no panel to go to
+        # and cannot be removed, so it is named and left at that.
+        dpg.add_text(
+            f"CONSOLE  ·  {connection}" if connection else "CONSOLE",
+            parent=parent,
+            color=MUTED_TEXT,
+        )
+        return
+    # The name on its own line, a link that goes to the module; beneath it a
+    # closed DETAILS tree with its parameters, its ports and what feeds it. A
+    # tree opened in the same row as the link pushed the link about.
     row = dpg.add_group(parent=parent, horizontal=True)
-    branch = dpg.add_tree_node(
-        label=_rack_outline_module_label(runtime, instance_id, connection),
-        parent=row,
-        default_open=False,
-    )
+    _add_module_link(row, runtime, instance_id, connection)
     _add_rack_outline_remove_button(row, runtime, instance_id)
+    branch = dpg.add_tree_node(label="DETAILS", parent=parent, default_open=False, indent=14)
     _add_rack_outline_ports(branch, runtime, instance_id)
     if instance_id in trail:
         dpg.add_text("SHARED SIGNAL", parent=branch, color=MUTED_TEXT)
@@ -7098,6 +7430,8 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
     if not dpg.does_item_exist(RACK_OUTLINE_BODY):
         return
     dpg.delete_item(RACK_OUTLINE_BODY, children_only=True)
+    OUTLINE_PARAMETER_TEXTS.clear()
+    OUTLINE_LINKS.clear()
     reachable: set[str] = set()
     signal_flow = dpg.add_tree_node(
         label="SIGNAL FLOW",
@@ -7157,12 +7491,9 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
             )
             for instance_id in instance_ids:
                 row = dpg.add_group(parent=lane, horizontal=True)
-                branch = dpg.add_tree_node(
-                    label=_rack_outline_module_label(runtime, instance_id),
-                    parent=row,
-                    default_open=False,
-                )
+                _add_module_link(row, runtime, instance_id)
                 _add_rack_outline_remove_button(row, runtime, instance_id)
+                branch = dpg.add_tree_node(label="DETAILS", parent=lane, default_open=False, indent=14)
                 _add_rack_outline_ports(branch, runtime, instance_id)
 
     panels = len(runtime.patch.modules)
@@ -7213,10 +7544,7 @@ def _register_dynamic_node(
     VIEW_NODE_TAGS[instance_id] = node
     RACK_NODES.append(node)
     MODULE_ACCENTS[node] = accent
-    if rail == AUDIO_RAIL and OUTPUT_NODE in RACK_RAILS[rail]:
-        RACK_RAILS[rail].insert(RACK_RAILS[rail].index(OUTPUT_NODE), node)
-    else:
-        RACK_RAILS[rail].append(node)
+    RACK_RAILS[rail].append(node)
     return node, rail, theme
 
 
@@ -7705,6 +8033,7 @@ def _build_empty_rack_ui(
                 color=MUTED_TEXT,
             )
             _add_bar_scope()
+            _add_master_control(ensure_master(runtime.patch))
             dpg.add_text("", tag=AUDIO_STATUS, color=MUTED_TEXT)
         CANVAS_INTERACTION.rail_y.update(
             {
@@ -7736,6 +8065,19 @@ def _build_empty_rack_ui(
         user_data=runtime,
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".*")
+    with dpg.file_dialog(
+        tag=EXPORT_DIALOG,
+        label="Export Audio",
+        show=False,
+        modal=True,
+        width=720,
+        height=460,
+        default_filename=f"{Path(patch_name).name}.wav",
+        callback=_export_dialog,
+        user_data=runtime,
+    ):
+        dpg.add_file_extension(".wav", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     _configure_rack_theme()
     _configure_knob_handlers(runtime)
@@ -7791,7 +8133,7 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
 
     # The console is built after the document's modules, so that at first draw
     # it is above them rather than under them; the cables need its jacks.
-    if not dpg.does_item_exist(OUTPUT_NODE):
+    if not dpg.does_item_exist(CONSOLE_STRIP.format(channel=1)):
         dpg.push_container_stack(RACK)
         try:
             _build_console(runtime.audio, ensure_master(runtime.patch))
@@ -8126,6 +8468,7 @@ def build_ui(
                 color=MUTED_TEXT,
             )
             _add_bar_scope()
+            _add_master_control(ensure_master(runtime.patch))
             dpg.add_text("", tag=AUDIO_STATUS, color=MUTED_TEXT)
         dpg.bind_item_theme(FUNCTION_NODE, UTILITY_THEME)
         dpg.bind_item_theme(VCO_NODE, VCO_THEME)
@@ -8141,7 +8484,6 @@ def build_ui(
         dpg.set_item_pos(MIXER_NODE, [690, 570])
         dpg.set_item_pos(LPG_NODE, [960, 570])
         dpg.set_item_pos(REVERB_NODE, [1_280, 570])
-        dpg.set_item_pos(OUTPUT_NODE, [1_670, 570])
         CANVAS_INTERACTION.rail_y.update(
             {
                 CONTROL_RAIL: 20.0,
@@ -8172,6 +8514,19 @@ def build_ui(
         user_data=runtime,
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".*")
+    with dpg.file_dialog(
+        tag=EXPORT_DIALOG,
+        label="Export Audio",
+        show=False,
+        modal=True,
+        width=720,
+        height=460,
+        default_filename="Hirajoshi Garden.wav",
+        callback=_export_dialog,
+        user_data=runtime,
+    ):
+        dpg.add_file_extension(".wav", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     _configure_rack_theme()
     _configure_knob_handlers(runtime)

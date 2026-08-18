@@ -90,9 +90,10 @@ viewport is real — once, so it never fights the user afterwards.
 
 The console is exempt, because it is not placed at all. The master, eight
 channel strips and two returns are pinned in a row along the bottom edge of the
-canvas — the channels, then the master (which is only its level), then two
-effect strips that each carry their own send jack out and return L and R in,
-so a send and its return are one thing on the desk and the
+canvas — the channels, then two effect strips that each carry their own send
+jack out and return L and R in, so a send and its return are one thing on the
+desk; there is no master strip, and the master's level is a dial in the status
+bar and the
 camera does not carry them: the rack pans and zooms underneath while they stay
 where they are. Where everything goes should not be somewhere you can lose,
 and it was — three separate bug reports were the output panel having been
@@ -169,3 +170,21 @@ to know.
 Not a rewrite of the frontend. The rack, the panels, the browser, and the
 persistence layer are sound. What is missing is an editor: someone to decide
 which of the three pans survives, and to delete the other two.
+
+
+## The editor's own pan
+
+Dear PyGui's node editor pans by itself — middle-drag, or a trackpad gesture
+that lands there — and that moves every node's picture without changing any
+node's position, which is why the console could float away from the bottom
+edge. Nothing exposes the offset, so it is measured: a strip's screen
+rectangle less its grid position is the grid origin plus the pan, and the pan
+is that less what it measured when nothing had been panned. The console is
+pinned against it, and centring, framing and revealing subtract it too.
+
+## Clicking a cable
+
+A press on empty canvas — and a cable is empty canvas — used to clear the
+selection at once, so a click on a cable could never leave it selected and the
+double-click that unpatches it had nothing to act on. Only a press that goes
+on to move is a pan now, and only then is the selection let go of.

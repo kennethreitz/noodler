@@ -99,9 +99,10 @@ Every output jack and cable glows with the signal on it, and a right-click on
 any module offers its local actions: collapse, duplicate, reset, unplug, or
 remove.
 
-Each strip has **M** and **S**. To the right of the channels sit the master
-— only its level — and two **effect strips**, FX A and FX B, each with its
-send jack out and its return L and R in standing above it: patch FX A's send
+Each strip has **M** and **S**. To the right of the channels sit two **effect
+strips**, FX A and FX B, each with its send jack out and its return L and R in
+standing above it; the master's level is a dial in the status bar, beside the
+scope: patch FX A's send
 into a reverb and the reverb's outputs back into its L and R, and every strip
 that turns its A up is in the same room, while the eight channels stay free
 for sources. A return is stereo, has a level and a mute of its own, and goes
@@ -172,6 +173,12 @@ its level dial. Playback going dark is visible before it needs to be diagnosed.
 | L | Collapse or restore the library pane |
 | F | Frame the whole rack |
 | Escape | Clear the selection |
+
+**File → Export Audio** bounces the patch to a stereo WAV — so many bars at the
+document's tempo from bar one, then a tail for the rooms to ring out — on a
+thread, with progress in the status bar. The rack outline on the left names
+every module as a link: click it and the module glides to the middle of the
+view; open DETAILS beneath it for its parameters, kept current, and its ports.
 
 `Unplug All` removes every module cable as one graph edit, so experiments remain
 easy to unwind. The master's own bus survives it: that is not a cable anyone

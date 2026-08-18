@@ -69,28 +69,34 @@ def test_patching_a_channel_is_all_it_takes_to_be_heard() -> None:
         dpg.destroy_context()
 
 
-def test_the_camera_does_not_carry_the_master() -> None:
+def test_the_camera_does_not_carry_the_console() -> None:
+    from noodler.app import CONSOLE_STRIP
+
     dpg.create_context()
     try:
         runtime = build_ui()
         _add_selected_module("test", None, (runtime, "classic_vco"))
         vco = INSTANCE_NODE_TAGS["classic_vco"]
-        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
+        strip = CONSOLE_STRIP.format(channel=1)
+        pinned = tuple(dpg.get_item_pos(strip))
         moved = tuple(dpg.get_item_pos(vco))
 
         _translate_rack(-140.0, 60.0)
 
-        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == pinned
+        assert tuple(dpg.get_item_pos(strip)) == pinned
         assert tuple(dpg.get_item_pos(vco)) == (moved[0] - 140, moved[1] + 60)
     finally:
         dpg.destroy_context()
 
 
 def test_the_console_settles_along_the_bottom_edge(monkeypatch) -> None:
+    from noodler.app import CONSOLE_STRIP
+
     dpg.create_context()
     try:
         build_ui()
-        dpg.set_item_pos(OUTPUT_NODE, [10.0, 40.0])
+        strip = CONSOLE_STRIP.format(channel=1)
+        dpg.set_item_pos(strip, [10.0, 40.0])
         monkeypatch.setattr(
             dpg,
             "get_item_rect_size",
@@ -99,18 +105,21 @@ def test_the_console_settles_along_the_bottom_edge(monkeypatch) -> None:
 
         _settle_console()
 
-        x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
+        x, y = (float(value) for value in dpg.get_item_pos(strip))
         assert y + 300.0 == pytest.approx(700.0 - 14.0, abs=1.0), "along the bottom"
         assert x >= 14.0, "and in from the left edge"
     finally:
         dpg.destroy_context()
 
 
-def test_a_barely_laid_out_viewport_does_not_move_the_master(monkeypatch) -> None:
+def test_a_barely_laid_out_viewport_does_not_move_the_console(monkeypatch) -> None:
+    from noodler.app import CONSOLE_STRIP
+
     dpg.create_context()
     try:
         build_ui()
-        placed = tuple(dpg.get_item_pos(OUTPUT_NODE))
+        strip = CONSOLE_STRIP.format(channel=1)
+        placed = tuple(dpg.get_item_pos(strip))
         monkeypatch.setattr(
             dpg,
             "get_item_rect_size",
@@ -119,16 +128,19 @@ def test_a_barely_laid_out_viewport_does_not_move_the_master(monkeypatch) -> Non
 
         _settle_console()
 
-        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == placed
+        assert tuple(dpg.get_item_pos(strip)) == placed
     finally:
         dpg.destroy_context()
 
 
-def test_the_master_cannot_be_removed() -> None:
+def test_the_console_cannot_be_removed() -> None:
+    from noodler.app import CONSOLE_STRIP
+
     dpg.create_context()
     try:
         runtime = build_ui()
 
+        assert _remove_module_node(CONSOLE_STRIP.format(channel=1), runtime) is False
         assert _remove_module_node(OUTPUT_NODE, runtime) is False
         assert MASTER_ID in runtime.patch.modules
         assert len(runtime.patch.output_taps) == 2

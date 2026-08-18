@@ -101,12 +101,8 @@ def test_example_patch_restores_panels_cables_and_view() -> None:
             for label in _tree_labels(RACK_OUTLINE_BODY)
             if label.startswith("SPACE REVERB  [reverb]")
         ]
-        # It reaches the speakers through the master now, so the outline says
-        # which channels rather than which side.
-        assert reverb_branches == [
-            "SPACE REVERB  [reverb]  ·  left  →  channel_1"
-            "  ·  right  →  channel_2"
-        ]
+        # The name is a link on its own; where it goes is written beside it.
+        assert reverb_branches == ["SPACE REVERB  [reverb]"]
         assert not RACK_HISTORY.can_undo
     finally:
         dpg.destroy_context()

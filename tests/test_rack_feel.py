@@ -203,13 +203,15 @@ def test_delete_removes_a_selected_module_and_retains_its_panel_for_undo(
         dpg.destroy_context()
 
 
-def test_the_system_output_cannot_be_deleted() -> None:
+def test_the_console_cannot_be_deleted() -> None:
+    from noodler.app import CONSOLE_STRIP
+
     dpg.create_context()
     try:
         runtime = build_ui()
 
-        assert _remove_module_node(OUTPUT_NODE, runtime) is False
-        assert dpg.does_item_exist(OUTPUT_NODE)
+        assert _remove_module_node(CONSOLE_STRIP.format(channel=1), runtime) is False
+        assert dpg.does_item_exist(CONSOLE_STRIP.format(channel=1))
         assert "CANNOT BE REMOVED" in dpg.get_value(CONTROL_STATUS)
     finally:
         dpg.destroy_context()

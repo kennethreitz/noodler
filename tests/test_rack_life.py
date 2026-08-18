@@ -504,3 +504,51 @@ def test_the_app_opens_with_play_showing_not_stop() -> None:
         assert "PLAY" in dpg.get_item_configuration(TRANSPORT_BUTTON)["label"]
     finally:
         dpg.destroy_context()
+
+
+def test_the_outline_names_are_links_that_centre_the_module(monkeypatch) -> None:
+    from noodler.app import CANVAS_INTERACTION, RACK, RACK_OUTLINE_BODY, _centre_module_from_outline
+
+    from noodler.app import default_rack_preset
+
+    dpg.create_context()
+    try:
+        runtime = build_ui(preset=default_rack_preset())
+        links = []
+        pending = [RACK_OUTLINE_BODY]
+        while pending:
+            item = pending.pop()
+            for slot in dpg.get_item_children(item).values():
+                for child in slot:
+                    if dpg.get_item_type(child).endswith("mvSelectable"):
+                        links.append(dpg.get_item_configuration(child)["label"])
+                    pending.append(child)
+        assert any("[reverb]" in label for label in links)
+        assert not any("[master]" in label for label in links), "the console is not a module"
+
+        node = INSTANCE_NODE_TAGS["reverb"]
+        monkeypatch.setattr(dpg, "get_item_rect_size", lambda item: [900, 600] if item == RACK else [200, 150])
+        dpg.set_item_pos(node, [700.0, 20.0])
+        _centre_module_from_outline(0, None, (runtime, "reverb"))
+        # The camera is asked to move the module's centre to the view's centre.
+        assert CANVAS_INTERACTION.recenter_x.target != 0.0
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_outline_lists_parameters_and_keeps_them_current(monkeypatch) -> None:
+    from noodler.app import OUTLINE_PARAMETER_TEXTS, _refresh_outline_parameters
+
+    from noodler.app import default_rack_preset
+
+    dpg.create_context()
+    try:
+        runtime = build_ui(preset=default_rack_preset())
+        assert ("reverb", "decay_seconds") in OUTLINE_PARAMETER_TEXTS
+        text, _module, _path = OUTLINE_PARAMETER_TEXTS[("reverb", "decay_seconds")]
+        runtime.patch.modules["reverb"].parameters.decay_seconds = 7.5
+        monkeypatch.setattr(dpg, "get_frame_count", lambda: 8)
+        _refresh_outline_parameters()
+        assert dpg.get_value(text) == "7.500"
+    finally:
+        dpg.destroy_context()
