@@ -54,6 +54,13 @@ from .filters import (
     StateVariableFilter,
     StateVariableFilterParameters,
 )
+from .instrument import (
+    INSTRUMENT_NAMES,
+    INSTRUMENT_VOICE_MANIFEST,
+    InstrumentVoice,
+    InstrumentVoiceParameters,
+    instrument_voice,
+)
 from .master import (
     MASTER_CHANNELS,
     MASTER_MIXER_MANIFEST,
@@ -115,6 +122,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
     name="Noodler built-in modules",
     version="0.1.0",
     modules=(
+        INSTRUMENT_VOICE_MANIFEST,
         MASTER_MIXER_MANIFEST,
         KEY_MANIFEST,
         QUANTIZER_MANIFEST,
@@ -143,6 +151,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
 BUILTIN_MODULE_TYPES = MappingProxyType({
     manifest.id: module_type
     for manifest, module_type in (
+        (INSTRUMENT_VOICE_MANIFEST, InstrumentVoice),
         (MASTER_MIXER_MANIFEST, MasterMixer),
         (KEY_MANIFEST, Key),
         (QUANTIZER_MANIFEST, Quantizer),
@@ -192,6 +201,11 @@ class BuiltinProvider:
 
 __all__ = [
     "ADSR_ENVELOPE_MANIFEST",
+    "INSTRUMENT_NAMES",
+    "INSTRUMENT_VOICE_MANIFEST",
+    "InstrumentVoice",
+    "InstrumentVoiceParameters",
+    "instrument_voice",
     "MASTER_CHANNELS",
     "MASTER_MIXER_MANIFEST",
     "MasterMixer",

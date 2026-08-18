@@ -29,8 +29,11 @@ sound. A **Key / Scale** module sends a whole scale down a cable — any of
 PyTheory's sixteen tone systems, from maqamat and melakarta ragas to gamelan,
 shruti, 31-TET and Bohlen-Pierce — and a **Scale Quantizer** snaps any voltage
 into it. Patch a random source through one and it becomes a melody in that
-music; change the Key and everything downstream is retuned at once. PyTheory is
-not a menu hidden behind the synthesizer; it is part of the synthesizer.
+music; change the Key and everything downstream is retuned at once. An
+**Instrument Voice** reads any of PyTheory's eighty-four instruments as a recipe
+— oscillator, contour and filter chosen together — so "celesta" or "analog pad"
+is a whole voice rather than a preset name. PyTheory is not a menu hidden behind
+the synthesizer; it is part of the synthesizer.
 
 **Audio and CV are cousins.** Noodler distinguishes signal meaning and warns
 about surprising connections, but it deliberately supports audio-rate
@@ -129,9 +132,9 @@ patch is made rather than around implementation details.
 | Shelf | Modules |
 | --- | --- |
 | Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Scale Generator, Function Utility, Wogglebug |
-| Generate | Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
+| Generate | Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
-| Mix & Space | Polarizing Mixer, Echo Delay, Stereo Reverb |
+| Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb |
 
 PyTheory brains prepare musical structures on the control path. Oscillators,
 filters, dynamics, utilities, and effects implement the block-processing
