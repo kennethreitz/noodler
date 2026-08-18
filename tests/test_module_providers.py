@@ -146,7 +146,7 @@ def test_module_port_ids_must_be_unique() -> None:
 def test_builtin_provider_can_create_every_catalog_module_by_stable_id() -> None:
     provider = BuiltinProvider()
 
-    assert len(BUILTIN_PROVIDER_MANIFEST.modules) == 19
+    assert len(BUILTIN_PROVIDER_MANIFEST.modules) == 21
     assert set(BUILTIN_MODULE_TYPES) == {
         manifest.id for manifest in BUILTIN_PROVIDER_MANIFEST.modules
     }

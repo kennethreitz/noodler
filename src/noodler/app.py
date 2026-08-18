@@ -250,26 +250,37 @@ SIGNAL_COLORS = {
     "trigger": (221, 111, 82, 255),
     "musical": (163, 126, 205, 255),
 }
-DEFAULT_CONTROL_STATUS = "DRAG JACKS TO PATCH  ·  ⌘K ADD MODULE  ·  ⌘Z UNDO"
+DEFAULT_CONTROL_STATUS = (
+    "DRAG JACKS TO PATCH  ·  DOUBLE-CLICK A CABLE TO UNPATCH  ·  "
+    "⌘K ADD MODULE  ·  ⌘Z UNDO"
+)
 """What the status line says when it has nothing to report.
 
 It listed eleven gestures because eleven gestures existed, which made it a
 reference card that ran off the edge of the window. Actions and the keys
-that reach them belong in the menu, where they can be read on purpose; this
-line is for what just happened.
+that reach them belong in the menu; this line is for what just happened,
+and for the two gestures that have nowhere else to be discovered.
 """
 
 
 
 
 
-KNOB_COLUMN_CHARS = 12
+KNOB_COLUMN_CHARS = 9
 """Width of one control column, in characters of the rack's monospace font.
 
 Panels are laid out in a monospace face, so a fixed character count is a fixed
 pixel width: padding a label and its readout to the same count is what makes
-columns line up under one another instead of running together.
+columns line up under one another instead of running together. Kept narrow
+because a rack is read by scanning across it, and a panel that will not fit
+beside its neighbour is a panel nobody can see in context.
 """
+
+KNOB_SIZE = 38
+"""Diameter of a rotary control. Small enough to read a panel at a glance."""
+
+KNOB_SIZE_LARGE = 44
+"""For the one control on a panel that deserves the eye first."""
 
 UNIT_SUFFIXES = (
     ("_hz", " Hz"),
@@ -345,7 +356,7 @@ class KnobBinding:
     maximum: float
     formatter: Callable[[float], str]
     logarithmic: bool = False
-    size: int = 62
+    size: int = KNOB_SIZE
     default_value: float | None = None
     """The value the module was built with, restored by double-clicking."""
 
@@ -490,6 +501,43 @@ class RateSync:
 
 RATE_SYNCS: dict[int | str, RateSync] = {}
 """Keyed by the knob that shows the rate."""
+
+WORD_CONTROLS: dict[int | str, tuple[object, tuple[str | int, ...], str]] = {}
+"""Combos over words a module recognises, keyed by the combo."""
+
+
+def _refresh_word_controls(module: object) -> None:
+    """Re-offer a module's word lists after one of them changes what is valid.
+
+    A tone system decides its own tonics, and a tonic its own modes, so
+    choosing one narrows the next two. The lists are asked for again rather
+    than left showing names the module would refuse.
+    """
+    for combo, (owner, _path, field_name) in WORD_CONTROLS.items():
+        if owner is not module or not dpg.does_item_exist(combo):
+            continue
+        choices = list(getattr(owner, "choices_for", lambda _f: ())(field_name))
+        if not choices:
+            continue
+        parameters = getattr(owner, "parameters", None)
+        current = str(getattr(parameters, field_name, choices[0]))
+        dpg.configure_item(combo, items=choices)
+        dpg.set_value(combo, current if current in choices else choices[0])
+
+
+def _set_word_parameter(combo: int | str, chosen: str, _u: object = None) -> None:
+    entry = WORD_CONTROLS.get(combo)
+    if entry is None:
+        return
+    module, path, _field_name = entry
+    try:
+        _set_dynamic_parameter(module, path, chosen)
+    except Exception as error:
+        _set_patch_status(f"CAN'T SET: {error}".split("\n")[0][:90], error=True)
+        return
+    _refresh_word_controls(module)
+    label = getattr(module, "label", None)
+    _set_patch_status(str(label) if label else f"SET {chosen.upper()}")
 
 
 def _set_rate_division(_sender: int | str, division: str, knob: int | str) -> None:
@@ -772,6 +820,19 @@ def _configure_theme() -> None:
             dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 8)
             dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 7, 3)
             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
+            # The marquee refused to take a colour from either a node-editor
+            # component or a theme bound to the editor itself, so it is set
+            # here, where Dear PyGui applies a theme to everything.
+            for selector_color, tag in (
+                (dpg.mvNodeCol_BoxSelector, BOX_SELECTOR_FILL),
+                (dpg.mvNodeCol_BoxSelectorOutline, BOX_SELECTOR_OUTLINE),
+            ):
+                dpg.add_theme_color(
+                    selector_color,
+                    BOX_SELECTOR_HIDDEN,
+                    tag=tag,
+                    category=dpg.mvThemeCat_Nodes,
+                )
         with dpg.theme_component(dpg.mvNode):
             for node_color, color in (
                 (dpg.mvNodeCol_NodeBackground, (38, 36, 32, 248)),
@@ -1998,6 +2059,9 @@ against it moves the rack almost exactly as far left as the panel started —
 which is precisely where the system output kept appearing, clipped by the edge.
 """
 
+DRAG_EVIDENCE = 2.5
+"""Pixels a panel must depart from its spring to count as dragged."""
+
 REVEAL_PATIENCE = 240
 """Frames to wait for panels to be measured before centring anyway."""
 
@@ -2278,6 +2342,35 @@ def _dragged_rack_node() -> int | str | None:
     return None
 
 
+def _node_that_moved() -> int | str | None:
+    """Find the module that has left its spring behind.
+
+    Identifying a drag by asking which item is hovered, or which rectangle holds
+    the pointer, is inference — and it has been wrong in every arrangement where
+    panels sit close together or a new one has just been added. Dear PyGui moves
+    a dragged node itself, so the node whose position no longer matches the
+    spring that was driving it *is* the one under the pointer. That is evidence
+    rather than a guess, and it needs no state the item may not publish.
+    """
+    if CANVAS_INTERACTION.panning or not dpg.is_mouse_button_dragging(
+        dpg.mvMouseButton_Left,
+        threshold=1.0,
+    ):
+        return None
+    moved: int | str | None = None
+    furthest = DRAG_EVIDENCE
+    for node, (spring_x, spring_y) in RAIL_SPRINGS.items():
+        if not dpg.does_item_exist(node):
+            continue
+        position = dpg.get_item_pos(node)
+        distance = abs(spring_x.value - float(position[0])) + abs(
+            spring_y.value - float(position[1])
+        )
+        if distance > furthest:
+            moved, furthest = node, distance
+    return moved
+
+
 def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
     """Spring modules onto semantic lanes and prevent horizontal overlap."""
     if (
@@ -2286,7 +2379,7 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
     ):
         return
     _reflow_rail_lanes()
-    active_node = _dragged_rack_node()
+    active_node = _dragged_rack_node() or _node_that_moved()
     gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
     for rail, nodes in RACK_RAILS.items():
         available = tuple(node for node in nodes if dpg.does_item_exist(node))
@@ -2655,12 +2748,21 @@ def _toggle_module_from_title(
 ) -> None:
     """Resolve a left double-click on the rack.
 
-    A double-click over a control restores its default; over a module title it
-    folds the module down to its spine.
+    Over a control it restores the default; over a cable it unpatches; over a
+    module title it folds the module down to its spine. Pulling a cable out is
+    the commonest edit in a rack and the least discoverable one here, since a
+    node editor gives no way to drag a plug back out of its jack.
     """
     hovered = _hovered_knob()
     if hovered is not None and _reset_knob_to_default(*hovered):
         return
+    if dpg.does_item_exist(RACK):
+        selected = tuple(dpg.get_selected_links(RACK))
+        if selected:
+            for link in selected:
+                _patch_link_deleted(RACK, link, runtime)
+            _clear_rack_selection()
+            return
     node = _module_title_at(tuple(dpg.get_mouse_pos(local=False)))
     if node is None:
         return
@@ -3447,16 +3549,6 @@ def _configure_rack_theme() -> None:
                 for editor_color, color, tag in (
                     (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255), 0),
                     (dpg.mvNodeCol_GridLine, (43, 45, 40, 150), 0),
-                    (
-                        dpg.mvNodeCol_BoxSelector,
-                        BOX_SELECTOR_HIDDEN,
-                        BOX_SELECTOR_FILL,
-                    ),
-                    (
-                        dpg.mvNodeCol_BoxSelectorOutline,
-                        BOX_SELECTOR_HIDDEN,
-                        BOX_SELECTOR_OUTLINE,
-                    ),
                 ):
                     dpg.add_theme_color(
                         editor_color,
@@ -3523,7 +3615,7 @@ def _add_knob(
     setter: Callable[[float], None],
     *,
     logarithmic: bool = False,
-    size: int = 62,
+    size: int = KNOB_SIZE,
     tag: int | str = 0,
 ) -> int | str:
     """Add a compact rotary control with a separate live value readout."""
@@ -3693,7 +3785,7 @@ def _add_dynamic_float_control(
             _set_dynamic_parameter(target, target_path, changed)
         ),
         logarithmic=logarithmic,
-        size=58,
+        size=KNOB_SIZE,
     )
 
 
@@ -3767,6 +3859,32 @@ def _add_dynamic_parameter_controls(
                 user_data=(module, field_path),
             )
             continue
+        if isinstance(value, str) and not isinstance(value, StrEnum):
+            choices = list(
+                getattr(module, "choices_for", lambda _field: ())(field_name)
+            )
+            dpg.add_text(_fit_column(label.upper()), color=MUTED_TEXT)
+            if choices:
+                combo = dpg.add_combo(
+                    choices,
+                    default_value=value if value in choices else choices[0],
+                    width=KNOB_COLUMN_CHARS * 14,
+                    callback=lambda sender, chosen, _u: _set_word_parameter(
+                        sender, chosen
+                    ),
+                )
+                WORD_CONTROLS[combo] = (module, field_path, field_name)
+            else:
+                dpg.add_input_text(
+                    default_value=value,
+                    width=KNOB_COLUMN_CHARS * 14,
+                    on_enter=True,
+                    callback=lambda _s, typed, data=(module, field_path): (
+                        _set_dynamic_parameter(data[0], data[1], typed)
+                    ),
+                )
+            continue
+
         if isinstance(value, StrEnum):
             choices = [choice.value for choice in type(value)]
             dpg.add_combo(
@@ -3823,7 +3941,7 @@ def _add_dynamic_parameter_controls(
                             *field_path,
                             index,
                         ): _set_dynamic_parameter(target, target_path, changed),
-                        size=48,
+                        size=KNOB_SIZE,
                     )
             continue
         dpg.add_text(f"{label}: {value}", color=MUTED_TEXT, wrap=260)
@@ -3908,7 +4026,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     lambda value: f"{value:.0f} Hz",
                     _set_attribute(parameters, "frequency"),
                     logarithmic=True,
-                    size=72,
+                    size=KNOB_SIZE_LARGE,
                     tag=f"{VCO_NODE}.control.frequency",
                 )
                 _add_knob(
@@ -3918,7 +4036,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     100.0,
                     lambda value: f"{value:+.0f} ct",
                     _set_attribute(parameters, "fine_tune_cents"),
-                    size=62,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.amplitude,
@@ -3927,7 +4045,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "amplitude"),
-                    size=62,
+                    size=KNOB_SIZE,
                 )
             dpg.add_separator()
             with dpg.group(horizontal=True):
@@ -3938,7 +4056,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:+.2f}",
                     _set_attribute(parameters, "frequency_cv_1_amount"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.frequency_cv_2_amount,
@@ -3947,7 +4065,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:+.2f}",
                     _set_attribute(parameters, "frequency_cv_2_amount"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.linear_fm_amount,
@@ -3956,7 +4074,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "linear_fm_amount"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
             with dpg.group(horizontal=True):
                 _add_knob(
@@ -3966,7 +4084,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     0.99,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "pulse_width"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.morph,
@@ -3975,7 +4093,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "morph"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 with dpg.group():
                     dpg.add_text("WAVE B", color=MUTED_TEXT)
@@ -4035,7 +4153,7 @@ def _build_mixer_node(mixer: PolarizingMixer, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:+.2f}",
                     lambda value, channel=channel: mixer.set_gain(channel, value),
-                    size=54,
+                    size=KNOB_SIZE,
                     tag=f"{MIXER_NODE}.control.gain_{channel}",
                 )
         with dpg.node_attribute(
@@ -4087,7 +4205,7 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
                     _format_frequency,
                     _set_attribute(parameters, "clock_rate_hz"),
                     logarithmic=True,
-                    size=64,
+                    size=KNOB_SIZE,
                     tag=f"{WOGGLE_NODE}.control.rate",
                 )
                 _add_knob(
@@ -4097,7 +4215,7 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "chaos"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.ego_id_balance,
@@ -4106,7 +4224,7 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "ego_id_balance"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
             with dpg.group(horizontal=True):
                 _add_knob(
@@ -4116,7 +4234,7 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "woggle"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.audio_level,
@@ -4125,7 +4243,7 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "audio_level"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 with dpg.group():
                     dpg.add_text("UNCERTAINTY", color=MUTED_TEXT)
@@ -4292,7 +4410,7 @@ def _build_scale_generator_node(
                     _format_frequency,
                     lambda value: setattr(generator.parameters, "rate_hz", value),
                     logarithmic=True,
-                    size=60,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.gate_length,
@@ -4305,7 +4423,7 @@ def _build_scale_generator_node(
                         "gate_length",
                         value,
                     ),
-                    size=60,
+                    size=KNOB_SIZE,
                 )
                 with dpg.group():
                     dpg.add_text("NOW PLAYING", color=MUTED_TEXT)
@@ -4356,7 +4474,7 @@ def _function_channel_controls(
             _format_duration,
             _set_attribute(parameters, "rise_seconds"),
             logarithmic=True,
-            size=58,
+            size=KNOB_SIZE,
         )
         _add_knob(
             parameters.fall_seconds,
@@ -4366,7 +4484,7 @@ def _function_channel_controls(
             _format_duration,
             _set_attribute(parameters, "fall_seconds"),
             logarithmic=True,
-            size=58,
+            size=KNOB_SIZE,
         )
         _add_knob(
             parameters.curve,
@@ -4375,7 +4493,7 @@ def _function_channel_controls(
             1.0,
             lambda value: f"{value:+.2f}",
             _set_attribute(parameters, "curve"),
-            size=58,
+            size=KNOB_SIZE,
         )
         _add_knob(
             parameters.attenuverter,
@@ -4384,7 +4502,7 @@ def _function_channel_controls(
             1.0,
             lambda value: f"{value:+.2f}",
             _set_attribute(parameters, "attenuverter"),
-            size=58,
+            size=KNOB_SIZE,
         )
     dpg.add_checkbox(
         label="CYCLE",
@@ -4418,7 +4536,7 @@ def _build_function_node(utility: FunctionUtility, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:+.2f}",
                     _set_attribute(utility.parameters, "channel_2_attenuverter"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     utility.parameters.channel_3_attenuverter,
@@ -4427,7 +4545,7 @@ def _build_function_node(utility: FunctionUtility, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value:+.2f}",
                     _set_attribute(utility.parameters, "channel_3_attenuverter"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
             dpg.add_separator()
             _function_channel_controls("Channel 4", utility.parameters.channel_4)
@@ -4482,7 +4600,7 @@ def _build_low_pass_gate_node(
                     _format_duration,
                     _set_attribute(parameters, "decay_seconds"),
                     logarithmic=True,
-                    size=62,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.brightness,
@@ -4491,7 +4609,7 @@ def _build_low_pass_gate_node(
                     1.0,
                     lambda value: f"{value * 100:.0f}%",
                     _set_attribute(parameters, "brightness"),
-                    size=60,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.character,
@@ -4500,7 +4618,7 @@ def _build_low_pass_gate_node(
                     1.0,
                     lambda value: f"{value * 100:.0f}%",
                     _set_attribute(parameters, "character"),
-                    size=60,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.level,
@@ -4509,7 +4627,7 @@ def _build_low_pass_gate_node(
                     1.0,
                     lambda value: f"{value:.2f}",
                     _set_attribute(parameters, "level"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
             _add_patch_bay_toggle(
                 patch,
@@ -4561,7 +4679,7 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value * 100:.0f}%",
                     _set_attribute(parameters, "mix"),
-                    size=62,
+                    size=KNOB_SIZE,
                     tag=f"{REVERB_NODE}.control.mix",
                 )
                 _add_knob(
@@ -4572,7 +4690,7 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                     _format_duration,
                     _set_attribute(parameters, "decay_seconds"),
                     logarithmic=True,
-                    size=66,
+                    size=KNOB_SIZE,
                     tag=f"{REVERB_NODE}.control.decay",
                 )
                 _add_knob(
@@ -4582,7 +4700,7 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value * 100:.0f}%",
                     _set_attribute(parameters, "damping"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
             with dpg.group(horizontal=True):
                 _add_knob(
@@ -4592,7 +4710,7 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                     1.0,
                     lambda value: f"{value * 100:.0f}%",
                     _set_attribute(parameters, "diffusion"),
-                    size=58,
+                    size=KNOB_SIZE,
                 )
                 _add_knob(
                     parameters.pre_delay_ms,
@@ -4601,7 +4719,7 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                     250.0,
                     lambda value: f"{value:.0f} ms",
                     _set_attribute(parameters, "pre_delay_ms"),
-                    size=62,
+                    size=KNOB_SIZE,
                 )
                 with dpg.group():
                     dpg.add_text("INFINITE", color=MUTED_TEXT)
@@ -4658,7 +4776,7 @@ def _build_output_node(engine: SystemAudioEngine) -> None:
                 1.0,
                 lambda value: f"{value:.2f}",
                 lambda value: setattr(engine, "master_gain", value),
-                size=68,
+                size=KNOB_SIZE_LARGE,
                 tag=f"{OUTPUT_NODE}.control.master",
             )
             dpg.add_text("OUTPUT", color=MUTED_TEXT)
@@ -5591,6 +5709,7 @@ def build_ui(
     METER_BALLISTICS.reset()
     RACK_HISTORY.clear()
     RATE_SYNCS.clear()
+    WORD_CONTROLS.clear()
     KEY_LATCH.clear()
     _configure_font()
     _configure_theme()

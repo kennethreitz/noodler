@@ -14,6 +14,7 @@ from noodler.app import (
     METER_BALLISTICS,
     MIXER_LPG_LINK,
     MODULE_CLOSE_LAYER,
+    MODULE_COLLAPSE,
     MODULE_SELECTOR,
     OUTPUT_METER,
     OUTPUT_NODE,
@@ -44,6 +45,8 @@ from noodler.app import (
     _queue_rack_zoom,
     _refresh_ui,
     _release_pan_momentum,
+    _add_selected_module,
+    _node_that_moved,
     _remove_module_node,
     _reveal_rack_once,
     _reveal_node,
@@ -1009,5 +1012,82 @@ def test_a_barely_laid_out_viewport_is_not_believed(monkeypatch) -> None:
         x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
         assert x + 116.0 == pytest.approx(475.0, abs=1.0)
         assert y + 150.0 == pytest.approx(350.0, abs=1.0)
+    finally:
+        dpg.destroy_context()
+
+
+def test_double_clicking_a_cable_unpatches_it(monkeypatch) -> None:
+    """A node editor gives no way to pull a plug back out of its jack."""
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        before = len(runtime.patch.cables)
+        link = dpg.get_alias_id(MIXER_LPG_LINK)
+        monkeypatch.setattr(dpg, "get_selected_links", lambda _rack: [link])
+        monkeypatch.setattr("noodler.app._hovered_knob", lambda: None)
+
+        _toggle_module_from_title("test", None, runtime)
+
+        assert len(runtime.patch.cables) == before - 1
+        assert not dpg.does_item_exist(MIXER_LPG_LINK)
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_double_click_elsewhere_still_folds_a_module(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        monkeypatch.setattr(dpg, "get_selected_links", lambda _rack: [])
+        monkeypatch.setattr("noodler.app._hovered_knob", lambda: None)
+        monkeypatch.setattr(
+            "noodler.app._module_title_at", lambda _position: VCO_NODE
+        )
+
+        _toggle_module_from_title("test", None, runtime)
+
+        assert MODULE_COLLAPSE.is_collapsed(VCO_NODE)
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_dragged_module_is_found_by_where_it_moved(monkeypatch) -> None:
+    """Identifying a drag by hover or geometry has been wrong repeatedly.
+
+    Dear PyGui moves the dragged node itself, so the node that no longer
+    matches the spring driving it is the one under the pointer.
+    """
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        _add_selected_module("test", None, (runtime, "reverb"))
+        node = INSTANCE_NODE_TAGS["classic_vco"]
+
+        for _ in range(200):
+            _settle_rack_rails(1 / 120)
+
+        monkeypatch.setattr(
+            dpg, "is_mouse_button_dragging", lambda button, threshold: True
+        )
+        # Nothing reports itself hovered, as nodes have often failed to.
+        monkeypatch.setattr(dpg, "get_item_state", lambda _item: {})
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: (-5_000.0, -5_000.0)
+        )
+
+        assert _node_that_moved() is None, "nothing has moved yet"
+
+        settled = tuple(dpg.get_item_pos(node))
+        dpg.set_item_pos(node, [settled[0] - 140.0, settled[1]])
+
+        assert _node_that_moved() == node
+
+        # And it is left where the pointer put it, including leftwards.
+        for _ in range(120):
+            _settle_rack_rails(1 / 120)
+        assert float(dpg.get_item_pos(node)[0]) == pytest.approx(
+            settled[0] - 140.0, abs=2.0
+        )
     finally:
         dpg.destroy_context()

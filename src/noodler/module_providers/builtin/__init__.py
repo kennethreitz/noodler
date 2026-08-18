@@ -54,6 +54,14 @@ from .filters import (
     StateVariableFilter,
     StateVariableFilterParameters,
 )
+from .musical import (
+    KEY_MANIFEST,
+    QUANTIZER_MANIFEST,
+    Key,
+    KeyParameters,
+    Quantizer,
+    QuantizerParameters,
+)
 from .low_pass_gate import (
     LOW_PASS_GATE_MANIFEST,
     LowPassGate,
@@ -101,6 +109,8 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
     name="Noodler built-in modules",
     version="0.1.0",
     modules=(
+        KEY_MANIFEST,
+        QUANTIZER_MANIFEST,
         MELODY_BRAIN_MANIFEST,
         HARMONY_BRAIN_MANIFEST,
         ARPEGGIO_BRAIN_MANIFEST,
@@ -126,6 +136,8 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
 BUILTIN_MODULE_TYPES = MappingProxyType({
     manifest.id: module_type
     for manifest, module_type in (
+        (KEY_MANIFEST, Key),
+        (QUANTIZER_MANIFEST, Quantizer),
         (MELODY_BRAIN_MANIFEST, MelodyBrain),
         (HARMONY_BRAIN_MANIFEST, HarmonyBrain),
         (ARPEGGIO_BRAIN_MANIFEST, ArpeggioBrain),
@@ -172,6 +184,12 @@ class BuiltinProvider:
 
 __all__ = [
     "ADSR_ENVELOPE_MANIFEST",
+    "KEY_MANIFEST",
+    "Key",
+    "KeyParameters",
+    "QUANTIZER_MANIFEST",
+    "Quantizer",
+    "QuantizerParameters",
     "ARPEGGIO_BRAIN_MANIFEST",
     "BUILTIN_PROVIDER_MANIFEST",
     "BUILTIN_MODULE_TYPES",
