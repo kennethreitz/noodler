@@ -300,3 +300,36 @@ def test_the_keherwa_example_layers_two_clocked_rhythms() -> None:
     assert float(np.max(np.abs(audio))) < 0.9
     ratio = _strongest_period(audio) * 100.0 / 60.0
     assert any(abs(ratio - simple) / simple < 0.04 for simple in (1 / 3, 0.5, 1.0, 2.0, 4.0)), ratio
+
+
+def test_night_market_uses_most_of_the_box_and_stays_in_budget() -> None:
+    preset = read_patch_preset(Path("examples/night-market.noodler"))
+    runtime = build_runtime_from_preset(preset)
+    kinds = {m.manifest.id for m in runtime.patch.modules.values()}
+    assert {
+        "clock", "pytheory_beats", "key", "harmony_brain", "arpeggio_brain", "melody_brain",
+        "quantizer", "pytheory_voice", "instrument_voice", "low_pass_gate",
+        "state_variable_filter", "function_utility", "wogglebug", "echo_delay",
+        "pytheory_reverb", "master_mixer",
+    } <= kinds
+    assert len(runtime.patch.modules) >= 27
+    fed = {c.target.port_id for c in runtime.patch.cables if c.target.module_id == "master"}
+    assert {f"channel_{n}" for n in range(1, 9)} <= fed, "all eight channels in use"
+    assert {"return_a_left", "return_b_left", "return_b_right"} <= fed
+
+    runtime.patch.prepare(48_000.0, 256)
+    for module in runtime.patch.modules.values():
+        worker = getattr(module, "_worker", None)
+        if worker is not None:
+            worker.join(timeout=60)
+    transport = Transport(bpm=96.0)
+    import time
+    started = time.perf_counter()
+    blocks = []
+    for _ in range(int(8 * 48_000 / 256)):
+        runtime.patch.transport = transport.tick(256, 48_000.0)
+        blocks.append(runtime.patch.render_stereo(256, 48_000.0))
+    took = time.perf_counter() - started
+    audio = np.concatenate(blocks)
+    assert float(np.max(np.abs(audio))) < 0.95
+    assert took < 8.0 * 0.8, f"{took / 8.0 * 100:.0f}% of real time"

@@ -1,0 +1,1185 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Night Market",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 2.0,
+        "beats_per_bar": 4,
+        "trigger_ms": 6.0
+      }
+    },
+    {
+      "instance_id": "tabla",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "teental",
+        "level": 0.7,
+        "swing": 0.0,
+        "follow_clock": true,
+        "rate_hz": 2.0
+      }
+    },
+    {
+      "instance_id": "kit",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "afrobeat",
+        "level": 0.32,
+        "swing": 0.08,
+        "follow_clock": true,
+        "rate_hz": 2.0
+      }
+    },
+    {
+      "instance_id": "key",
+      "module_type": "key",
+      "provider": "builtin",
+      "parameters": {
+        "system": "makam",
+        "tonic": "La",
+        "octave": 3,
+        "scale_name": "nihavend",
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "harmony",
+      "module_type": "harmony_brain",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "C",
+        "mode": "minor",
+        "style": "functional choices",
+        "length": 8,
+        "register_octave": 3,
+        "rate_hz": 0.5,
+        "gate_length": 0.9,
+        "reference_frequency_hz": 220.0,
+        "seed": 1001
+      }
+    },
+    {
+      "instance_id": "arp",
+      "module_type": "arpeggio_brain",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "random",
+        "octave_range": 2,
+        "rate_hz": 4.0,
+        "gate_length": 0.4,
+        "fallback_pitches": [
+          0.0,
+          0.3333333333333333,
+          0.5833333333333334,
+          1.0
+        ],
+        "reference_midi": 57.0,
+        "seed": 77
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "western",
+        "tonic": "A",
+        "octave": 4,
+        "scale_name": "minor",
+        "style": "motif and answer",
+        "phrase_length": 16,
+        "octave_range": 2,
+        "density": 0.5,
+        "step_bias": 0.78,
+        "rate_hz": 2.0,
+        "gate_length": 0.35,
+        "reference_frequency_hz": 220.0,
+        "seed": 2020
+      }
+    },
+    {
+      "instance_id": "answer",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "western",
+        "tonic": "A",
+        "octave": 4,
+        "scale_name": "minor",
+        "style": "weighted wander",
+        "phrase_length": 8,
+        "octave_range": 1,
+        "density": 0.38,
+        "step_bias": 0.78,
+        "rate_hz": 2.0,
+        "gate_length": 0.55,
+        "reference_frequency_hz": 220.0,
+        "seed": 303
+      }
+    },
+    {
+      "instance_id": "sweep",
+      "module_type": "function_utility",
+      "provider": "builtin",
+      "parameters": {
+        "channel_1": {
+          "rise_seconds": 20.0,
+          "fall_seconds": 20.0,
+          "curve": 0.2,
+          "cycle": true,
+          "attenuverter": 0.7
+        },
+        "channel_2_attenuverter": 0.0,
+        "channel_3_attenuverter": 0.0,
+        "channel_4": {
+          "rise_seconds": 0.1,
+          "fall_seconds": 0.1,
+          "curve": 0.0,
+          "cycle": false,
+          "attenuverter": 1.0
+        }
+      }
+    },
+    {
+      "instance_id": "worry",
+      "module_type": "wogglebug",
+      "provider": "builtin",
+      "parameters": {
+        "clock_rate_hz": 0.6,
+        "chaos": 0.4,
+        "ego_id_balance": 0.5,
+        "woggle": 0.6,
+        "audio_level": 0.0,
+        "seed": 99
+      }
+    },
+    {
+      "instance_id": "celesta_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "stab_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "sitar_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "flute_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "bass_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": -1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "pad_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": -1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "celesta",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "celesta",
+        "level": 0.36,
+        "release_ms": 500.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "stab",
+      "module_type": "instrument_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.3,
+        "brightness": -0.5,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "sitar",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "sitar",
+        "level": 0.44,
+        "release_ms": 650.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "pluck",
+      "module_type": "low_pass_gate",
+      "provider": "builtin",
+      "parameters": {
+        "decay_seconds": 0.7,
+        "brightness": 0.8,
+        "character": 0.5,
+        "level": 0.95
+      }
+    },
+    {
+      "instance_id": "flute",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "flute",
+        "level": 0.3,
+        "release_ms": 420.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "bass",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "upright_bass",
+        "level": 0.5,
+        "release_ms": 520.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "pad",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "analog_pad",
+        "level": 0.42,
+        "release_ms": 2400.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "haze",
+      "module_type": "state_variable_filter",
+      "provider": "builtin",
+      "parameters": {
+        "cutoff_hz": 900.0,
+        "resonance": 0.35,
+        "drive": 1.2,
+        "output_level": 1.0
+      }
+    },
+    {
+      "instance_id": "delay",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.46875,
+        "feedback": 0.4,
+        "mix": 1.0,
+        "damping": 0.5,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "cathedral",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "cathedral",
+        "mix": 1.0,
+        "decay_seconds": 4.5,
+        "width": 1.0,
+        "pre_delay_ms": 25.0,
+        "level": 1.0
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.85,
+          0.55,
+          0.7,
+          0.5,
+          0.5,
+          0.6,
+          0.5,
+          0.45
+        ],
+        "pans": [
+          0.05,
+          -0.1,
+          0.0,
+          0.55,
+          -0.35,
+          -0.5,
+          0.4,
+          0.0
+        ],
+        "sends_a": [
+          0.0,
+          0.0,
+          0.0,
+          0.45,
+          0.3,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.2,
+          0.0,
+          0.0,
+          0.5,
+          0.3,
+          0.35,
+          0.6,
+          0.7
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.5,
+          0.6
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.5
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "harmony",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "sixteenth"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "sixteenth"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "eighth"
+      },
+      "target": {
+        "module_id": "answer",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "celesta_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "stab_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "sitar_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "flute_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "bass_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "pad_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "celesta_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "celesta_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "celesta",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "celesta",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "stab_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "stab_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "stab",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "beat"
+      },
+      "target": {
+        "module_id": "stab",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "sitar_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "sitar_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "sitar",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "sitar",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "sitar",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "pluck",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "trigger"
+      },
+      "target": {
+        "module_id": "pluck",
+        "port_id": "strike"
+      }
+    },
+    {
+      "source": {
+        "module_id": "answer",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "flute_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "flute_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "flute",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "answer",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "flute",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "bass"
+      },
+      "target": {
+        "module_id": "bass_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "beat"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "pad_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "pad_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "pad",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "pad",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "pad",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "haze",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "sweep",
+        "port_id": "channel_1"
+      },
+      "target": {
+        "module_id": "haze",
+        "port_id": "cutoff_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "worry",
+        "port_id": "smooth"
+      },
+      "target": {
+        "module_id": "haze",
+        "port_id": "resonance_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tabla",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kit",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "celesta",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "stab",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_5"
+      }
+    },
+    {
+      "source": {
+        "module_id": "pluck",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_6"
+      }
+    },
+    {
+      "source": {
+        "module_id": "flute",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_7"
+      }
+    },
+    {
+      "source": {
+        "module_id": "haze",
+        "port_id": "low"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_8"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "delay",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "cathedral",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "delay",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "cathedral",
+        "port_id": "wet_left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "cathedral",
+        "port_id": "wet_right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.7
+  },
+  "transport": {
+    "bpm": 96.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.66,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "clock",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "tabla",
+        "position": {
+          "x": 40.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kit",
+        "position": {
+          "x": 40.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "key",
+        "position": {
+          "x": 40.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmony",
+        "position": {
+          "x": 400.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "arp",
+        "position": {
+          "x": 760.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 400.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "answer",
+        "position": {
+          "x": 400.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "sweep",
+        "position": {
+          "x": 40.0,
+          "y": 1180.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "worry",
+        "position": {
+          "x": 400.0,
+          "y": 1180.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "celesta_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "stab_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 1060.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "sitar_pitch",
+        "position": {
+          "x": 760.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "flute_pitch",
+        "position": {
+          "x": 760.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bass_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 1260.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "pad_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 1460.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "celesta",
+        "position": {
+          "x": 1480.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "stab",
+        "position": {
+          "x": 1480.0,
+          "y": 1060.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "sitar",
+        "position": {
+          "x": 1120.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "pluck",
+        "position": {
+          "x": 1480.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "flute",
+        "position": {
+          "x": 1120.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bass",
+        "position": {
+          "x": 1480.0,
+          "y": 1260.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "pad",
+        "position": {
+          "x": 1480.0,
+          "y": 1460.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "haze",
+        "position": {
+          "x": 1840.0,
+          "y": 1460.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "delay",
+        "position": {
+          "x": 1840.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "cathedral",
+        "position": {
+          "x": 1840.0,
+          "y": 620.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}

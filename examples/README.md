@@ -44,6 +44,16 @@ against eight, so they come round together only every six bars. Kalimba, sitar,
 a harmonium pumping on the beat and an upright bass, all in raga khamaj on the
 shruti grid, at 100 BPM.
 
+## The big one
+
+`night-market` is the biggest patch in the box: teental tabla in front and an
+afrobeat kit under it, a Clock driving four brains — chords on the bar, a
+random arpeggio on a celesta in sixteenths, an electric-piano stab on every
+beat, a sitar melody plucked through a low-pass gate and a flute answering it a
+register up — a bass on the beat, and a pad filtered by a slow sweep and a
+Wogglebug, all in makam nihavend. Twenty-seven modules, fifty-one cables, all
+eight channels, delay on A and a cathedral on B, at 96 BPM.
+
 `hijaz-machine` is the earlier generative showcase (arabic hijaz, oscillator
 voices), and `somesound` is a two-module starter.
 
@@ -56,6 +66,7 @@ uv run python examples/build_tone_systems.py
 uv run python examples/build_pelog_bell_garden.py
 uv run python examples/build_highlife_kalimba.py
 uv run python examples/build_keherwa_kalimba.py
+uv run python examples/build_night_market.py
 ```
 
 Both scripts write over the documents here.
