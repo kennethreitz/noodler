@@ -38,6 +38,7 @@ from .module_providers.builtin import (
     scale_names,
 )
 from .engine import SystemAudioEngine
+from .history import Edit, EditHistory
 from .macos_gestures import MacMagnifyMonitor
 from .motion import (
     Glide,
@@ -209,9 +210,9 @@ SIGNAL_COLORS = {
 }
 DEFAULT_CONTROL_STATUS = (
     "DRAG JACKS TO PATCH  ·  SELECT + DELETE TO UNPATCH OR REMOVE  ·  "
-    "⌘K = ADD MODULE  ·  F = FRAME ALL  ·  FLICK BACKGROUND = PAN  ·  "
-    "PINCH / SCROLL = ZOOM  ·  DOUBLE-CLICK TITLE = FOLD  ·  "
-    "DOUBLE-CLICK KNOB = RESET  ·  SHIFT = FINE"
+    "⌘Z = UNDO  ·  ⌘K = ADD MODULE  ·  F = FRAME ALL  ·  "
+    "FLICK BACKGROUND = PAN  ·  PINCH / SCROLL = ZOOM  ·  "
+    "DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET  ·  SHIFT = FINE"
 )
 KNOB_HINT_DRAG_LIMIT = 3
 MIN_RACK_ZOOM = 0.55
@@ -774,6 +775,205 @@ def _default_cable(
     return route
 
 
+RACK_HISTORY = EditHistory()
+"""Reversible rack edits, newest last."""
+
+
+@dataclass(frozen=True, slots=True)
+class NodeRegistration:
+    """Everything the registries knew about a module, for putting it back."""
+
+    node: int | str
+    instance_id: str
+    rail: str | None
+    rail_index: int
+    accent: tuple[int, int, int, int] | None
+    patch_bay: PatchBayBinding | None
+
+
+def _capture_node_registration(
+    node: int | str,
+    instance_id: str,
+) -> NodeRegistration:
+    rail_name = None
+    rail_index = 0
+    for name, lane in RACK_RAILS.items():
+        if node in lane:
+            rail_name = name
+            rail_index = lane.index(node)
+            break
+    return NodeRegistration(
+        node=node,
+        instance_id=instance_id,
+        rail=rail_name,
+        rail_index=rail_index,
+        accent=MODULE_ACCENTS.get(node),
+        patch_bay=PATCH_BAYS.get(instance_id),
+    )
+
+
+def _restore_node_registration(registration: NodeRegistration) -> None:
+    """Put one module back into every registry that described it."""
+    node = registration.node
+    if node not in RACK_NODES:
+        RACK_NODES.append(node)
+    INSTANCE_NODE_TAGS[registration.instance_id] = node
+    VIEW_NODE_TAGS[registration.instance_id] = node
+    if registration.accent is not None:
+        MODULE_ACCENTS[node] = registration.accent
+    if registration.patch_bay is not None:
+        PATCH_BAYS[registration.instance_id] = registration.patch_bay
+    if registration.rail is not None:
+        lane = RACK_RAILS[registration.rail]
+        if node not in lane:
+            lane.insert(min(registration.rail_index, len(lane)), node)
+
+
+def _output_channel_attribute(channel: OutputChannel) -> str:
+    return {
+        OutputChannel.BOTH: f"{OUTPUT_NODE}.mono",
+        OutputChannel.LEFT: f"{OUTPUT_NODE}.left",
+        OutputChannel.RIGHT: f"{OUTPUT_NODE}.right",
+    }[channel]
+
+
+def _endpoint_attribute(endpoint: Endpoint) -> str | None:
+    node = INSTANCE_NODE_TAGS.get(endpoint.module_id)
+    return None if node is None else f"{node}.{endpoint.port_id}"
+
+
+def _endpoint_signal(patch: PatchGraph, endpoint: Endpoint) -> str:
+    module = patch.modules.get(endpoint.module_id)
+    if module is not None:
+        for port in module.manifest.ports:
+            if port.id == endpoint.port_id:
+                return port.signal_type.value
+    return "cv"
+
+
+def _route_description(route: Cable | OutputTap) -> str:
+    if isinstance(route, Cable):
+        return (
+            f"{route.source.module_id}.{route.source.port_id} → "
+            f"{route.target.module_id}.{route.target.port_id}"
+        )
+    return f"{route.source.module_id}.{route.source.port_id} → out"
+
+
+def _visual_link_for(route: Cable | OutputTap) -> int | str | None:
+    """Find the drawn cable that stands for one graph route."""
+    if not dpg.does_item_exist(RACK):
+        return None
+    for link in dpg.get_item_children(RACK).get(0, ()):
+        if dpg.get_item_user_data(link) == route:
+            return link
+    return None
+
+
+def _erase_route(runtime: AppRuntime, route: Cable | OutputTap) -> None:
+    """Remove one cable or tap from the graph and from the rack."""
+    if isinstance(route, Cable):
+        _edit_patch(runtime, lambda: runtime.patch.disconnect(route))
+    else:
+        _edit_patch(runtime, lambda: runtime.patch.disconnect_output(route))
+    link = _visual_link_for(route)
+    if link is not None:
+        dpg.delete_item(link)
+    _refresh_patch_bays(runtime.patch)
+    _refresh_rack_outline(runtime)
+
+
+def _restore_route(runtime: AppRuntime, route: Cable | OutputTap) -> None:
+    """Re-create one cable or tap that an edit removed."""
+    if isinstance(route, Cable):
+        _edit_patch(
+            runtime,
+            lambda: runtime.patch.connect(
+                route.source.module_id,
+                route.source.port_id,
+                route.target.module_id,
+                route.target.port_id,
+            ),
+        )
+        target_attribute = _endpoint_attribute(route.target)
+    else:
+        _edit_patch(
+            runtime,
+            lambda: runtime.patch.connect_output(
+                route.source.module_id,
+                route.source.port_id,
+                gain=route.gain,
+                channel=route.channel,
+            ),
+        )
+        target_attribute = _output_channel_attribute(route.channel)
+    source_attribute = _endpoint_attribute(route.source)
+    if (
+        source_attribute is not None
+        and target_attribute is not None
+        and dpg.does_item_exist(source_attribute)
+        and dpg.does_item_exist(target_attribute)
+    ):
+        _add_visual_link(
+            source_attribute,
+            target_attribute,
+            route,
+            _endpoint_signal(runtime.patch, route.source),
+        )
+    _refresh_patch_bays(runtime.patch)
+    _refresh_rack_outline(runtime)
+
+
+def _restore_routes(
+    runtime: AppRuntime,
+    routes: tuple[Cable | OutputTap, ...],
+) -> None:
+    """Re-create several routes, skipping any whose endpoints are gone."""
+    for route in routes:
+        try:
+            _restore_route(runtime, route)
+        except (PatchError, ValueError):
+            continue
+
+
+def _erase_routes(
+    runtime: AppRuntime,
+    routes: tuple[Cable | OutputTap, ...],
+) -> None:
+    """Remove several routes, skipping any already gone from the graph."""
+    for route in routes:
+        try:
+            _erase_route(runtime, route)
+        except (PatchError, ValueError):
+            continue
+
+
+def _routes_touching(patch: PatchGraph, instance_id: str) -> tuple[
+    Cable | OutputTap, ...
+]:
+    """Every cable and tap that would be lost with one module."""
+    routes: list[Cable | OutputTap] = [
+        cable
+        for cable in patch.cables
+        if instance_id in (cable.source.module_id, cable.target.module_id)
+    ]
+    routes.extend(
+        tap for tap in patch.output_taps if tap.source.module_id == instance_id
+    )
+    return tuple(routes)
+
+
+def _record_edit(
+    description: str,
+    undo: Callable[[], None],
+    redo: Callable[[], None],
+    discard: Callable[[], None] | None = None,
+) -> None:
+    RACK_HISTORY.record(
+        Edit(description=description, undo=undo, redo=redo, discard=discard)
+    )
+
+
 def _patch_link_created(
     _sender: int | str,
     app_data: tuple[int | str, int | str],
@@ -820,6 +1020,11 @@ def _patch_link_created(
             )
             _refresh_patch_bays(runtime.patch)
             _refresh_rack_outline(runtime)
+            _record_edit(
+                f"PATCH {_route_description(tap)}",
+                undo=lambda: _erase_route(runtime, tap),
+                redo=lambda: _restore_route(runtime, tap),
+            )
             _set_patch_status(
                 f"PATCHED  {source.name.upper()}  →  {target.name.upper()}"
             )
@@ -849,6 +1054,11 @@ def _patch_link_created(
         )
         _refresh_patch_bays(runtime.patch)
         _refresh_rack_outline(runtime)
+        _record_edit(
+            f"PATCH {_route_description(cable)}",
+            undo=lambda: _erase_route(runtime, cable),
+            redo=lambda: _restore_route(runtime, cable),
+        )
         _set_patch_status(
             f"PATCHED  {source.name.upper()}  →  {target.name.upper()}"
         )
@@ -880,6 +1090,11 @@ def _patch_link_deleted(
         dpg.delete_item(link)
         _refresh_patch_bays(runtime.patch)
         _refresh_rack_outline(runtime)
+        _record_edit(
+            f"UNPATCH {_route_description(route)}",
+            undo=lambda: _restore_route(runtime, route),
+            redo=lambda: _erase_route(runtime, route),
+        )
         _set_patch_status(f"UNPATCHED  {description.upper()}")
     except (PatchError, ValueError) as exc:
         _set_patch_status(f"CAN'T UNPATCH: {exc}", error=True)
@@ -901,6 +1116,9 @@ def _unplug_all(
             _set_patch_status("NO CABLES TO UNPLUG")
             return
 
+        unplugged: tuple[Cable | OutputTap, ...] = (
+            runtime.patch.cables + runtime.patch.output_taps
+        )
         removed = _edit_patch(runtime, runtime.patch.disconnect_all)
         rack_children = dpg.get_item_children(RACK)
         for item in tuple(rack_children.get(0, ())):
@@ -910,6 +1128,11 @@ def _unplug_all(
 
         _refresh_patch_bays(runtime.patch)
         _refresh_rack_outline(runtime)
+        _record_edit(
+            f"UNPLUG ALL ({removed})",
+            undo=lambda: _restore_routes(runtime, unplugged),
+            redo=lambda: _erase_routes(runtime, unplugged),
+        )
         noun = "CABLE" if removed == 1 else "CABLES"
         _set_patch_status(f"UNPLUGGED ALL  ·  {removed} {noun} REMOVED")
     except Exception as exc:
@@ -1063,9 +1286,9 @@ def _patch_bay_flow_label(binding: PatchBayBinding, connected: set[str]) -> str:
 
 
 def _refresh_patch_bay(binding: PatchBayBinding) -> None:
-    """Show all jacks while expanded, otherwise only live connections."""
+    """Show every jack unless the user asks to hide open connections."""
     connected = _connected_port_ids(binding.patch, binding.module_id)
-    expanded = (
+    hide_open = (
         bool(dpg.get_value(binding.toggle_tag))
         if dpg.does_item_exist(binding.toggle_tag)
         else False
@@ -1073,7 +1296,7 @@ def _refresh_patch_bay(binding: PatchBayBinding) -> None:
     for port_id in binding.port_ids:
         tag = f"{binding.node_tag}.{port_id}"
         if dpg.does_item_exist(tag):
-            dpg.configure_item(tag, show=expanded or port_id in connected)
+            dpg.configure_item(tag, show=not hide_open or port_id in connected)
     if dpg.does_item_exist(binding.status_tag):
         dpg.set_value(binding.status_tag, _patch_bay_flow_label(binding, connected))
     if MODULE_COLLAPSE.is_collapsed(binding.node_tag):
@@ -1096,7 +1319,7 @@ def _refresh_patch_bays(patch: PatchGraph) -> None:
 
 def _toggle_patch_bay(
     _sender: str,
-    _expanded: bool,
+    _hide_open: bool,
     binding: PatchBayBinding,
 ) -> None:
     _refresh_patch_bay(binding)
@@ -1108,13 +1331,13 @@ def _add_patch_bay_toggle(
     node_tag: str,
     port_ids: tuple[str, ...],
 ) -> None:
-    """Add a compact-by-default disclosure for one module's ports."""
+    """Add the optional filter for hiding currently open module ports."""
     binding = PatchBayBinding(
         patch=patch,
         module_id=module_id,
         node_tag=node_tag,
         port_ids=port_ids,
-        toggle_tag=f"{node_tag}.patch_bay.expanded",
+        toggle_tag=f"{node_tag}.patch_bay.hide_open",
         status_tag=f"{node_tag}.patch_bay.status",
     )
     PATCH_BAYS[module_id] = binding
@@ -1127,7 +1350,7 @@ def _add_patch_bay_toggle(
             color=MUTED_TEXT,
         )
         dpg.add_checkbox(
-            label="SHOW ALL",
+            label="HIDE OPEN",
             tag=binding.toggle_tag,
             default_value=False,
             callback=_toggle_patch_bay,
@@ -2202,8 +2425,43 @@ def _unregister_rack_node(node: int | str, instance_id: str) -> None:
             del KNOB_INTERACTION.bindings[knob]
 
 
-def _remove_module_node(node: int | str, runtime: AppRuntime) -> bool:
-    """Remove one module from the executable graph and from the rack."""
+def _restore_module_node(
+    runtime: AppRuntime,
+    registration: NodeRegistration,
+    module: object,
+    routes: tuple[Cable | OutputTap, ...],
+) -> None:
+    """Put a removed module, its panel, and its cables back on the rack."""
+    node = registration.node
+    _edit_patch(
+        runtime,
+        lambda: runtime.patch.add_module(registration.instance_id, module),
+    )
+    _restore_node_registration(registration)
+    if dpg.does_item_exist(node):
+        dpg.configure_item(node, show=True)
+        if registration.rail is not None:
+            # The rack may have been panned or re-flowed while it was gone, so
+            # it rejoins its rail rather than returning to a stale position.
+            _place_dynamic_node(node, registration.rail)
+    _restore_routes(runtime, routes)
+    _refresh_patch_bays(runtime.patch)
+    _refresh_rack_outline(runtime)
+    _reveal_node(node)
+
+
+def _remove_module_node(
+    node: int | str,
+    runtime: AppRuntime,
+    *,
+    record: bool = True,
+) -> bool:
+    """Remove one module from the executable graph and from the rack.
+
+    The panel is hidden rather than destroyed. Rebuilding it on undo would mean
+    re-deriving controls that the module's own builder made, so the cheapest
+    correct restore is the panel that was already there.
+    """
     if node == OUTPUT_NODE:
         _set_patch_status("SYSTEM OUT CANNOT BE REMOVED", error=True)
         return False
@@ -2212,6 +2470,8 @@ def _remove_module_node(node: int | str, runtime: AppRuntime) -> bool:
         return False
     module = runtime.patch.modules.get(instance_id)
     name = module.manifest.name.upper() if module is not None else instance_id
+    registration = _capture_node_registration(node, instance_id)
+    routes = _routes_touching(runtime.patch, instance_id)
     try:
         removed = _edit_patch(
             runtime,
@@ -2231,13 +2491,36 @@ def _remove_module_node(node: int | str, runtime: AppRuntime) -> bool:
         elif isinstance(route, OutputTap) and route.source.module_id == instance_id:
             dpg.delete_item(link)
 
-    dpg.delete_item(node)
+    dpg.configure_item(node, show=False)
     _unregister_rack_node(node, instance_id)
     _refresh_patch_bays(runtime.patch)
     _refresh_rack_outline(runtime)
+    if record and module is not None:
+        _record_edit(
+            f"REMOVE {name}",
+            undo=lambda: _restore_module_node(
+                runtime, registration, module, routes
+            ),
+            redo=lambda: _remove_module_node(node, runtime, record=False),
+            discard=lambda: _discard_retained_node(runtime, registration),
+        )
     noun = "CABLE" if removed == 1 else "CABLES"
     _set_patch_status(f"REMOVED  {name}  ·  {removed} {noun} UNPATCHED")
     return True
+
+
+def _discard_retained_node(
+    runtime: AppRuntime,
+    registration: NodeRegistration,
+) -> None:
+    """Destroy a retained panel once its edit can never be reversed again."""
+    if registration.instance_id in runtime.patch.modules:
+        return
+    if dpg.does_item_exist(registration.node):
+        dpg.delete_item(registration.node)
+        for knob in tuple(KNOB_INTERACTION.bindings):
+            if not dpg.does_item_exist(knob):
+                del KNOB_INTERACTION.bindings[knob]
 
 
 def _keyboard_is_captured() -> bool:
@@ -2304,6 +2587,31 @@ def _dismiss_rack_focus(
     _set_patch_status(DEFAULT_CONTROL_STATUS)
 
 
+def _undo_or_redo_rack_edit(
+    _sender: int | str,
+    _app_data: object,
+    _runtime: AppRuntime,
+) -> None:
+    """Step back or forward through the reversible rack edits."""
+    if _keyboard_is_captured():
+        return
+    if not (
+        dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl)
+    ):
+        return
+    forward = dpg.is_key_down(dpg.mvKey_ModShift)
+    verb = "REDO" if forward else "UNDO"
+    try:
+        edit = RACK_HISTORY.redo() if forward else RACK_HISTORY.undo()
+    except (PatchError, ValueError) as exc:
+        _set_patch_status(f"CAN'T {verb}: {exc}", error=True)
+        return
+    if edit is None:
+        _set_patch_status(f"NOTHING TO {verb}")
+        return
+    _set_patch_status(f"{'REDID' if forward else 'UNDID'}  {edit.description.upper()}")
+
+
 def _open_module_selector_shortcut(
     sender: int | str,
     app_data: object,
@@ -2367,6 +2675,11 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
         dpg.add_key_press_handler(
             dpg.mvKey_F,
             callback=_frame_rack,
+            user_data=runtime,
+        )
+        dpg.add_key_press_handler(
+            dpg.mvKey_Z,
+            callback=_undo_or_redo_rack_edit,
             user_data=runtime,
         )
 
@@ -2652,7 +2965,6 @@ def _build_generic_module_node(
                 _add_dynamic_parameter_controls(module, parameters)
             _add_patch_bay_toggle(patch, instance_id, node, port_ids)
 
-        connected = _connected_port_ids(patch, instance_id)
         for port in manifest.ports:
             attribute_type = (
                 dpg.mvNode_Attr_Input
@@ -2663,7 +2975,7 @@ def _build_generic_module_node(
                 tag=f"{node}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -2791,7 +3103,6 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
             _add_patch_bay_toggle(patch, "vco", VCO_NODE, port_ids)
 
         ports = {port.id: port for port in vco.manifest.ports}
-        connected = _connected_port_ids(patch, "vco")
         for port_id in port_ids:
             port = ports[port_id]
             attribute_type = (
@@ -2803,7 +3114,7 @@ def _build_vco_node(vco: ComplexVCO, patch: PatchGraph) -> None:
                 tag=f"{VCO_NODE}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -2823,13 +3134,12 @@ def _build_mixer_node(mixer: PolarizingMixer, patch: PatchGraph) -> None:
     ):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             _add_patch_bay_toggle(patch, "mixer", MIXER_NODE, port_ids)
-        connected = _connected_port_ids(patch, "mixer")
         for channel, gain in enumerate(mixer.parameters.gains, start=1):
             with dpg.node_attribute(
                 tag=f"{MIXER_NODE}.input_{channel}",
                 label=f"Input {channel}",
                 attribute_type=dpg.mvNode_Attr_Input,
-                show=f"input_{channel}" in connected,
+                show=True,
             ):
                 _add_knob(
                     gain,
@@ -2845,7 +3155,7 @@ def _build_mixer_node(mixer: PolarizingMixer, patch: PatchGraph) -> None:
             tag=f"{MIXER_NODE}.output",
             label="Sum",
             attribute_type=dpg.mvNode_Attr_Output,
-            show="output" in connected,
+            show=True,
         ):
             _add_port_text(
                 "SUM",
@@ -2947,7 +3257,6 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
             )
 
         ports = {port.id: port for port in wogglebug.manifest.ports}
-        connected = _connected_port_ids(patch, "wogglebug")
         for port_id in port_ids:
             port = ports[port_id]
             attribute_type = (
@@ -2959,7 +3268,7 @@ def _build_wogglebug_node(wogglebug: Wogglebug, patch: PatchGraph) -> None:
                 tag=f"{WOGGLE_NODE}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -3126,7 +3435,6 @@ def _build_scale_generator_node(
             )
 
         ports = {port.id: port for port in generator.manifest.ports}
-        connected = _connected_port_ids(patch, "scale_generator")
         for port_id in port_ids:
             port = ports[port_id]
             attribute_type = (
@@ -3138,7 +3446,7 @@ def _build_scale_generator_node(
                 tag=f"{SCALE_NODE}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -3243,7 +3551,6 @@ def _build_function_node(utility: FunctionUtility, patch: PatchGraph) -> None:
                 port_ids,
             )
 
-        connected = _connected_port_ids(patch, "utility")
         for port_id in port_ids:
             port = ports[port_id]
             attribute_type = (
@@ -3255,7 +3562,7 @@ def _build_function_node(utility: FunctionUtility, patch: PatchGraph) -> None:
                 tag=f"{FUNCTION_NODE}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -3325,7 +3632,6 @@ def _build_low_pass_gate_node(
             )
 
         ports = {port.id: port for port in low_pass_gate.manifest.ports}
-        connected = _connected_port_ids(patch, "low_pass_gate")
         for port_id in port_ids:
             port = ports[port_id]
             attribute_type = (
@@ -3337,7 +3643,7 @@ def _build_low_pass_gate_node(
                 tag=f"{LPG_NODE}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -3424,7 +3730,6 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
             _add_patch_bay_toggle(patch, "reverb", REVERB_NODE, port_ids)
 
         ports = {port.id: port for port in reverb.manifest.ports}
-        connected = _connected_port_ids(patch, "reverb")
         for port_id in port_ids:
             port = ports[port_id]
             attribute_type = (
@@ -3436,7 +3741,7 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                 tag=f"{REVERB_NODE}.{port.id}",
                 label=port.name,
                 attribute_type=attribute_type,
-                show=port.id in connected,
+                show=True,
             ):
                 _add_port_text(
                     port.name,
@@ -3550,6 +3855,54 @@ def _add_rack_outline_remove_button(
         dpg.add_text(f"Remove {runtime.patch.modules[instance_id].manifest.name}")
 
 
+def _add_rack_outline_ports(
+    parent: int | str,
+    runtime: AppRuntime,
+    instance_id: str,
+) -> None:
+    """List every module jack and whether the live graph currently uses it."""
+    module = runtime.patch.modules[instance_id]
+    connected = _connected_port_ids(runtime.patch, instance_id)
+    ports_root = dpg.add_tree_node(
+        label=f"PORTS  ·  {len(connected)}/{len(module.manifest.ports)} PATCHED",
+        parent=parent,
+        default_open=True,
+    )
+    for direction, heading in (
+        (PortDirection.INPUT, "INPUTS"),
+        (PortDirection.OUTPUT, "OUTPUTS"),
+    ):
+        ports = tuple(
+            port
+            for port in module.manifest.ports
+            if port.direction is direction
+        )
+        if not ports:
+            continue
+        direction_root = dpg.add_tree_node(
+            label=heading,
+            parent=ports_root,
+            default_open=True,
+        )
+        for port in ports:
+            patched = port.id in connected
+            state = "PATCHED" if patched else "OPEN"
+            marker = "●" if patched else "○"
+            port_text = dpg.add_text(
+                f"{marker}  {port.name}  ·  "
+                f"{port.signal_type.value.upper()}  ·  {state}",
+                parent=direction_root,
+                color=(
+                    SIGNAL_COLORS[port.signal_type.value]
+                    if patched
+                    else MUTED_TEXT
+                ),
+            )
+            if port.description:
+                with dpg.tooltip(port_text):
+                    dpg.add_text(port.description, wrap=280)
+
+
 def _add_rack_outline_signal_branch(
     parent: int | str,
     runtime: AppRuntime,
@@ -3564,9 +3917,10 @@ def _add_rack_outline_signal_branch(
     branch = dpg.add_tree_node(
         label=_rack_outline_module_label(runtime, instance_id, connection),
         parent=row,
-        default_open=True,
+        default_open=False,
     )
     _add_rack_outline_remove_button(row, runtime, instance_id)
+    _add_rack_outline_ports(branch, runtime, instance_id)
     if instance_id in trail:
         dpg.add_text("SHARED SIGNAL", parent=branch, color=MUTED_TEXT)
         return
@@ -3579,9 +3933,14 @@ def _add_rack_outline_signal_branch(
         dpg.add_text("SOURCE / CONTROL ORIGIN", parent=branch, color=MUTED_TEXT)
         return
     next_trail = trail | {instance_id}
+    upstream = dpg.add_tree_node(
+        label="UPSTREAM",
+        parent=branch,
+        default_open=True,
+    )
     for cable in incoming:
         _add_rack_outline_signal_branch(
-            branch,
+            upstream,
             runtime,
             cable.source.module_id,
             f"{cable.source.port_id}  →  {cable.target.port_id}",
@@ -3667,11 +4026,13 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
             )
             for instance_id in instance_ids:
                 row = dpg.add_group(parent=lane, horizontal=True)
-                dpg.add_text(
-                    _rack_outline_module_label(runtime, instance_id),
+                branch = dpg.add_tree_node(
+                    label=_rack_outline_module_label(runtime, instance_id),
                     parent=row,
+                    default_open=False,
                 )
                 _add_rack_outline_remove_button(row, runtime, instance_id)
+                _add_rack_outline_ports(branch, runtime, instance_id)
 
     panels = len(runtime.patch.modules) + 1
     connections = len(runtime.patch.cables) + len(runtime.patch.output_taps)
@@ -3772,6 +4133,13 @@ def _add_selected_module(
         _place_dynamic_node(node, rail)
         _reveal_node(node)
         _refresh_rack_outline(runtime)
+        registration = _capture_node_registration(node, instance_id)
+        _record_edit(
+            f"ADD {manifest.name.upper()}",
+            undo=lambda: _remove_module_node(node, runtime, record=False),
+            redo=lambda: _restore_module_node(runtime, registration, module, ()),
+            discard=lambda: _discard_retained_node(runtime, registration),
+        )
         if (
             dpg.does_item_exist(MODULE_SELECTOR)
             and dpg.get_item_type(MODULE_SELECTOR).endswith("mvWindowAppItem")
@@ -4208,6 +4576,7 @@ def build_ui(
     PATCH_BAYS.clear()
     RAIL_SPRINGS.clear()
     METER_BALLISTICS.reset()
+    RACK_HISTORY.clear()
     _configure_font()
     _configure_theme()
     runtime = build_runtime(

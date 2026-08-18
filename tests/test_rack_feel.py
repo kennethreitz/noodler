@@ -184,7 +184,9 @@ def test_delete_unpatches_a_selected_cable(monkeypatch) -> None:
         dpg.destroy_context()
 
 
-def test_delete_removes_a_selected_module_and_forgets_it(monkeypatch) -> None:
+def test_delete_removes_a_selected_module_and_retains_its_panel_for_undo(
+    monkeypatch,
+) -> None:
     dpg.create_context()
     try:
         runtime = build_ui(starter_patch=True)
@@ -196,7 +198,8 @@ def test_delete_removes_a_selected_module_and_forgets_it(monkeypatch) -> None:
         _delete_rack_selection("test", None, runtime)
 
         assert "vco" not in runtime.patch.modules
-        assert not dpg.does_item_exist(VCO_NODE)
+        assert dpg.does_item_exist(VCO_NODE)
+        assert not dpg.is_item_shown(VCO_NODE)
         assert VCO_NODE not in RACK_NODES
         assert VCO_NODE not in RACK_RAILS[AUDIO_RAIL]
         assert VCO_NODE not in RAIL_SPRINGS
@@ -234,7 +237,8 @@ def test_title_close_target_removes_a_module(monkeypatch) -> None:
         _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
 
         assert "classic_vco" not in runtime.patch.modules
-        assert not dpg.does_item_exist(node)
+        assert dpg.does_item_exist(node)
+        assert not dpg.is_item_shown(node)
         assert dpg.does_item_exist(MODULE_CLOSE_LAYER)
     finally:
         dpg.destroy_context()
@@ -284,7 +288,8 @@ def test_current_rack_tree_can_remove_an_unpatched_module() -> None:
         )
 
         assert "classic_vco" not in runtime.patch.modules
-        assert not dpg.does_item_exist(node)
+        assert dpg.does_item_exist(node)
+        assert not dpg.is_item_shown(node)
     finally:
         dpg.destroy_context()
 

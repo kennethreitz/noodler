@@ -233,10 +233,10 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
         )["show"] is True
         assert dpg.get_item_configuration(
             f"{FUNCTION_NODE}.channel_1_signal"
-        )["show"] is False
+        )["show"] is True
         assert dpg.get_item_configuration(
             f"{FUNCTION_NODE}.channel_4_eoc"
-        )["show"] is False
+        )["show"] is True
         assert runtime.patch.processing_order == (
             "utility",
             "wogglebug",
@@ -426,6 +426,32 @@ def test_module_selector_search_filters_names_categories_and_descriptions() -> N
         dpg.destroy_context()
 
 
+def test_current_rack_module_expands_to_live_port_states() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        node = INSTANCE_NODE_TAGS["classic_vco"]
+
+        outline = _descendant_labels(RACK_OUTLINE_BODY)
+        assert "PORTS  ·  0/9 PATCHED" in outline
+        assert "INPUTS" in outline
+        assert "OUTPUTS" in outline
+        assert "○  Saw  ·  AUDIO  ·  OPEN" in outline
+
+        _patch_link_created(
+            "test",
+            (f"{node}.saw", f"{OUTPUT_NODE}.mono"),
+            runtime,
+        )
+
+        outline = _descendant_labels(RACK_OUTLINE_BODY)
+        assert "PORTS  ·  1/9 PATCHED" in outline
+        assert "●  Saw  ·  AUDIO  ·  PATCHED" in outline
+    finally:
+        dpg.destroy_context()
+
+
 def test_generated_module_controls_update_validated_parameters() -> None:
     dpg.create_context()
     try:
@@ -469,7 +495,7 @@ def test_generated_float_parameters_are_packed_three_across() -> None:
         dpg.destroy_context()
 
 
-def test_patch_bays_start_with_only_live_signal_flow_visible() -> None:
+def test_patch_bays_show_every_port_until_open_jacks_are_hidden() -> None:
     dpg.create_context()
     try:
         build_ui(starter_patch=True)
@@ -483,7 +509,7 @@ def test_patch_bays_start_with_only_live_signal_flow_visible() -> None:
             f"{VCO_NODE}.frequency_cv_2"
         )["show"]
         assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
-        assert not dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
         assert dpg.get_value(f"{WOGGLE_NODE}.patch_bay.status") == (
             "SIGNAL PATH  ·  4 OUT"
         )
@@ -494,18 +520,20 @@ def test_patch_bays_start_with_only_live_signal_flow_visible() -> None:
             "SIGNAL PATH  ·  2 IN  →  1 OUT"
         )
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_2")["show"]
-        assert not dpg.get_item_configuration(f"{MIXER_NODE}.input_4")["show"]
+        assert dpg.get_item_configuration(f"{MIXER_NODE}.input_4")["show"]
 
-        toggle = f"{VCO_NODE}.patch_bay.expanded"
+        toggle = f"{VCO_NODE}.patch_bay.hide_open"
         toggle_configuration = dpg.get_item_configuration(toggle)
+        assert toggle_configuration["label"] == "HIDE OPEN"
         dpg.set_value(toggle, True)
         toggle_configuration["callback"](
             toggle,
             True,
             toggle_configuration["user_data"],
         )
-        assert dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
-        assert dpg.get_item_configuration(f"{VCO_NODE}.sync")["show"]
+        assert not dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
+        assert not dpg.get_item_configuration(f"{VCO_NODE}.sync")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
 
         dpg.set_value(toggle, False)
         toggle_configuration["callback"](
@@ -513,7 +541,7 @@ def test_patch_bays_start_with_only_live_signal_flow_visible() -> None:
             False,
             toggle_configuration["user_data"],
         )
-        assert not dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
 
         assert dpg.get_item_pos(FUNCTION_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
         assert dpg.get_item_pos(WOGGLE_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
@@ -838,8 +866,8 @@ def test_node_editor_repatches_the_live_graph() -> None:
         delink(RACK, VCO_MIXER_LINK, user_data)
         assert not dpg.does_item_exist(VCO_MIXER_LINK)
         assert len(runtime.patch.cables) == 11
-        assert not dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
-        assert not dpg.get_item_configuration(f"{MIXER_NODE}.input_1")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
+        assert dpg.get_item_configuration(f"{MIXER_NODE}.input_1")["show"]
 
         # Dear PyGui reports numeric item IDs and users may drag input-to-output.
         link(
@@ -915,7 +943,7 @@ def test_unplug_all_button_clears_visual_and_executable_cables() -> None:
         assert runtime.patch.cables == ()
         assert runtime.patch.output_taps == ()
         assert dpg.get_item_children(RACK).get(0, []) == []
-        assert not dpg.get_item_configuration(f"{VCO_NODE}.morph_cv")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.morph_cv")["show"]
         assert dpg.get_value(CONTROL_STATUS) == (
             f"UNPLUGGED ALL  ·  {initial_count} CABLES REMOVED"
         )

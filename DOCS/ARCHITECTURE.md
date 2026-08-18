@@ -61,10 +61,10 @@ signal restriction. An LFO can run into the audio range, an oscillator can
 become modulation, and audio/CV cross-patching remains part of the module
 contract.
 
-Each module starts with a compact, graph-aware patch bay. Only jacks used by
-the executable patch remain visible, summarized as a directional flow such as
-`2 IN -> 1 OUT`. `Show All` reveals the complete bay with inputs ordered before
-outputs. Adding or removing a cable refreshes the compact view from the real
+Each module starts with every declared jack visible, with inputs ordered before
+outputs. A directional summary such as `2 IN -> 1 OUT` reflects the executable
+graph, while the optional `Hide Open` filter reduces the faceplate to connected
+jacks. Adding or removing a cable refreshes this view from the real
 `PatchGraph`; visibility never creates a separate cosmetic routing state.
 The rack-level `Unplug All` control removes every module cable and system-output
 tap in one audio-safe graph edit, then clears the corresponding visual links.

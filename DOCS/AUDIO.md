@@ -110,8 +110,8 @@ To build a first patch:
 uv run noodler
 ```
 
-Then click **Add Module**, choose an oscillator, reveal its patch bay, and drag
-an audio output to System Output's `Mono / Both` jack. Click **Start** only when
+Then click **Add Module**, choose an oscillator, and drag one of its visible
+audio outputs to System Output's `Mono / Both` jack. Click **Start** only when
 the route and levels are ready.
 
 ## Real-time limitations
