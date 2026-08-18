@@ -40,7 +40,7 @@ from .module_providers.builtin import (
 )
 from .engine import SystemAudioEngine
 from .history import Edit, EditHistory
-from .macos_gestures import MacMagnifyMonitor
+from .macos_gestures import MacCursor, MacMagnifyMonitor
 from .motion import (
     Glide,
     KnobDrag,
@@ -399,6 +399,9 @@ RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
 """One critically damped spring pair per rack node, in rack coordinates."""
 
 METER_BALLISTICS = MeterBallistics()
+
+RACK_CURSOR = MacCursor()
+"""The pointer shape, while a pan gesture holds it."""
 
 
 def _rail_springs(
@@ -2315,6 +2318,7 @@ def _begin_canvas_pan(
     mouse_x, mouse_y = origin or tuple(dpg.get_mouse_pos(local=False))
     CANVAS_INTERACTION.panning = True
     CANVAS_INTERACTION.pan_candidate = True
+    RACK_CURSOR.grab()
     CANVAS_INTERACTION.last_mouse_x = float(mouse_x)
     CANVAS_INTERACTION.last_mouse_y = float(mouse_y)
     _clear_rack_selection()
@@ -2403,9 +2407,11 @@ def _settle_space_pan() -> None:
     if not holding:
         if interaction.space_panning:
             interaction.space_panning = False
+            RACK_CURSOR.reset()
             _release_pan_momentum()
             _set_patch_status(DEFAULT_CONTROL_STATUS)
         return
+    RACK_CURSOR.grab()
     if not interaction.space_panning:
         interaction.space_panning = True
         interaction.stop_glide()
@@ -2560,6 +2566,8 @@ def _end_knob_drag(
 ) -> None:
     _show_box_selector(False)
     CANVAS_INTERACTION.press_consumed = False
+    if not CANVAS_INTERACTION.space_panning:
+        RACK_CURSOR.reset()
     if CANVAS_INTERACTION.panning:
         _clear_rack_selection()
         _release_pan_momentum()
@@ -5248,6 +5256,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         dpg.set_frame_callback(1, _refresh_frame, user_data=runtime)
         dpg.start_dearpygui()
     finally:
+        RACK_CURSOR.reset()
         gesture_monitor.stop()
         if runtime is not None:
             runtime.audio.close()

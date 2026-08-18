@@ -738,3 +738,78 @@ def test_space_does_not_pan_while_a_text_field_is_open(monkeypatch) -> None:
         assert tuple(dpg.get_item_pos(VCO_NODE)) == start
     finally:
         dpg.destroy_context()
+
+
+class _RecordingCursor:
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def grab(self) -> bool:
+        self.events.append("grab")
+        return True
+
+    def reset(self) -> bool:
+        self.events.append("reset")
+        return True
+
+
+def test_a_space_pan_takes_the_pointer_and_gives_it_back(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        cursor = _RecordingCursor()
+        monkeypatch.setattr("noodler.app.RACK_CURSOR", cursor)
+        pointer = [300.0, 240.0]
+        _hold_space(monkeypatch, pointer)
+
+        _settle_space_pan()
+        assert cursor.events == ["grab"]
+        pointer[0] = 360.0
+        _settle_space_pan()
+        assert cursor.events == ["grab", "grab"], "held gestures re-assert"
+
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        _settle_space_pan()
+        assert cursor.events[-1] == "reset"
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_background_drag_also_takes_the_pointer(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        cursor = _RecordingCursor()
+        monkeypatch.setattr("noodler.app.RACK_CURSOR", cursor)
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: (300.0, 240.0)
+        )
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: True
+        )
+        monkeypatch.setattr("noodler.app._module_close_at", lambda _position: None)
+
+        _begin_knob_drag("test", None, KNOB_INTERACTION)
+        assert cursor.events == ["grab"]
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert cursor.events[-1] == "reset"
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_stray_release_does_not_steal_the_pointer_back(monkeypatch) -> None:
+    """Space still holds the gesture, so a button release must leave it alone."""
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        cursor = _RecordingCursor()
+        monkeypatch.setattr("noodler.app.RACK_CURSOR", cursor)
+        CANVAS_INTERACTION.space_panning = True
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+
+        assert "reset" not in cursor.events
+    finally:
+        dpg.destroy_context()
