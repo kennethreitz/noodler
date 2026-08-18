@@ -248,3 +248,46 @@ def test_a_cable_to_the_console_is_drawn_by_hand_and_enters_from_above() -> None
         assert points[2][1] < points[3][1], "from above"
     finally:
         dpg.destroy_context()
+
+
+def test_m_and_s_sit_on_the_number_row_and_press_there(monkeypatch) -> None:
+    import dearpygui.dearpygui as dpg
+
+    from noodler.app import (
+        CONSOLE_MASTER,
+        CONSOLE_RETURN,
+        CONSOLE_STRIP,
+        STRIP_KNOB_LABELS,
+        _console_toggle_at,
+        _console_toggle_boxes,
+        _press_console_toggle,
+        build_ui,
+    )
+
+    dpg.create_context()
+    try:
+        build_ui()
+        strips = {CONSOLE_STRIP.format(channel=c): 100.0 * c for c in range(1, 9)}
+        strips.update({CONSOLE_RETURN.format(bus=b): 900.0 + 100.0 * i for i, b in enumerate("ab")})
+        monkeypatch.setattr(dpg, "get_item_rect_min", lambda item: [strips.get(item, 0.0), 500.0])
+        monkeypatch.setattr(dpg, "get_item_rect_max", lambda item: [strips.get(item, 0.0) + 66.0, 600.0])
+        boxes = _console_toggle_boxes()
+        kinds = [(kind, who) for _box, kind, who in boxes]
+        assert ("mute", 1) in kinds and ("solo", 1) in kinds and ("return_mute", "a") in kinds
+        assert len(boxes) == 8 * 2 + 2
+        # M then S at the right end of the title row, S outermost.
+        (mute_box, _k, _w), = [b for b in boxes if b[1:] == ("mute", 3)]
+        (solo_box, _k, _w), = [b for b in boxes if b[1:] == ("solo", 3)]
+        assert mute_box[2] < solo_box[0] and solo_box[2] <= 300.0 + 66.0 + 6.0
+        assert 500.0 <= mute_box[1] and mute_box[3] <= 500.0 + 24.0
+        # A press on S of strip 3 solos it; nowhere else is a toggle.
+        centre = ((solo_box[0] + solo_box[2]) / 2, (solo_box[1] + solo_box[3]) / 2)
+        assert _console_toggle_at(centre) == ("solo", 3)
+        assert _console_toggle_at((300.0 + 10.0, 560.0)) is None
+        _press_console_toggle(*_console_toggle_at(centre))
+        assert CONSOLE_MASTER[0].parameters.solos[2] is True
+        _press_console_toggle("return_mute", "b")
+        assert CONSOLE_MASTER[0].parameters.return_mutes[1] is True
+        assert STRIP_KNOB_LABELS == ("L/R", "FXA", "FXB")
+    finally:
+        dpg.destroy_context()

@@ -117,6 +117,15 @@ CONSOLE_GAP = 4.0
 LEVEL_DIAL_SIZE = 32
 LEVEL_DIAL_INSET = 4.0
 STRIP_KNOB_SIZE = 20
+STRIP_KNOB_LABELS = ("L/R", "FXA", "FXB")
+STRIP_LABEL_FONT_SIZE = 10
+STRIP_LABEL_CHAR_PX = 6
+"""The knob labels' face is ten pixels; its glyphs are six wide."""
+CONSOLE_TOGGLE_SIZE = 15.0
+CONSOLE_TITLE_HEIGHT = 24.0
+"""A strip's title bar, which its M and S are drawn on: sixteen-pixel text and
+the console's padding."""
+CONSOLE_TOGGLE_LAYER = "noodler.console_toggle_layer"
 """Pan and the sends on a strip: a little smaller than a module's knobs."""
 """A strip's level is a dial, and its meter is a ring drawn around that dial in
 the margin the inset leaves -- so the meter costs no space at all."""
@@ -1079,6 +1088,7 @@ def _consume_pending_open() -> AppRuntime | None:
         CONSOLE_CABLES,
         OUTLINE_LAYER,
         SELECTION_LAYER,
+        CONSOLE_TOGGLE_LAYER,
         SAVE_PATCH_DIALOG,
         OPEN_PATCH_DIALOG,
         EXPORT_DIALOG,
@@ -3026,6 +3036,7 @@ def _refresh_frame(
         _refresh_transport_button(runtime)
         _refresh_jack_activity(runtime)
         _refresh_console_cables(runtime)
+        _refresh_console_toggles()
         _refresh_selection()
         _show_export_messages()
         _refresh_outline_parameters()
@@ -4226,18 +4237,16 @@ def _module_close_bounds(
     left = right - size
     top = minimum_y + max(3.0, (title_height - size) * 0.5)
     bottom = top + size
-    try:
-        rack_left, rack_top = dpg.get_item_rect_min(RACK)
-        rack_right, rack_bottom = dpg.get_item_rect_max(RACK)
-    except (KeyError, SystemError):
-        return None
-    if (
-        left < rack_left
-        or top < rack_top
-        or right > rack_right
-        or bottom > rack_bottom
-    ):
-        return None
+    rack = _rack_screen_rect()
+    if rack is not None:
+        rack_left, rack_top, rack_right, rack_bottom = rack
+        if (
+            left < rack_left
+            or top < rack_top
+            or right > rack_right
+            or bottom > rack_bottom
+        ):
+            return None
     return (left, top, right, bottom)
 
 
@@ -4984,6 +4993,11 @@ def _begin_knob_drag(
     # Any press on the rack catches a gliding canvas, the way a finger does.
     CANVAS_INTERACTION.stop_glide()
     mouse_position = tuple(dpg.get_mouse_pos(local=False))
+    toggle = _console_toggle_at(mouse_position)
+    if toggle is not None:
+        CANVAS_INTERACTION.press_consumed = True
+        _press_console_toggle(*toggle)
+        return
     close_node = _module_close_at(mouse_position)
     if runtime is not None and close_node is not None:
         CANVAS_INTERACTION.press_consumed = True
@@ -6919,26 +6933,8 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                     tag=CONSOLE_READOUT.format(channel=channel),
                     color=MUTED_TEXT,
                 )
-            with dpg.group(horizontal=True, horizontal_spacing=3):
-                # Centred under the dial: the knob row below is the strip's
-                # width, and M S together are about forty pixels of it.
-                dpg.add_spacer(width=max(0, (3 * STRIP_KNOB_SIZE + 8 - 41) // 2))
-                mute = dpg.add_button(
-                    label="M",
-                    tag=CONSOLE_MUTE.format(channel=channel),
-                    small=True,
-                    callback=_toggle_mute,
-                    user_data=(master, channel),
-                )
-                solo = dpg.add_button(
-                    label="S",
-                    tag=CONSOLE_SOLO.format(channel=channel),
-                    small=True,
-                    callback=_toggle_solo,
-                    user_data=(master, channel),
-                )
-                _paint_mute_solo(master, channel)
-                del mute, solo
+            # M and S are on the number row above -- drawn there, over the
+            # title bar, and pressed there -- so the body is level and knobs.
             with dpg.group(horizontal=True, horizontal_spacing=4) as knob_row:
                 _add_knob(
                     master.parameters.pans[channel - 1],
@@ -6965,6 +6961,124 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                         compact=True,
                         size=STRIP_KNOB_SIZE,
                     )
+            _add_strip_knob_labels()
+
+
+def _add_strip_knob_labels() -> None:
+    """Under the three knobs, what they are: L/R, FXA, FXB -- in a small face,
+    one label per knob column, so the strip says it without a tooltip."""
+    with dpg.group(horizontal=True, horizontal_spacing=0) as labels:
+        last = len(STRIP_KNOB_LABELS) - 1
+        for index, label in enumerate(STRIP_KNOB_LABELS):
+            text_width = len(label) * STRIP_LABEL_CHAR_PX
+            lead = max(0, (STRIP_KNOB_SIZE - text_width) // 2)
+            trail = max(0, STRIP_KNOB_SIZE - text_width - lead) + (4 if index < last else 0)
+            if lead:
+                dpg.add_spacer(width=lead)
+            dpg.add_text(label, color=MUTED_TEXT)
+            if trail:
+                dpg.add_spacer(width=trail)
+    small = f"{RACK_FONT_PREFIX}.{STRIP_LABEL_FONT_SIZE}"
+    if dpg.does_item_exist(small):
+        dpg.bind_item_font(labels, small)
+
+
+CONSOLE_MASTER: list[MasterMixer] = []
+"""The console's mixer, for the toggles drawn on the strips' title rows."""
+
+
+def _console_toggle_boxes() -> list[tuple[tuple[float, float, float, float], str, str | int]]:
+    """Every M and S on the console, as (screen box, kind, channel or bus).
+
+    On a channel strip's number row, M then S at the right end; on an effect
+    strip's, its M. Drawn on the title bar, where a strip has room it does not
+    have below, and where a desk keeps them.
+    """
+    boxes = []
+    size = CONSOLE_TOGGLE_SIZE
+    gap = 3.0
+
+    def title_boxes(node: str, kinds: tuple[str, ...], who: str | int) -> None:
+        if not dpg.does_item_exist(node):
+            return
+        try:
+            _left, top = (float(v) for v in dpg.get_item_rect_min(node))
+            right, _bottom = (float(v) for v in dpg.get_item_rect_max(node))
+        except (KeyError, SystemError):
+            return
+        if right <= _left:
+            return
+        # The content box; the panel's edge is the padding further out.
+        right += 6.0
+        y = top + (CONSOLE_TITLE_HEIGHT - size) * 0.5 - 1.0
+        x = right - 5.0
+        for kind in reversed(kinds):
+            boxes.append(((x - size, y, x, y + size), kind, who))
+            x -= size + gap
+
+    for channel in range(1, MASTER_CHANNELS + 1):
+        title_boxes(CONSOLE_STRIP.format(channel=channel), ("mute", "solo"), channel)
+    for bus in SENDS:
+        title_boxes(CONSOLE_RETURN.format(bus=bus), ("return_mute",), bus)
+    return boxes
+
+
+def _console_toggle_at(
+    screen_position: tuple[float, float],
+) -> tuple[str, str | int] | None:
+    """The M or S under a point, as (kind, channel or bus), or None."""
+    x, y = screen_position
+    for (left, top, right, bottom), kind, who in _console_toggle_boxes():
+        if left <= x <= right and top <= y <= bottom:
+            return kind, who
+    return None
+
+
+def _press_console_toggle(kind: str, who: str | int) -> None:
+    if not CONSOLE_MASTER:
+        return
+    master = CONSOLE_MASTER[0]
+    if kind == "mute":
+        _toggle_mute(0, None, (master, int(who)))
+    elif kind == "solo":
+        _toggle_solo(0, None, (master, int(who)))
+    elif kind == "return_mute":
+        _toggle_return_mute(0, None, (master, str(who)))
+
+
+def _refresh_console_toggles() -> None:
+    """Draw every strip's M and S on its title row, lit for what it is doing."""
+    if not dpg.does_item_exist(CONSOLE_TOGGLE_LAYER):
+        dpg.add_viewport_drawlist(tag=CONSOLE_TOGGLE_LAYER, front=True)
+    dpg.delete_item(CONSOLE_TOGGLE_LAYER, children_only=True)
+    if not CONSOLE_MASTER or not dpg.does_item_exist(RACK):
+        return
+    master = CONSOLE_MASTER[0]
+    hovered = _console_toggle_at(tuple(float(v) for v in dpg.get_mouse_pos(local=False)))
+    for (left, top, right, bottom), kind, who in _console_toggle_boxes():
+        if kind == "mute":
+            on = bool(master.parameters.mutes[int(who) - 1])
+            lit, letter = METER_HOT, "M"
+        elif kind == "solo":
+            on = bool(master.parameters.solos[int(who) - 1])
+            lit, letter = METER_QUIET, "S"
+        else:
+            on = bool(master.parameters.return_mutes[SENDS.index(str(who))])
+            lit, letter = METER_HOT, "M"
+        is_hovered = hovered == (kind, who)
+        if on:
+            fill = lit
+            ink = (28, 26, 22, 255)
+        else:
+            fill = (52, 50, 46, 255) if is_hovered else (36, 36, 34, 255)
+            ink = TEXT if is_hovered else MUTED_TEXT
+        dpg.draw_rectangle(
+            (left, top), (right, bottom), fill=fill, color=(0, 0, 0, 0),
+            rounding=3.0, parent=CONSOLE_TOGGLE_LAYER,
+        )
+        dpg.draw_text(
+            (left + 3.5, top + 0.5), letter, size=13, color=ink, parent=CONSOLE_TOGGLE_LAYER,
+        )
 
 
 def _paint_mute_solo(master: MasterMixer, channel: int) -> None:
@@ -7063,14 +7177,7 @@ def _build_return_strip(bus: str, master: MasterMixer) -> None:
                     tag=CONSOLE_RETURN_READOUT.format(bus=bus),
                     color=MUTED_TEXT,
                 )
-            dpg.add_button(
-                label="M",
-                tag=CONSOLE_RETURN_MUTE.format(bus=bus),
-                small=True,
-                callback=_toggle_return_mute,
-                user_data=(master, bus),
-            )
-            _paint_return_mute(master, bus)
+            # Its M is on the title row, drawn and pressed there.
 
 
 POST_OUTPUTS: set[str] = set()
@@ -7114,6 +7221,7 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
     POST_ANCHORS.clear()
     POST_TEXTS.clear()
     POST_OUTPUTS.clear()
+    CONSOLE_MASTER[:] = [master]
     for channel in range(1, MASTER_CHANNELS + 1):
         _build_strip(channel, master)
     for bus in SENDS:

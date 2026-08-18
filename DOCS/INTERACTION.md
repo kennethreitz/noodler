@@ -102,9 +102,12 @@ panned off the edge of the window.
 The strips live *inside* the node editor because that is the only place a
 cable can land: DPG draws links between node attributes and nowhere else, so
 "drop a cable on a mixer slot" is only possible if the slot is a node. Each
-strip is a jack at the top centre, a level dial whose outer ring is its meter,
-and pan, A and B beneath, and M and S centred under the dial — dials rather than faders, because a strip that is 116
-pixels tall leaves the rack the room it needs. The console keeps its own font
+strip is a jack at the top centre, its number with M and S on the title row
+(drawn there, over the title bar, and pressed there — a strip has no room for
+them below, and a desk keeps them at the top), a level dial whose outer ring
+is its meter, and pan, A and B beneath with L/R, FXA, FXB under them in a
+small face — dials rather than faders, because a strip a hundred pixels tall
+leaves the rack the room it needs. The console keeps its own font
 and its dials their own size when the rack zooms: a fader is a fader.
 
 The jack deserves its own paragraph, because it took three tries. Dear PyGui
