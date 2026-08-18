@@ -163,7 +163,7 @@
       "module_type": "reverb",
       "provider": "builtin",
       "parameters": {
-        "mix": 0.5,
+        "mix": 0.2973284821942114,
         "decay_seconds": 9.5,
         "damping": 0.6,
         "diffusion": 0.9,
@@ -436,119 +436,119 @@
   "view": {
     "zoom": 0.8,
     "rails": {
-      "control": -344.0,
-      "audio": -134.0
+      "control": -134.0,
+      "audio": 76.0
     },
     "nodes": [
       {
         "node_id": "system_output",
         "position": {
-          "x": 527.0,
-          "y": 293.0
+          "x": 540.0,
+          "y": 503.0
         },
         "collapsed": false
       },
       {
         "node_id": "key",
         "position": {
-          "x": -1327.0,
-          "y": -344.0
+          "x": -1314.0,
+          "y": -134.0
         },
         "collapsed": false
       },
       {
         "node_id": "woggle",
         "position": {
-          "x": -1327.0,
-          "y": -84.0
+          "x": -1314.0,
+          "y": 126.0
         },
         "collapsed": false
       },
       {
         "node_id": "drift",
         "position": {
-          "x": -1327.0,
-          "y": 236.0
+          "x": -1314.0,
+          "y": 446.0
         },
         "collapsed": false
       },
       {
         "node_id": "shape",
         "position": {
-          "x": -1327.0,
-          "y": 516.0
+          "x": -1314.0,
+          "y": 726.0
         },
         "collapsed": false
       },
       {
         "node_id": "lead_pitch",
         "position": {
-          "x": -967.0,
-          "y": -344.0
+          "x": -954.0,
+          "y": -134.0
         },
         "collapsed": false
       },
       {
         "node_id": "pad_pitch",
         "position": {
-          "x": -967.0,
-          "y": -24.0
+          "x": -954.0,
+          "y": 186.0
         },
         "collapsed": false
       },
       {
         "node_id": "lead",
         "position": {
-          "x": -607.0,
-          "y": -344.0
+          "x": -594.0,
+          "y": -134.0
         },
         "collapsed": false
       },
       {
         "node_id": "bloom",
         "position": {
-          "x": -247.0,
-          "y": -344.0
+          "x": -234.0,
+          "y": -134.0
         },
         "collapsed": false
       },
       {
         "node_id": "pad",
         "position": {
-          "x": -607.0,
-          "y": 16.0
+          "x": -594.0,
+          "y": 226.0
         },
         "collapsed": false
       },
       {
         "node_id": "haze",
         "position": {
-          "x": -247.0,
-          "y": -64.0
+          "x": -234.0,
+          "y": 146.0
         },
         "collapsed": false
       },
       {
         "node_id": "echo",
         "position": {
-          "x": 93.0,
-          "y": -344.0
+          "x": 106.0,
+          "y": -134.0
         },
         "collapsed": false
       },
       {
         "node_id": "space",
         "position": {
-          "x": 93.0,
-          "y": -64.0
+          "x": 106.0,
+          "y": 146.0
         },
         "collapsed": false
       },
       {
         "node_id": "out",
         "position": {
-          "x": 453.0,
-          "y": -344.0
+          "x": 466.0,
+          "y": -134.0
         },
         "collapsed": false
       }
