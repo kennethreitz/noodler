@@ -37,7 +37,7 @@ class Voice:
     transpose: float = 0.0
     pan: float = 0.0
     channel_level: float = 0.7
-    through: str | None = None  # "echo" | "space" | None
+    through: str | None = None  # "echo" | "space" | None: which master send it rides
 
 
 @dataclass
@@ -137,41 +137,36 @@ def build(example: Example) -> Path:
             routes.append(("harmony", "bass", pitch_node, "cv"))
             routes.append(("harmony", "gate", voice.name, "gate"))
 
-    # Effects are shared. A reverb has one input, so more than one voice going
-    # into it needs somewhere to be summed first -- which is a mixer, and is
-    # what a send is.
-    for send, where in (("space", (1160, 120)), ("echo", (1480, 460))):
-        feeding = [v for v in example.voices if v.through == send]
-        if not feeding:
-            continue
-        if len(feeding) == 1:
-            routes.append((feeding[0].name, "audio", send, "audio"))
-            continue
-        bus = f"{send}_send"
-        add(bus, "polarizing_mixer", where,
-            channels=len(feeding), gains=tuple([0.8] * len(feeding)))
-        for index, voice in enumerate(feeding, start=1):
-            routes.append((voice.name, "audio", bus, f"input_{index}"))
-        routes.append((bus, "output", send, "audio"))
-
+    # Every voice has a channel of its own, and the effects hang off the
+    # master's sends: A is the room, B is the echo. A voice that wants the room
+    # turns its send up, the reverb runs fully wet, and its outputs come back
+    # into two channels of the same mixer -- levelled and panned like anything
+    # else. The return closes a loop through the master, which the graph runs
+    # one block late, and one block late is what a reverb is.
     for voice in example.voices:
-        if voice.through is not None:
-            continue
         channel += 1
         routes.append((voice.name, "audio", MASTER_ID, f"channel_{channel}"))
         master.set_level(channel, voice.channel_level)
         master.set_pan(channel, voice.pan)
+        if voice.through == "space":
+            master.set_send("a", channel, 0.9)
+        elif voice.through == "echo":
+            master.set_send("b", channel, 0.8)
 
     if wants_space:
+        routes.append((MASTER_ID, "send_a", "space", "audio"))
+        patch.modules["space"].parameters.mix = 1.0
         for side, pan in (("left", -0.7), ("right", 0.7)):
             channel += 1
             routes.append(("space", side, MASTER_ID, f"channel_{channel}"))
-            master.set_level(channel, 0.62)
+            master.set_level(channel, 0.55)
             master.set_pan(channel, pan)
     if wants_echo:
+        routes.append((MASTER_ID, "send_b", "echo", "audio"))
+        patch.modules["echo"].parameters.mix = 1.0
         channel += 1
         routes.append(("echo", "output", MASTER_ID, f"channel_{channel}"))
-        master.set_level(channel, 0.5)
+        master.set_level(channel, 0.45)
         master.set_pan(channel, 0.35)
 
     # Very slow chance moves whichever voice is highest between registers.

@@ -6,6 +6,14 @@ the speakers, with no separate idea of what an output is. Its channels are
 plain audio inputs, its level and pan are plain parameters, and the two things
 that make it special — that it is always there, and that its bus is always
 connected — are the interface's business rather than the graph's.
+
+It also has two sends. A reverb has one input, and the third voice that wants
+to be in the room has nowhere to go without a mixer in front of it — which is
+what a send is. Each channel has an amount for send A and for send B, taken
+after its level, and the two buses come out as jacks: patch A to a reverb and
+the reverb's outputs back into two channels, and the room is shared by
+whatever is turned up into it. The return is a channel like any other, so it
+can be levelled and panned like any other.
 """
 
 from collections.abc import Mapping
@@ -22,7 +30,8 @@ from ._dsp import FloatBlock, block, empty_outputs, port
 MASTER_CHANNELS = 8
 """Inputs the master mixer offers, which is more than most patches reach for."""
 
-MASTER_OUTPUTS = ("left", "right", "sum")
+MASTER_OUTPUTS = ("left", "right", "sum", "send_a", "send_b")
+SENDS = ("a", "b")
 
 
 class MasterMixerParameters(BaseModel):
@@ -32,20 +41,25 @@ class MasterMixerParameters(BaseModel):
 
     levels: tuple[float, ...] = Field(default=(0.8,) * MASTER_CHANNELS)
     pans: tuple[float, ...] = Field(default=(0.0,) * MASTER_CHANNELS)
+    sends_a: tuple[float, ...] = Field(default=(0.0,) * MASTER_CHANNELS)
+    """How much of each channel, after its level, goes to send A."""
+    sends_b: tuple[float, ...] = Field(default=(0.0,) * MASTER_CHANNELS)
     master: float = Field(default=0.8, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def sized(self) -> "MasterMixerParameters":
-        if len(self.levels) != MASTER_CHANNELS:
-            raise ValueError(f"levels must have {MASTER_CHANNELS} entries")
-        if len(self.pans) != MASTER_CHANNELS:
-            raise ValueError(f"pans must have {MASTER_CHANNELS} entries")
+        for name in ("levels", "pans", "sends_a", "sends_b"):
+            if len(getattr(self, name)) != MASTER_CHANNELS:
+                raise ValueError(f"{name} must have {MASTER_CHANNELS} entries")
         for level in self.levels:
             if not -2.0 <= level <= 2.0:
                 raise ValueError("a channel level must be between -2 and 2")
         for pan in self.pans:
             if not -1.0 <= pan <= 1.0:
                 raise ValueError("a pan must be between -1 and 1")
+        for amount in (*self.sends_a, *self.sends_b):
+            if not 0.0 <= amount <= 1.0:
+                raise ValueError("a send must be between 0 and 1")
         return self
 
 
@@ -68,6 +82,8 @@ MASTER_MIXER_MANIFEST = ModuleManifest(
             )
             for index in range(1, MASTER_CHANNELS + 1)
         ),
+        port("send_a", "Send A", PortDirection.OUTPUT, SignalType.AUDIO, "Every channel's send A, summed. Patch it to an effect."),
+        port("send_b", "Send B", PortDirection.OUTPUT, SignalType.AUDIO, "Every channel's send B, summed."),
         port("left", "Left", PortDirection.OUTPUT, SignalType.AUDIO, "Left of the stereo bus."),
         port("right", "Right", PortDirection.OUTPUT, SignalType.AUDIO, "Right of the stereo bus."),
         port("sum", "Sum", PortDirection.OUTPUT, SignalType.AUDIO, "Mono fold-down, for metering or feedback."),
@@ -90,6 +106,12 @@ class MasterMixer:
     def set_pan(self, channel: int, pan: float) -> None:
         """Place one channel between the speakers."""
         self._replace("pans", channel, pan)
+
+    def set_send(self, bus: str, channel: int, amount: float) -> None:
+        """How much of one channel goes to send A or B."""
+        if bus not in SENDS:
+            raise ValueError(f"bus must be one of {SENDS}")
+        self._replace(f"sends_{bus}", channel, amount)
 
     def _replace(self, field: str, channel: int, value: float) -> None:
         if not 1 <= channel <= MASTER_CHANNELS:
@@ -114,6 +136,8 @@ class MasterMixer:
         inputs = inputs or {}
         left = np.zeros(frame_count, dtype=np.float64)
         right = np.zeros(frame_count, dtype=np.float64)
+        send_a = np.zeros(frame_count, dtype=np.float64)
+        send_b = np.zeros(frame_count, dtype=np.float64)
         parameters = self.parameters
         for index in range(MASTER_CHANNELS):
             name = f"channel_{index + 1}"
@@ -127,6 +151,12 @@ class MasterMixer:
             angle = (parameters.pans[index] + 1.0) * 0.25 * np.pi
             left += signal * float(np.cos(angle))
             right += signal * float(np.sin(angle))
+            # Sends are post-fader and pre-pan: turning a channel down takes it
+            # out of the room too, and the room decides where it sits.
+            if parameters.sends_a[index]:
+                send_a += signal * parameters.sends_a[index]
+            if parameters.sends_b[index]:
+                send_b += signal * parameters.sends_b[index]
 
         gain = parameters.master * np.sqrt(2.0)
         left *= gain
@@ -135,11 +165,14 @@ class MasterMixer:
             "left": np.asarray(left, dtype=np.float32),
             "right": np.asarray(right, dtype=np.float32),
             "sum": np.asarray((left + right) * 0.5, dtype=np.float32),
+            "send_a": np.asarray(send_a, dtype=np.float32),
+            "send_b": np.asarray(send_b, dtype=np.float32),
         }
 
 
 __all__ = [
     "MASTER_CHANNELS",
+    "SENDS",
     "MASTER_MIXER_MANIFEST",
     "MasterMixer",
     "MasterMixerParameters",

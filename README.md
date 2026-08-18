@@ -82,6 +82,13 @@ oscillator from the library, drag its audio output to any master channel, and
 press **Start**. There is no separate idea of an output to find first: patch
 into a channel and it is audible. Audio never starts automatically.
 
+Each channel has a level, a pan and two sends. The sends come out of the mixer
+as jacks — patch **Send A** into a reverb and the reverb's outputs back into
+two channels, and every channel that turns its A up is in the same room. The
+return is a channel like any other, so it can be levelled and panned like any
+other; the loop it closes through the master runs one block late, which is
+what a reverb is.
+
 To open a saved patch directly:
 
 ```console

@@ -70,7 +70,7 @@
       "module_type": "reverb",
       "provider": "builtin",
       "parameters": {
-        "mix": 0.5,
+        "mix": 1.0,
         "decay_seconds": 11.0,
         "damping": 0.62,
         "diffusion": 0.88,
@@ -84,20 +84,40 @@
       "provider": "builtin",
       "parameters": {
         "levels": [
+          0.7,
           0.55,
           0.5,
-          0.62,
-          0.62,
-          0.8,
+          0.55,
+          0.55,
           0.8,
           0.8,
           0.8
         ],
         "pans": [
+          0.0,
           -0.6,
           0.6,
           -0.7,
           0.7,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.9,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
           0.0,
           0.0,
           0.0,
@@ -306,8 +326,8 @@
         "port_id": "audio"
       },
       "target": {
-        "module_id": "space",
-        "port_id": "audio"
+        "module_id": "master",
+        "port_id": "channel_1"
       }
     },
     {
@@ -317,7 +337,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_1"
+        "port_id": "channel_2"
       }
     },
     {
@@ -327,7 +347,17 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_2"
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
       }
     },
     {
@@ -337,7 +367,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_3"
+        "port_id": "channel_4"
       }
     },
     {
@@ -347,7 +377,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_4"
+        "port_id": "channel_5"
       }
     },
     {

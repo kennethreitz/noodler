@@ -89,7 +89,7 @@
       "module_type": "reverb",
       "provider": "builtin",
       "parameters": {
-        "mix": 0.62,
+        "mix": 1.0,
         "decay_seconds": 14.0,
         "damping": 0.5,
         "diffusion": 0.88,
@@ -103,19 +103,39 @@
       "provider": "builtin",
       "parameters": {
         "levels": [
+          0.7,
+          0.7,
           0.5,
-          0.62,
-          0.62,
-          0.8,
-          0.8,
+          0.55,
+          0.55,
           0.8,
           0.8,
           0.8
         ],
         "pans": [
+          0.0,
+          0.0,
           -0.25,
           -0.7,
           0.7,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.9,
+          0.9,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.0,
+          0.0,
+          0.0,
           0.0,
           0.0,
           0.0,
@@ -195,18 +215,6 @@
         "level": 0.28,
         "release_ms": 3000.0,
         "reference_frequency_hz": 220.0
-      }
-    },
-    {
-      "instance_id": "space_send",
-      "module_type": "polarizing_mixer",
-      "provider": "builtin",
-      "parameters": {
-        "channels": 2,
-        "gains": [
-          0.8,
-          0.8
-        ]
       }
     }
   ],
@@ -377,8 +385,8 @@
         "port_id": "audio"
       },
       "target": {
-        "module_id": "space_send",
-        "port_id": "input_1"
+        "module_id": "master",
+        "port_id": "channel_1"
       }
     },
     {
@@ -387,18 +395,8 @@
         "port_id": "audio"
       },
       "target": {
-        "module_id": "space_send",
-        "port_id": "input_2"
-      }
-    },
-    {
-      "source": {
-        "module_id": "space_send",
-        "port_id": "output"
-      },
-      "target": {
-        "module_id": "space",
-        "port_id": "audio"
+        "module_id": "master",
+        "port_id": "channel_2"
       }
     },
     {
@@ -408,7 +406,17 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_1"
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
       }
     },
     {
@@ -418,7 +426,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_2"
+        "port_id": "channel_4"
       }
     },
     {
@@ -428,7 +436,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_3"
+        "port_id": "channel_5"
       }
     },
     {
@@ -560,14 +568,6 @@
         "position": {
           "x": 800.0,
           "y": 1000.0
-        },
-        "collapsed": false
-      },
-      {
-        "node_id": "space_send",
-        "position": {
-          "x": 1160.0,
-          "y": 120.0
         },
         "collapsed": false
       }

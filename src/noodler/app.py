@@ -25,6 +25,7 @@ from .module_providers.builtin import (
     LowPassGateParameters,
     MASTER_CHANNELS,
     MasterMixer,
+    SENDS,
     PolarizingMixer,
     PolarizingMixerParameters,
     Reverb,
@@ -3929,8 +3930,13 @@ def _add_knob(
     logarithmic: bool = False,
     size: int = KNOB_SIZE,
     tag: int | str = 0,
+    compact: bool = False,
 ) -> int | str:
     """Add a compact rotary control with a separate live value readout.
+
+    ``compact`` drops the label above and the readout below, for a strip of
+    knobs that share a header row -- a mixer channel -- where the value shows
+    in the status bar while it is dragged and the arc says the rest.
 
     The knob is a drawlist, not Dear PyGui's knob widget: that one is drawn at
     a fixed forty pixels and ignores its width, which is how four rounds of
@@ -3945,9 +3951,10 @@ def _add_knob(
     plain_formatter = formatter
     formatter = lambda shown, inner=plain_formatter: _fit_column(inner(shown))
     with dpg.group() as cluster:
-        dpg.add_text(_fit_column(label.upper()), color=MUTED_TEXT)
+        if not compact:
+            dpg.add_text(_fit_column(label.upper()), color=MUTED_TEXT)
         knob = dpg.add_drawlist(width=size, height=size, tag=tag)
-        value_label = dpg.add_text(formatter(value), color=TEXT)
+        value_label = dpg.add_text(formatter(value), color=TEXT, show=not compact)
     binding = KnobBinding(
         setter=setter,
         label=label,
@@ -5205,6 +5212,12 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                 )
 
 
+def _format_pan(value: float) -> str:
+    if abs(value) < 0.005:
+        return "C"
+    return f"{'L' if value < 0 else 'R'}{abs(value) * 100:.0f}"
+
+
 def _build_output_node(engine: SystemAudioEngine, master: MasterMixer) -> None:
     """Build the master mixer: the one panel every rack has.
 
@@ -5215,6 +5228,14 @@ def _build_output_node(engine: SystemAudioEngine, master: MasterMixer) -> None:
     loud each thing is rather than how it gets out.
     """
     with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
+        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
+            # One header for the strip, so each channel is a row of knobs and
+            # not four labelled clusters: level, pan, send A, send B.
+            with dpg.group(horizontal=True):
+                dpg.add_text("      ", color=MUTED_TEXT)
+                for heading in ("LVL", "PAN", " A ", " B "):
+                    dpg.add_text(heading, color=MUTED_TEXT)
+                    dpg.add_spacer(width=max(1, KNOB_SIZE - 14))
         for index in range(1, MASTER_CHANNELS + 1):
             with dpg.node_attribute(
                 tag=f"{OUTPUT_NODE}.channel_{index}",
@@ -5229,13 +5250,48 @@ def _build_output_node(engine: SystemAudioEngine, master: MasterMixer) -> None:
                     )
                     _add_knob(
                         master.parameters.levels[index - 1],
-                        f"Ch {index}",
+                        f"Ch {index} level",
                         0.0,
                         1.0,
                         lambda value: f"{value:.2f}",
                         lambda value, channel=index: master.set_level(channel, value),
                         tag=f"{OUTPUT_NODE}.control.level_{index}",
+                        compact=True,
                     )
+                    _add_knob(
+                        master.parameters.pans[index - 1],
+                        f"Ch {index} pan",
+                        -1.0,
+                        1.0,
+                        _format_pan,
+                        lambda value, channel=index: master.set_pan(channel, value),
+                        tag=f"{OUTPUT_NODE}.control.pan_{index}",
+                        compact=True,
+                    )
+                    for bus in SENDS:
+                        _add_knob(
+                            getattr(master.parameters, f"sends_{bus}")[index - 1],
+                            f"Ch {index} send {bus.upper()}",
+                            0.0,
+                            1.0,
+                            lambda value: f"{value:.2f}",
+                            lambda value, channel=index, bus=bus: master.set_send(
+                                bus, channel, value
+                            ),
+                            tag=f"{OUTPUT_NODE}.control.send_{bus}_{index}",
+                            compact=True,
+                        )
+        for port_id, name, description in (
+            ("send_a", "SEND A", "Every channel's send A, summed. Patch it to an effect."),
+            ("send_b", "SEND B", "Every channel's send B, summed."),
+            ("sum", "SUM", "Mono fold-down, for metering or feedback."),
+        ):
+            with dpg.node_attribute(
+                tag=f"{OUTPUT_NODE}.{port_id}",
+                label=name.title(),
+                attribute_type=dpg.mvNode_Attr_Output,
+            ):
+                _add_port_text(name, "audio", description)
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             _add_knob(
                 engine.master_gain,

@@ -91,7 +91,7 @@
       "parameters": {
         "time_seconds": 0.27,
         "feedback": 0.46,
-        "mix": 0.34,
+        "mix": 1.0,
         "damping": 0.55,
         "drive": 1.0,
         "freeze": false
@@ -102,7 +102,7 @@
       "module_type": "reverb",
       "provider": "builtin",
       "parameters": {
-        "mix": 0.58,
+        "mix": 1.0,
         "decay_seconds": 9.0,
         "damping": 0.5,
         "diffusion": 0.92,
@@ -116,20 +116,40 @@
       "provider": "builtin",
       "parameters": {
         "levels": [
+          0.7,
+          0.7,
           0.6,
-          0.62,
-          0.62,
-          0.5,
-          0.8,
-          0.8,
+          0.55,
+          0.55,
+          0.45,
           0.8,
           0.8
         ],
         "pans": [
+          0.0,
+          0.0,
           -0.3,
           -0.7,
           0.7,
           0.35,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.9,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.0,
+          0.8,
+          0.0,
+          0.0,
           0.0,
           0.0,
           0.0,
@@ -378,8 +398,8 @@
         "port_id": "audio"
       },
       "target": {
-        "module_id": "space",
-        "port_id": "audio"
+        "module_id": "master",
+        "port_id": "channel_1"
       }
     },
     {
@@ -388,8 +408,8 @@
         "port_id": "audio"
       },
       "target": {
-        "module_id": "echo",
-        "port_id": "audio"
+        "module_id": "master",
+        "port_id": "channel_2"
       }
     },
     {
@@ -399,7 +419,17 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_1"
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
       }
     },
     {
@@ -409,7 +439,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_2"
+        "port_id": "channel_4"
       }
     },
     {
@@ -419,7 +449,17 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_3"
+        "port_id": "channel_5"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
       }
     },
     {
@@ -429,7 +469,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_4"
+        "port_id": "channel_6"
       }
     },
     {

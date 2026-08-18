@@ -79,6 +79,7 @@ from .clocked import (
 from .master import (
     MASTER_CHANNELS,
     MASTER_MIXER_MANIFEST,
+    SENDS,
     MasterMixer,
     MasterMixerParameters,
 )
@@ -239,6 +240,7 @@ __all__ = [
     "InstrumentVoiceParameters",
     "instrument_voice",
     "MASTER_CHANNELS",
+    "SENDS",
     "MASTER_MIXER_MANIFEST",
     "MasterMixer",
     "MasterMixerParameters",

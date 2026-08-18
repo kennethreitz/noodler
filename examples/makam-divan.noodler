@@ -91,7 +91,7 @@
       "parameters": {
         "time_seconds": 0.38,
         "feedback": 0.4,
-        "mix": 0.29,
+        "mix": 1.0,
         "damping": 0.55,
         "drive": 1.0,
         "freeze": false
@@ -102,7 +102,7 @@
       "module_type": "reverb",
       "provider": "builtin",
       "parameters": {
-        "mix": 0.5,
+        "mix": 1.0,
         "decay_seconds": 8.0,
         "damping": 0.5,
         "diffusion": 0.88,
@@ -116,20 +116,40 @@
       "provider": "builtin",
       "parameters": {
         "levels": [
+          0.7,
+          0.7,
           0.65,
-          0.62,
-          0.62,
-          0.5,
-          0.8,
-          0.8,
+          0.55,
+          0.55,
+          0.45,
           0.8,
           0.8
         ],
         "pans": [
+          0.0,
+          0.0,
           0.2,
           -0.7,
           0.7,
           0.35,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.0,
+          0.9,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.8,
+          0.0,
+          0.0,
+          0.0,
           0.0,
           0.0,
           0.0,
@@ -374,27 +394,7 @@
     },
     {
       "source": {
-        "module_id": "ney",
-        "port_id": "audio"
-      },
-      "target": {
-        "module_id": "space",
-        "port_id": "audio"
-      }
-    },
-    {
-      "source": {
         "module_id": "oud",
-        "port_id": "audio"
-      },
-      "target": {
-        "module_id": "echo",
-        "port_id": "audio"
-      }
-    },
-    {
-      "source": {
-        "module_id": "bass",
         "port_id": "audio"
       },
       "target": {
@@ -404,12 +404,42 @@
     },
     {
       "source": {
+        "module_id": "ney",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
         "module_id": "space",
         "port_id": "left"
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_2"
+        "port_id": "channel_4"
       }
     },
     {
@@ -419,7 +449,17 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_3"
+        "port_id": "channel_5"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
       }
     },
     {
@@ -429,7 +469,7 @@
       },
       "target": {
         "module_id": "master",
-        "port_id": "channel_4"
+        "port_id": "channel_6"
       }
     },
     {
