@@ -129,3 +129,71 @@ def test_the_open_dialog_exists_to_be_shown() -> None:
         assert not dpg.is_item_shown(OPEN_PATCH_DIALOG)
     finally:
         dpg.destroy_context()
+
+
+def test_exit_leaves(monkeypatch) -> None:
+    """File to Exit, and the command chord that means the same thing."""
+    import noodler.app as app
+
+    dpg.create_context()
+    try:
+        build_ui()
+        assert dpg.does_item_exist(app.EXIT_MENU_ITEM)
+
+        stopped: list[bool] = []
+        monkeypatch.setattr(dpg, "stop_dearpygui", lambda: stopped.append(True))
+
+        app._exit_noodler()
+        assert stopped == [True]
+
+        # A bare Q must not close the rack.
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        app._quit_shortcut("test", None, None)
+        assert stopped == [True]
+
+        monkeypatch.setattr(dpg, "is_key_down", lambda key: key == dpg.mvKey_ModSuper)
+        app._quit_shortcut("test", None, None)
+        assert stopped == [True, True]
+    finally:
+        dpg.destroy_context()
+
+
+def test_exit_stands_down_while_typing(monkeypatch) -> None:
+    import noodler.app as app
+
+    dpg.create_context()
+    try:
+        build_ui()
+        stopped: list[bool] = []
+        monkeypatch.setattr(dpg, "stop_dearpygui", lambda: stopped.append(True))
+        monkeypatch.setattr(app, "_keyboard_is_captured", lambda: True)
+
+        app._exit_noodler()
+
+        assert stopped == [], "a patch named Quit should not close the rack"
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_command_chords_reach_open_and_save(monkeypatch) -> None:
+    import noodler.app as app
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        monkeypatch.setattr(app, "_keyboard_is_captured", lambda: False)
+        monkeypatch.setattr(
+            dpg, "is_key_down", lambda key: key == dpg.mvKey_ModSuper
+        )
+
+        app._open_shortcut("test", None, runtime)
+        assert dpg.is_item_shown(OPEN_PATCH_DIALOG)
+
+        CURRENT_PATCH_PATH.clear()
+        app._save_shortcut("test", None, runtime)
+        from noodler.app import SAVE_PATCH_DIALOG
+
+        assert dpg.is_item_shown(SAVE_PATCH_DIALOG), "no home yet, so it asks"
+    finally:
+        CURRENT_PATCH_PATH.clear()
+        dpg.destroy_context()

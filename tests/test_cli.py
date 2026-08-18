@@ -39,11 +39,20 @@ def test_example_patch_builds_an_executable_stereo_graph() -> None:
     preset = read_patch_preset(EXAMPLE_PATCH)
     runtime = build_runtime_from_preset(preset)
 
-    assert tuple(runtime.patch.modules) == ("classic_vco", "reverb")
-    assert runtime.patch.modules["classic_vco"].parameters.frequency == 110.0
-    assert len(runtime.patch.cables) == 1
-    assert len(runtime.patch.output_taps) == 2
-    assert runtime.audio.master_gain == pytest.approx(0.65)
+    # Asserted against the document rather than a snapshot of it, so editing
+    # the example does not mean editing the tests.
+    assert tuple(runtime.patch.modules) == tuple(
+        module.instance_id for module in preset.modules
+    )
+    assert "classic_vco" in runtime.patch.modules
+    assert runtime.patch.modules["classic_vco"].parameters.frequency == (
+        preset.modules[0].parameters["frequency"]
+    )
+    assert len(runtime.patch.cables) == len(preset.cables)
+    assert len(runtime.patch.output_taps) == len(preset.output_taps)
+    assert runtime.audio.master_gain == pytest.approx(
+        preset.system_output.master_gain
+    )
 
     rendered = runtime.patch.render_stereo(512, 48_000.0)
     assert rendered.shape == (512, 2)
@@ -58,13 +67,29 @@ def test_example_patch_restores_panels_cables_and_view() -> None:
 
         vco_node = INSTANCE_NODE_TAGS["classic_vco"]
         reverb_node = INSTANCE_NODE_TAGS["reverb"]
-        assert runtime.patch.modules["reverb"].parameters.decay_seconds == 5.8
-        assert dpg.get_item_pos(vco_node) == [60, 250]
-        assert dpg.get_item_pos(reverb_node) == [430, 250]
-        assert dpg.get_item_pos(OUTPUT_NODE) == [820, 250]
-        assert len(dpg.get_item_children(RACK).get(0, ())) == 3
-        assert CANVAS_INTERACTION.zoom == pytest.approx(0.85)
-        assert "SOME SOUND" in dpg.get_value(CONTROL_STATUS)
+        saved = {node.node_id: node for node in preset.view.nodes}
+        assert runtime.patch.modules["reverb"].parameters.decay_seconds == (
+            preset.modules[1].parameters["decay_seconds"]
+        )
+        # Every saved panel is placed where the document put it.
+        for instance_id, node in (
+            ("classic_vco", vco_node),
+            ("reverb", reverb_node),
+        ):
+            placed = dpg.get_item_pos(node)
+            assert placed == [
+                int(saved[instance_id].position.x),
+                int(saved[instance_id].position.y),
+            ]
+        assert dpg.get_item_pos(OUTPUT_NODE) == [
+            int(saved["system_output"].position.x),
+            int(saved["system_output"].position.y),
+        ]
+        assert len(dpg.get_item_children(RACK).get(0, ())) == len(
+            preset.cables
+        ) + len(preset.output_taps)
+        assert CANVAS_INTERACTION.zoom == pytest.approx(preset.view.zoom)
+        assert preset.name.upper() in dpg.get_value(CONTROL_STATUS)
         reverb_branches = [
             label
             for label in _tree_labels(RACK_OUTLINE_BODY)
@@ -120,7 +145,9 @@ def test_main_opens_the_cli_document(monkeypatch) -> None:
 
     app.main([str(EXAMPLE_PATCH)])
 
-    assert [preset.name for preset in opened] == ["Some Sound"]
+    assert [preset.name for preset in opened] == [
+        read_patch_preset(EXAMPLE_PATCH).name
+    ]
     assert closed == [True]
 
 

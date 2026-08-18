@@ -2,18 +2,18 @@
   "format": "noodler.patch",
   "format_version": 1,
   "application_version": "0.1.0",
-  "name": "Some Sound",
+  "name": "somesound",
   "modules": [
     {
       "instance_id": "classic_vco",
       "module_type": "classic_vco",
       "provider": "builtin",
       "parameters": {
-        "frequency": 110.0,
+        "frequency": 78.50061716399762,
         "fine_tune_cents": 0.0,
-        "fm_amount": 0.0,
-        "pulse_width": 0.48,
-        "amplitude": 0.14
+        "fm_amount": 0.8124094937495085,
+        "pulse_width": 0.4712335629709058,
+        "amplitude": 0.2335901040708584
       }
     },
     {
@@ -28,6 +28,29 @@
         "pre_delay_ms": 28.0,
         "freeze": false
       }
+    },
+    {
+      "instance_id": "function_utility",
+      "module_type": "function_utility",
+      "provider": "builtin",
+      "parameters": {
+        "channel_1": {
+          "rise_seconds": 2.68213077975275,
+          "fall_seconds": 0.0005000000000000001,
+          "curve": 0.13488989440798987,
+          "cycle": true,
+          "attenuverter": 0.43285285787837297
+        },
+        "channel_2_attenuverter": 0.0,
+        "channel_3_attenuverter": 0.0,
+        "channel_4": {
+          "rise_seconds": 0.1,
+          "fall_seconds": 0.1,
+          "curve": 0.0,
+          "cycle": false,
+          "attenuverter": 1.0
+        }
+      }
     }
   ],
   "cables": [
@@ -39,6 +62,16 @@
       "target": {
         "module_id": "reverb",
         "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "function_utility",
+        "port_id": "channel_1"
+      },
+      "target": {
+        "module_id": "classic_vco",
+        "port_id": "pitch"
       }
     }
   ],
@@ -66,31 +99,39 @@
   "view": {
     "zoom": 0.85,
     "rails": {
-      "control": 40.0,
-      "audio": 250.0
+      "control": 446.0,
+      "audio": 656.0
     },
     "nodes": [
       {
+        "node_id": "system_output",
+        "position": {
+          "x": 704.0,
+          "y": 656.0
+        },
+        "collapsed": false
+      },
+      {
         "node_id": "classic_vco",
         "position": {
-          "x": 60.0,
-          "y": 250.0
+          "x": -42.0,
+          "y": 676.0
         },
         "collapsed": false
       },
       {
         "node_id": "reverb",
         "position": {
-          "x": 430.0,
-          "y": 250.0
+          "x": 314.0,
+          "y": 656.0
         },
         "collapsed": false
       },
       {
-        "node_id": "system_output",
+        "node_id": "function_utility",
         "position": {
-          "x": 820.0,
-          "y": 250.0
+          "x": -327.0,
+          "y": 345.0
         },
         "collapsed": false
       }

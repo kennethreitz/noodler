@@ -137,6 +137,7 @@ OPEN_PATCH_DIALOG = "noodler.open_patch_dialog"
 OPEN_PATCH_MENU_ITEM = "noodler.menu.open"
 SAVE_PATCH_MENU_ITEM = "noodler.menu.save"
 SAVE_AS_MENU_ITEM = "noodler.menu.save_as"
+EXIT_MENU_ITEM = "noodler.menu.exit"
 ADD_MODULE_BUTTON = "noodler.add_module"
 MODULE_SELECTOR = "noodler.module_selector"
 MODULE_SELECTOR_SEARCH = "noodler.module_selector.search"
@@ -531,6 +532,18 @@ def _save_patch(
         _save_patch_to(runtime, CURRENT_PATCH_PATH[0])
     except (OSError, TypeError, ValueError) as error:
         _set_patch_status(f"SAVE ERROR: {error}", error=True)
+
+
+def _exit_noodler(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    _user_data: object = None,
+) -> None:
+    """Leave. The audio device is closed on the way out by main's finally."""
+    if _keyboard_is_captured():
+        return
+    _set_patch_status("CLOSING")
+    dpg.stop_dearpygui()
 
 
 def _show_open_patch_dialog(
@@ -3157,6 +3170,13 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 callback=_show_save_patch_dialog,
                 user_data=runtime,
             )
+            dpg.add_separator()
+            dpg.add_menu_item(
+                label="Exit",
+                tag=EXIT_MENU_ITEM,
+                shortcut="⌘Q",
+                callback=_exit_noodler,
+            )
         with dpg.menu(label="View"):
             dpg.add_menu_item(
                 label="Frame All",
@@ -3663,6 +3683,43 @@ def _apply_history(forward: bool) -> None:
     _set_patch_status(f"{'REDID' if forward else 'UNDID'}  {edit.description.upper()}")
 
 
+def _commanded() -> bool:
+    """Whether a command chord is being held, on either platform's key."""
+    return dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl)
+
+
+def _quit_shortcut(
+    sender: int | str,
+    app_data: object,
+    _runtime: AppRuntime,
+) -> None:
+    if _commanded():
+        _exit_noodler(sender, app_data, None)
+
+
+def _open_shortcut(
+    sender: int | str,
+    app_data: object,
+    _runtime: AppRuntime,
+) -> None:
+    if _commanded() and not _keyboard_is_captured():
+        _show_open_patch_dialog(sender, app_data, None)
+
+
+def _save_shortcut(
+    sender: int | str,
+    app_data: object,
+    runtime: AppRuntime,
+) -> None:
+    """Command-S saves; adding Shift asks where to put it."""
+    if not _commanded() or _keyboard_is_captured():
+        return
+    if dpg.is_key_down(dpg.mvKey_ModShift):
+        _show_save_patch_dialog(sender, app_data, runtime)
+    else:
+        _save_patch(sender, app_data, runtime)
+
+
 def _open_module_selector_shortcut(
     sender: int | str,
     app_data: object,
@@ -3741,6 +3798,9 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             (dpg.mvKey_T, _tidy_rack),
             (dpg.mvKey_L, _toggle_library_pane),
             (dpg.mvKey_Z, _undo_or_redo_rack_edit),
+            (dpg.mvKey_Q, _quit_shortcut),
+            (dpg.mvKey_O, _open_shortcut),
+            (dpg.mvKey_S, _save_shortcut),
         ):
             dpg.add_key_press_handler(
                 key,
