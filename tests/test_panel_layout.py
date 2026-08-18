@@ -83,6 +83,22 @@ def test_the_header_describes_the_rack_in_front_of_the_user() -> None:
         dpg.destroy_context()
 
 
+def test_finding_the_dragged_module_never_raises() -> None:
+    """A node publishes no "active" state, so asking for it raised every frame.
+
+    The regression that hid this was in the test, not the code: mocking
+    is_item_active granted an API the real item does not have.
+    """
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        # The real Dear PyGui state, unmocked.
+        assert "active" not in dpg.get_item_state(VCO_NODE)
+        assert _dragged_rack_node() is None  # nothing is being dragged
+    finally:
+        dpg.destroy_context()
+
+
 def test_the_dragged_module_is_the_one_the_pointer_has(monkeypatch) -> None:
     """Overlapping panels made the first in list order win every drag."""
     dpg.create_context()
@@ -99,12 +115,16 @@ def test_the_dragged_module_is_the_one_the_pointer_has(monkeypatch) -> None:
         monkeypatch.setattr(
             dpg, "get_item_rect_max", lambda _item: [4_000.0, 4_000.0]
         )
-        monkeypatch.setattr(dpg, "is_item_active", lambda item: item == VCO_NODE)
+        monkeypatch.setattr(
+            dpg,
+            "get_item_state",
+            lambda item: {"hovered": item == VCO_NODE},
+        )
 
         assert _dragged_rack_node() == VCO_NODE
 
-        # With nothing claiming it, the front-most panel wins, not the first.
-        monkeypatch.setattr(dpg, "is_item_active", lambda _item: False)
+        # With nothing hovered, the front-most panel wins, not the first.
+        monkeypatch.setattr(dpg, "get_item_state", lambda _item: {})
         assert _dragged_rack_node() == RACK_NODES[-1]
     finally:
         dpg.destroy_context()

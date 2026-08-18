@@ -2237,23 +2237,35 @@ def _reflow_rail_lanes() -> None:
     )
 
 
+def _item_reports(item: int | str, state: str) -> bool:
+    """Read one interaction state, for items that publish it.
+
+    Dear PyGui's is_item_active indexes the state dictionary directly, and a
+    node does not publish an "active" key at all — so asking raised KeyError
+    every frame rather than answering False.
+    """
+    try:
+        return bool(dpg.get_item_state(item).get(state, False))
+    except (KeyError, SystemError, TypeError):
+        return False
+
+
 def _dragged_rack_node() -> int | str | None:
     """Return the module the pointer is actually dragging.
 
     Asking which rectangle contains the pointer answers the wrong question once
     panels overlap: the first module in list order wins every drag, and every
-    other module is sprung back as though it had never been touched — which is
-    exactly what an immovable panel feels like. Dear PyGui already knows which
-    item is under interaction, so ask it, and only fall back to geometry, front
-    to back, when nothing claims the gesture.
+    other module is sprung back as though it had never been touched. A node
+    does report whether it is hovered, which is the same question asked of the
+    one item that can answer it; geometry, front to back, is the fallback.
     """
     if CANVAS_INTERACTION.panning or not dpg.is_mouse_button_dragging(
         dpg.mvMouseButton_Left,
         threshold=1.0,
     ):
         return None
-    for node in RACK_NODES:
-        if dpg.does_item_exist(node) and dpg.is_item_active(node):
+    for node in reversed(RACK_NODES):
+        if dpg.does_item_exist(node) and _item_reports(node, "hovered"):
             return node
     mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
     for node in reversed(RACK_NODES):
