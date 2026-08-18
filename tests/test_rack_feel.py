@@ -5,6 +5,7 @@ import pytest
 
 from noodler.app import (
     AUDIO_RAIL,
+    BOX_SELECTOR_FILL,
     CANVAS_INTERACTION,
     CONTROL_STATUS,
     DEFAULT_CONTROL_STATUS,
@@ -27,7 +28,9 @@ from noodler.app import (
     _begin_knob_drag,
     _control_position,
     _delete_rack_selection,
+    _end_knob_drag,
     _dismiss_rack_focus,
+    _drag_knob,
     _frame_rack,
     _glide_rack,
     _module_close_at,
@@ -492,5 +495,101 @@ def test_a_module_already_in_view_does_not_move_the_camera(monkeypatch) -> None:
         assert _reveal_node(VCO_NODE) is False
         assert CANVAS_INTERACTION.recenter_x.target == 0.0
         assert CANVAS_INTERACTION.recenter_y.target == 0.0
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_held_background_drag_pans_for_its_whole_travel(monkeypatch) -> None:
+    """Dear PyGui repeats the mouse-down callback for every held frame.
+
+    Beginning the pan again on each of those frames moved its origin to the
+    current pointer, so the drag had nothing left to travel and the rack sat
+    still under the editor's own selection marquee.
+    """
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        pointer = [300.0, 240.0]
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: tuple(pointer)
+        )
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: True
+        )
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background", lambda _position: True
+        )
+        monkeypatch.setattr("noodler.app._module_close_at", lambda _position: None)
+        start = tuple(dpg.get_item_pos(VCO_NODE))
+
+        _begin_knob_drag("test", None, KNOB_INTERACTION)
+        for step in ((350.0, 260.0), (410.0, 300.0), (440.0, 290.0)):
+            pointer[0], pointer[1] = step
+            _begin_knob_drag("test", None, KNOB_INTERACTION)
+            _drag_knob("test", None, KNOB_INTERACTION)
+
+        moved = tuple(dpg.get_item_pos(VCO_NODE))
+        assert moved[0] - start[0] == pytest.approx(140.0)
+        assert moved[1] - start[1] == pytest.approx(50.0)
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_marquee_is_hidden_for_panning_and_shown_for_selecting(
+    monkeypatch,
+) -> None:
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: (300.0, 240.0)
+        )
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: True
+        )
+        monkeypatch.setattr("noodler.app._module_close_at", lambda _position: None)
+
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        _begin_knob_drag("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.panning is True
+        assert dpg.get_value(BOX_SELECTOR_FILL) == [0.0, 0.0, 0.0, 0.0]
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+
+        # Shift hands the gesture back to the editor, which needs to show it.
+        monkeypatch.setattr(
+            dpg, "is_key_down", lambda key: key == dpg.mvKey_LShift
+        )
+        _begin_knob_drag("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.panning is False
+        assert dpg.get_value(BOX_SELECTOR_FILL)[3] > 0.0
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert dpg.get_value(BOX_SELECTOR_FILL) == [0.0, 0.0, 0.0, 0.0]
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_knob_hint_gets_out_of_the_way_while_turning(monkeypatch) -> None:
+    """A hint that covers the value it explains, while the value is changing."""
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        knob = f"{VCO_NODE}.control.frequency"
+        tooltip = KNOB_INTERACTION.tooltip_tags[0]
+        assert dpg.get_item_configuration(tooltip)["show"] is True
+
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: (300.0, 240.0)
+        )
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        monkeypatch.setattr("noodler.app._module_close_at", lambda _position: None)
+        monkeypatch.setattr(dpg, "is_item_hovered", lambda item: item == knob)
+
+        _begin_knob_drag("test", None, KNOB_INTERACTION)
+        assert KNOB_INTERACTION.active_knob == knob
+        assert dpg.get_item_configuration(tooltip)["show"] is False
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert dpg.get_item_configuration(tooltip)["show"] is True
     finally:
         dpg.destroy_context()

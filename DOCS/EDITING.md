@@ -20,6 +20,7 @@ instrument was telling the user to press a key that did nothing.
 | ⌘K | open the module browser |
 | F | frame the whole rack |
 | Escape | close the browser, or clear the selection |
+| Shift + background drag | box-select modules (a plain drag pans) |
 
 Both Delete and Backspace are bound, because most Mac keyboards send Backspace
 for the key labelled Delete and the forward-delete key is not present at all.

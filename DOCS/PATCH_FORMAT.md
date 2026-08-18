@@ -28,6 +28,17 @@ random-generator progress, reverb delay memory, or whether the audio device is
 currently running. Those are transient runtime details. Loading a patch should
 construct fresh DSP state from the saved controls and graph.
 
+## Opening a patch
+
+Pass a document path to the CLI to validate it, rebuild its executable graph,
+and restore the saved rack view:
+
+```console
+uv run noodler ./examples/somesound.noodler
+```
+
+Running `noodler` without a path still opens the quiet empty rack.
+
 ## Shape
 
 ```json

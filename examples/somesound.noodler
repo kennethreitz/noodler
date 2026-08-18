@@ -1,0 +1,99 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Some Sound",
+  "modules": [
+    {
+      "instance_id": "classic_vco",
+      "module_type": "classic_vco",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 110.0,
+        "fine_tune_cents": 0.0,
+        "fm_amount": 0.0,
+        "pulse_width": 0.48,
+        "amplitude": 0.14
+      }
+    },
+    {
+      "instance_id": "reverb",
+      "module_type": "reverb",
+      "provider": "builtin",
+      "parameters": {
+        "mix": 0.42,
+        "decay_seconds": 5.8,
+        "damping": 0.56,
+        "diffusion": 0.82,
+        "pre_delay_ms": 28.0,
+        "freeze": false
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "classic_vco",
+        "port_id": "saw"
+      },
+      "target": {
+        "module_id": "reverb",
+        "port_id": "audio"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "reverb",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "reverb",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.65
+  },
+  "view": {
+    "zoom": 0.85,
+    "rails": {
+      "control": 40.0,
+      "audio": 250.0
+    },
+    "nodes": [
+      {
+        "node_id": "classic_vco",
+        "position": {
+          "x": 60.0,
+          "y": 250.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "reverb",
+        "position": {
+          "x": 430.0,
+          "y": 250.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "system_output",
+        "position": {
+          "x": 820.0,
+          "y": 250.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}

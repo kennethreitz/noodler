@@ -1,6 +1,7 @@
 """Noodler's application entry point."""
 
-from collections.abc import Callable
+import argparse
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 import math
@@ -65,6 +66,7 @@ from .preset import (
     RackNodePreset,
     RackViewPreset,
     capture_patch_preset,
+    read_patch_preset,
     write_patch_preset,
 )
 from .spine import render_spine_texture
@@ -111,8 +113,10 @@ RACK_RAILS = {
 RACK_RAIL_GAP = 48.0
 AUDIO_STATUS = "noodler.audio_status"
 CONTROL_STATUS = "noodler.control_status"
+RACK_WORKSPACE = "noodler.rack_workspace"
 UNPLUG_ALL_BUTTON = "noodler.unplug_all"
 SAVE_PATCH_BUTTON = "noodler.save_patch"
+FRAME_RACK_BUTTON = "noodler.frame_rack"
 SAVE_PATCH_DIALOG = "noodler.save_patch_dialog"
 ADD_MODULE_BUTTON = "noodler.add_module"
 MODULE_SELECTOR = "noodler.module_selector"
@@ -176,6 +180,13 @@ AUDIO_LINK_THEME = "noodler.theme.link.audio"
 GATE_LINK_THEME = "noodler.theme.link.gate"
 MUSICAL_LINK_THEME = "noodler.theme.link.musical"
 METER_THEME = "noodler.theme.meter"
+RACK_BOX_SELECTOR = "noodler.theme.rack.box_selector"
+BOX_SELECTOR_FILL = f"{RACK_BOX_SELECTOR}.fill"
+BOX_SELECTOR_OUTLINE = f"{RACK_BOX_SELECTOR}.outline"
+BOX_SELECTOR_HIDDEN = (0, 0, 0, 0)
+"""Dragging empty canvas pans, so the marquee stays out of the way."""
+BOX_SELECTOR_FILL_COLOR = (211, 145, 57, 38)
+BOX_SELECTOR_OUTLINE_COLOR = (211, 145, 57, 170)
 SCALE_SYSTEM_CONTROL = "noodler.scale_generator.control.system"
 SCALE_NAME_CONTROL = "noodler.scale_generator.control.scale"
 SCALE_NOTE_STATUS = "noodler.scale_generator.note_status"
@@ -211,9 +222,10 @@ SIGNAL_COLORS = {
 DEFAULT_CONTROL_STATUS = (
     "DRAG JACKS TO PATCH  ·  SELECT + DELETE TO UNPATCH OR REMOVE  ·  "
     "⌘Z = UNDO  ·  ⌘K = ADD MODULE  ·  F = FRAME ALL  ·  "
-    "FLICK BACKGROUND = PAN  ·  PINCH / SCROLL = ZOOM  ·  "
-    "DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET  ·  SHIFT = FINE"
+    "DRAG BACKGROUND = PAN  ·  SHIFT + DRAG = SELECT  ·  PINCH = ZOOM  ·  "
+    "DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET"
 )
+
 KNOB_HINT_DRAG_LIMIT = 3
 MIN_RACK_ZOOM = 0.55
 MAX_RACK_ZOOM = 1.65
@@ -558,12 +570,28 @@ def _configure_theme() -> None:
             dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 8)
             dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 7, 3)
             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
+        with dpg.theme_component(dpg.mvNodeEditor):
+            # The grid and the selection marquee belong to the editor, not to a
+            # node. Declared against mvNode they are simply never applied, which
+            # is how the default blue box survived a transparent colour.
+            for editor_color, color, tag in (
+                (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255), 0),
+                (dpg.mvNodeCol_GridLine, (43, 45, 40, 150), 0),
+                (dpg.mvNodeCol_BoxSelector, BOX_SELECTOR_HIDDEN, BOX_SELECTOR_FILL),
+                (
+                    dpg.mvNodeCol_BoxSelectorOutline,
+                    BOX_SELECTOR_HIDDEN,
+                    BOX_SELECTOR_OUTLINE,
+                ),
+            ):
+                dpg.add_theme_color(
+                    editor_color,
+                    color,
+                    tag=tag,
+                    category=dpg.mvThemeCat_Nodes,
+                )
         with dpg.theme_component(dpg.mvNode):
             for node_color, color in (
-                (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255)),
-                (dpg.mvNodeCol_GridLine, (43, 45, 40, 150)),
-                (dpg.mvNodeCol_BoxSelector, (22, 23, 21, 0)),
-                (dpg.mvNodeCol_BoxSelectorOutline, (22, 23, 21, 0)),
                 (dpg.mvNodeCol_NodeBackground, (38, 36, 32, 248)),
                 (dpg.mvNodeCol_NodeBackgroundHovered, (43, 41, 36, 252)),
                 (dpg.mvNodeCol_NodeBackgroundSelected, (45, 42, 37, 255)),
@@ -2169,6 +2197,88 @@ def _toggle_module_from_title(
     _set_module_collapsed(node, not MODULE_COLLAPSE.is_collapsed(node), runtime)
 
 
+def _add_rack_controls(runtime: AppRuntime) -> None:
+    """Add the camera, patch, and library controls shared by every rack view.
+
+    Both rack builders grew their own copy of this cluster, which is how the
+    same button ended up labelled two different ways.
+    """
+    dpg.add_spacer(width=16)
+    dpg.add_button(
+        label="−",
+        tag=ZOOM_OUT_BUTTON,
+        callback=_zoom_rack_button,
+        user_data=-1,
+    )
+    dpg.add_button(
+        label="100%",
+        tag=ZOOM_RESET_BUTTON,
+        callback=_reset_rack_zoom,
+    )
+    dpg.add_button(
+        label="+",
+        tag=ZOOM_IN_BUTTON,
+        callback=_zoom_rack_button,
+        user_data=1,
+    )
+    dpg.add_button(
+        label="FRAME ALL",
+        tag=FRAME_RACK_BUTTON,
+        callback=_frame_rack,
+        user_data=runtime,
+    )
+    with dpg.tooltip(FRAME_RACK_BUTTON):
+        dpg.add_text("Bring every module back into view.  ·  F")
+    dpg.add_button(
+        label="UNPLUG ALL",
+        tag=UNPLUG_ALL_BUTTON,
+        callback=_unplug_all,
+        user_data=runtime,
+    )
+    with dpg.tooltip(UNPLUG_ALL_BUTTON):
+        dpg.add_text("Disconnect every cable from the live patch.  ·  ⌘Z undoes it.")
+    dpg.add_button(
+        label="+  ADD MODULE",
+        tag=ADD_MODULE_BUTTON,
+        callback=_show_module_selector,
+    )
+    with dpg.tooltip(ADD_MODULE_BUTTON):
+        dpg.add_text("Browse all built-in instruments and utilities.  ·  ⌘K")
+    dpg.add_button(
+        label="SAVE PATCH",
+        tag=SAVE_PATCH_BUTTON,
+        callback=_show_save_patch_dialog,
+    )
+    with dpg.tooltip(SAVE_PATCH_BUTTON):
+        dpg.add_text("Save modules, cables, controls, and rack view.")
+
+
+def _show_knob_hints(visible: bool) -> None:
+    """Show or hide the rotary hint tooltips as one group.
+
+    A hint that covers the value it is explaining, at the moment the value is
+    being changed, is worse than no hint at all — so they are put away for the
+    duration of every drag, and retired for good once the gesture is learned.
+    """
+    for tooltip in KNOB_INTERACTION.tooltip_tags:
+        if dpg.does_item_exist(tooltip):
+            dpg.configure_item(tooltip, show=visible)
+
+
+def _show_box_selector(visible: bool) -> None:
+    """Draw the selection marquee only for the gesture that selects."""
+    if not dpg.does_item_exist(BOX_SELECTOR_FILL):
+        return
+    dpg.set_value(
+        BOX_SELECTOR_FILL,
+        BOX_SELECTOR_FILL_COLOR if visible else BOX_SELECTOR_HIDDEN,
+    )
+    dpg.set_value(
+        BOX_SELECTOR_OUTLINE,
+        BOX_SELECTOR_OUTLINE_COLOR if visible else BOX_SELECTOR_HIDDEN,
+    )
+
+
 def _begin_canvas_pan(
     origin: tuple[float, float] | None = None,
 ) -> None:
@@ -2278,6 +2388,11 @@ def _begin_knob_drag(
         interaction = interaction_data
     if interaction.active_knob is not None:
         return
+    if CANVAS_INTERACTION.panning:
+        # Dear PyGui repeats the mouse-down callback for every frame the button
+        # is held. Beginning the pan again would move its origin to the current
+        # pointer each frame, leaving the drag with nothing to travel.
+        return
     # Any press on the rack catches a gliding canvas, the way a finger does.
     CANVAS_INTERACTION.stop_glide()
     mouse_position = tuple(dpg.get_mouse_pos(local=False))
@@ -2298,6 +2413,7 @@ def _begin_knob_drag(
             interaction.drag.maximum = maximum
             interaction.drag.begin(interaction.drag_position)
             interaction.last_mouse_y = float(dpg.get_mouse_pos(local=False)[1])
+            _show_knob_hints(False)
             if dpg.does_item_exist(CONTROL_STATUS):
                 value = _control_value(interaction.drag_position, binding)
                 dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
@@ -2308,6 +2424,11 @@ def _begin_knob_drag(
                 )
             return
     if _mouse_is_over_rack_background():
+        if dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift):
+            # Panning owns a plain background drag, so box selection keeps the
+            # modified one — and only then is the marquee worth drawing.
+            _show_box_selector(True)
+            return
         CANVAS_INTERACTION.arm_pan(mouse_position)
         _begin_canvas_pan(mouse_position)
 
@@ -2365,6 +2486,7 @@ def _end_knob_drag(
     _app_data: object,
     interaction: KnobInteraction,
 ) -> None:
+    _show_box_selector(False)
     if CANVAS_INTERACTION.panning:
         _clear_rack_selection()
         _release_pan_momentum()
@@ -2378,10 +2500,7 @@ def _end_knob_drag(
         return
     interaction.active_knob = None
     interaction.completed_drags += 1
-    if interaction.completed_drags == KNOB_HINT_DRAG_LIMIT:
-        for tooltip in interaction.tooltip_tags:
-            if dpg.does_item_exist(tooltip):
-                dpg.configure_item(tooltip, show=False)
+    _show_knob_hints(interaction.completed_drags < KNOB_HINT_DRAG_LIMIT)
     if dpg.does_item_exist(CONTROL_STATUS):
         dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
         dpg.set_value(CONTROL_STATUS, DEFAULT_CONTROL_STATUS)
@@ -2729,7 +2848,10 @@ def _add_knob(
     KNOB_INTERACTION.bindings[knob] = dpg.get_item_configuration(knob)["user_data"]
     with dpg.tooltip(knob) as tooltip:
         dpg.add_text("DRAG UP / DOWN", color=TEXT)
-        dpg.add_text("Hold Shift for fine control", color=MUTED_TEXT)
+        dpg.add_text(
+            "Slow for fine detail · Shift for finer · Double-click to reset",
+            color=MUTED_TEXT,
+        )
     KNOB_INTERACTION.tooltip_tags.append(tooltip)
     return knob
 
@@ -3994,12 +4116,19 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
         default_open=True,
     )
     if runtime.patch.output_taps:
+        taps_by_module: dict[str, list[OutputTap]] = {}
         for tap in runtime.patch.output_taps:
+            taps_by_module.setdefault(tap.source.module_id, []).append(tap)
+        for instance_id, taps in taps_by_module.items():
+            destinations = "  ·  ".join(
+                f"{tap.source.port_id}  →  {tap.channel.value}"
+                for tap in taps
+            )
             _add_rack_outline_signal_branch(
                 system_output,
                 runtime,
-                tap.source.module_id,
-                f"{tap.source.port_id}  →  {tap.channel.value}",
+                instance_id,
+                destinations,
                 reachable,
             )
     else:
@@ -4318,6 +4447,45 @@ def _build_module_selector(runtime: AppRuntime) -> None:
         )
 
 
+def build_runtime_from_preset(preset: PatchPreset) -> AppRuntime:
+    """Instantiate a validated patch document as a fresh executable graph."""
+    patch = PatchGraph()
+    provider = BuiltinProvider()
+    for saved_module in preset.modules:
+        if saved_module.provider != "builtin":
+            raise ValueError(
+                f"unsupported module provider: {saved_module.provider}"
+            )
+        module = provider.create(
+            saved_module.module_type,
+            saved_module.parameters,
+        )
+        patch.add_module(saved_module.instance_id, module)
+
+    for cable in preset.cables:
+        patch.connect(
+            cable.source.module_id,
+            cable.source.port_id,
+            cable.target.module_id,
+            cable.target.port_id,
+        )
+    for tap in preset.output_taps:
+        patch.connect_output(
+            tap.source.module_id,
+            tap.source.port_id,
+            gain=tap.gain,
+            channel=tap.channel,
+        )
+
+    return AppRuntime(
+        patch=patch,
+        audio=SystemAudioEngine(
+            patch,
+            master_gain=preset.system_output.master_gain,
+        ),
+    )
+
+
 def build_runtime(
     vco: ComplexVCO | None = None,
     mixer: PolarizingMixer | None = None,
@@ -4457,79 +4625,62 @@ def build_runtime(
     )
 
 
-def _build_empty_rack_ui(runtime: AppRuntime) -> AppRuntime:
-    """Build the quiet new-patch view around one permanent output module."""
+def _build_empty_rack_ui(
+    runtime: AppRuntime,
+    *,
+    patch_name: str = "Untitled Patch",
+) -> AppRuntime:
+    """Build the library rack around one permanent output module."""
+    module_count = len(runtime.patch.modules)
+    connection_count = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+    rack_summary = (
+        "EMPTY RACK  ·  ADD A MODULE TO BEGIN"
+        if module_count == 0
+        else f"{module_count} MODULES  ·  {connection_count} CABLES"
+    )
     with dpg.window(tag=PRIMARY_WINDOW, label="Noodler"):
         with dpg.group(horizontal=True):
-            dpg.add_text("UNTITLED PATCH", color=SCALE_ACCENT)
-            dpg.add_text("EMPTY RACK  ·  ADD A MODULE TO BEGIN", color=TEXT)
+            dpg.add_text(patch_name.upper(), color=SCALE_ACCENT)
+            dpg.add_text(rack_summary, color=TEXT)
             dpg.add_spacer(width=24)
             dpg.add_text("CV", color=SIGNAL_COLORS["cv"])
             dpg.add_text("AUDIO", color=SIGNAL_COLORS["audio"])
-            dpg.add_spacer(width=16)
-            dpg.add_button(
-                label="−",
-                tag=ZOOM_OUT_BUTTON,
-                callback=_zoom_rack_button,
-                user_data=-1,
-            )
-            dpg.add_button(
-                label="100%",
-                tag=ZOOM_RESET_BUTTON,
-                callback=_reset_rack_zoom,
-            )
-            dpg.add_button(
-                label="+",
-                tag=ZOOM_IN_BUTTON,
-                callback=_zoom_rack_button,
-                user_data=1,
-            )
-            dpg.add_button(
-                label="UNPLUG ALL",
-                tag=UNPLUG_ALL_BUTTON,
-                callback=_unplug_all,
-                user_data=runtime,
-            )
-            with dpg.tooltip(UNPLUG_ALL_BUTTON):
-                dpg.add_text("Disconnect every cable from the live patch.")
-            dpg.add_button(
-                label="+  ADD MODULE",
-                tag=ADD_MODULE_BUTTON,
-                callback=_show_module_selector,
-            )
-            with dpg.tooltip(ADD_MODULE_BUTTON):
-                dpg.add_text("Browse all built-in instruments and utilities.")
-            dpg.add_button(
-                label="SAVE PATCH",
-                tag=SAVE_PATCH_BUTTON,
-                callback=_show_save_patch_dialog,
-            )
-            with dpg.tooltip(SAVE_PATCH_BUTTON):
-                dpg.add_text("Save modules, cables, controls, and rack view.")
+            _add_rack_controls(runtime)
         with dpg.group(horizontal=True):
             dpg.add_text("AUDIO RAIL", color=SIGNAL_COLORS["audio"])
             dpg.add_text("BUILD LEFT TO RIGHT  →  SYSTEM OUT", color=TEXT)
+        dpg.add_separator()
+        with dpg.child_window(
+            tag=RACK_WORKSPACE,
+            height=-38,
+            border=False,
+        ):
+            with dpg.group(horizontal=True):
+                _build_module_library(runtime)
+                with dpg.node_editor(
+                    tag=RACK,
+                    callback=_patch_link_created,
+                    delink_callback=_patch_link_deleted,
+                    user_data=runtime,
+                    width=-1,
+                    height=-1,
+                    minimap=True,
+                    minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
+                ):
+                    _build_output_node(runtime.audio)
+                    _add_module_spines(runtime)
+        dpg.add_separator()
         dpg.add_text(
-            "ADD A MODULE TO BEGIN  ·  DRAG BACKGROUND = PAN  ·  "
-            "PINCH / SCROLL = ZOOM",
+            (
+                "ADD A MODULE TO BEGIN  ·  DRAG BACKGROUND = PAN  ·  "
+                "PINCH / SCROLL = ZOOM"
+                if module_count == 0
+                else f"LOADED  {patch_name.upper()}  ·  DRAG BACKGROUND = PAN  ·  "
+                "PINCH / SCROLL = ZOOM"
+            ),
             tag=CONTROL_STATUS,
             color=MUTED_TEXT,
         )
-        dpg.add_separator()
-        with dpg.group(horizontal=True):
-            _build_module_library(runtime)
-            with dpg.node_editor(
-                tag=RACK,
-                callback=_patch_link_created,
-                delink_callback=_patch_link_deleted,
-                user_data=runtime,
-                width=-1,
-                height=-1,
-                minimap=True,
-                minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
-            ):
-                _build_output_node(runtime.audio)
-                _add_module_spines(runtime)
         dpg.bind_item_theme(OUTPUT_NODE, OUTPUT_THEME)
         dpg.set_item_pos(OUTPUT_NODE, [900, 250])
         CANVAS_INTERACTION.rail_y.update(
@@ -4545,7 +4696,7 @@ def _build_empty_rack_ui(runtime: AppRuntime) -> AppRuntime:
         modal=True,
         width=720,
         height=460,
-        default_filename="Untitled Patch.noodler",
+        default_filename=f"{Path(patch_name).name}.noodler",
         callback=_save_patch_dialog,
         user_data=runtime,
     ):
@@ -4553,6 +4704,90 @@ def _build_empty_rack_ui(runtime: AppRuntime) -> AppRuntime:
         dpg.add_file_extension(".*")
     _configure_knob_handlers(runtime)
     return runtime
+
+
+def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
+    """Build panels, cables, and camera state for an instantiated document."""
+    saved_nodes = {node.node_id: node for node in preset.view.nodes}
+    CANVAS_INTERACTION.rail_y.update(preset.view.rails)
+
+    for saved_module in preset.modules:
+        module = runtime.patch.modules[saved_module.instance_id]
+        manifest = module.manifest
+        node, rail, theme = _register_dynamic_node(
+            saved_module.instance_id,
+            saved_module.module_type,
+            manifest.category,
+        )
+        _build_generic_module_node(
+            saved_module.instance_id,
+            module,
+            runtime.patch,
+        )
+        dpg.bind_item_theme(node, theme)
+        _add_spine_texture(node, manifest.name.upper())
+        _add_module_spine(node)
+        saved_node = saved_nodes.get(saved_module.instance_id)
+        if saved_node is None:
+            _place_dynamic_node(node, rail)
+        else:
+            dpg.set_item_pos(
+                node,
+                [saved_node.position.x, saved_node.position.y],
+            )
+
+    output_view = saved_nodes.get("system_output")
+    if output_view is not None:
+        dpg.set_item_pos(
+            OUTPUT_NODE,
+            [output_view.position.x, output_view.position.y],
+        )
+
+    zoom = min(
+        MAX_RACK_ZOOM,
+        max(MIN_RACK_ZOOM, float(preset.view.zoom)),
+    )
+    CANVAS_INTERACTION.zoom = zoom
+    CANVAS_INTERACTION.zoom_target = zoom
+    CANVAS_INTERACTION.zoom_spring.snap(zoom)
+    for node in RACK_NODES:
+        _bind_rack_node_font(node, zoom)
+    for knob, binding in KNOB_INTERACTION.bindings.items():
+        if dpg.does_item_exist(knob):
+            dpg.configure_item(
+                knob,
+                width=max(30, round(binding.size * zoom)),
+            )
+    dpg.configure_item(ZOOM_RESET_BUTTON, label=f"{zoom:.0%}")
+
+    for cable in runtime.patch.cables:
+        source = _endpoint_attribute(cable.source)
+        target = _endpoint_attribute(cable.target)
+        if source is not None and target is not None:
+            _add_visual_link(
+                source,
+                target,
+                cable,
+                _endpoint_signal(runtime.patch, cable.source),
+            )
+    for tap in runtime.patch.output_taps:
+        source = _endpoint_attribute(tap.source)
+        if source is not None:
+            _add_visual_link(
+                source,
+                _output_channel_attribute(tap.channel),
+                tap,
+                _endpoint_signal(runtime.patch, tap.source),
+            )
+
+    for node_id, saved_node in saved_nodes.items():
+        node = VIEW_NODE_TAGS.get(node_id)
+        if node is not None and saved_node.collapsed:
+            _set_module_collapsed(node, True, runtime)
+
+    _refresh_patch_bays(runtime.patch)
+    _refresh_rack_outline(runtime)
+    _set_patch_status(f"LOADED PATCH  ·  {preset.name.upper()}")
 
 
 def build_ui(
@@ -4566,9 +4801,12 @@ def build_ui(
     *,
     mixer_channels: int = 4,
     starter_patch: bool = False,
+    preset: PatchPreset | None = None,
 ) -> AppRuntime:
     """Build the initial rack and return its live application runtime."""
-    _reset_rack_registry(starter_patch=starter_patch)
+    if starter_patch and preset is not None:
+        raise ValueError("choose either a starter patch or a patch document")
+    _reset_rack_registry(starter_patch=starter_patch and preset is None)
     KNOB_INTERACTION.reset()
     CANVAS_INTERACTION.reset()
     MODULE_COLLAPSE.reset()
@@ -4579,18 +4817,26 @@ def build_ui(
     RACK_HISTORY.clear()
     _configure_font()
     _configure_theme()
-    runtime = build_runtime(
-        vco,
-        mixer,
-        utility,
-        wogglebug,
-        scale_generator,
-        low_pass_gate,
-        reverb,
-        mixer_channels=mixer_channels,
-        starter_patch=starter_patch,
+    runtime = (
+        build_runtime_from_preset(preset)
+        if preset is not None
+        else build_runtime(
+            vco,
+            mixer,
+            utility,
+            wogglebug,
+            scale_generator,
+            low_pass_gate,
+            reverb,
+            mixer_channels=mixer_channels,
+            starter_patch=starter_patch,
+        )
     )
     _configure_spine_textures(runtime)
+    if preset is not None:
+        _build_empty_rack_ui(runtime, patch_name=preset.name)
+        _mount_preset_ui(runtime, preset)
+        return runtime
     if not starter_patch:
         return _build_empty_rack_ui(runtime)
     with dpg.window(tag=PRIMARY_WINDOW, label="Noodler"):
@@ -4604,63 +4850,25 @@ def build_ui(
             dpg.add_text("WOGGLEBUG READY", color=WOGGLE_ACCENT)
             dpg.add_text("CV", color=SIGNAL_COLORS["cv"])
             dpg.add_text("AUDIO", color=SIGNAL_COLORS["audio"])
-            dpg.add_spacer(width=16)
-            dpg.add_button(
-                label="−",
-                tag=ZOOM_OUT_BUTTON,
-                callback=_zoom_rack_button,
-                user_data=-1,
-            )
-            dpg.add_button(
-                label="100%",
-                tag=ZOOM_RESET_BUTTON,
-                callback=_reset_rack_zoom,
-            )
-            dpg.add_button(
-                label="+",
-                tag=ZOOM_IN_BUTTON,
-                callback=_zoom_rack_button,
-                user_data=1,
-            )
-            dpg.add_button(
-                label="UNPLUG ALL",
-                tag=UNPLUG_ALL_BUTTON,
-                callback=_unplug_all,
-                user_data=runtime,
-            )
-            with dpg.tooltip(UNPLUG_ALL_BUTTON):
-                dpg.add_text("Disconnect every cable from the live patch.")
-            dpg.add_button(
-                label="ADD MODULE",
-                tag=ADD_MODULE_BUTTON,
-                callback=_show_module_selector,
-            )
-            with dpg.tooltip(ADD_MODULE_BUTTON):
-                dpg.add_text("Browse all built-in instruments and utilities.")
-            dpg.add_button(
-                label="SAVE PATCH",
-                tag=SAVE_PATCH_BUTTON,
-                callback=_show_save_patch_dialog,
-            )
-            with dpg.tooltip(SAVE_PATCH_BUTTON):
-                dpg.add_text("Save modules, cables, controls, and rack view.")
+            _add_rack_controls(runtime)
         with dpg.group(horizontal=True):
             dpg.add_text("AUDIO RAIL", color=SIGNAL_COLORS["audio"])
             dpg.add_text(
                 "COMPLEX VCO  →  POLARIZING MIX  →  BLOOM  →  SPACE  →  OUT",
                 color=TEXT,
             )
-        dpg.add_text(
-            DEFAULT_CONTROL_STATUS,
-            tag=CONTROL_STATUS,
-            color=MUTED_TEXT,
-        )
         dpg.add_separator()
-        with dpg.node_editor(
+        with dpg.child_window(
+            tag=RACK_WORKSPACE,
+            height=-38,
+            border=False,
+        ), dpg.node_editor(
             tag=RACK,
             callback=_patch_link_created,
             delink_callback=_patch_link_deleted,
             user_data=runtime,
+            width=-1,
+            height=-1,
             minimap=True,
             minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
         ):
@@ -4849,6 +5057,12 @@ def build_ui(
                 tag=REVERB_RIGHT_OUTPUT_LINK,
             )
             _refresh_patch_bays(runtime.patch)
+        dpg.add_separator()
+        dpg.add_text(
+            DEFAULT_CONTROL_STATUS,
+            tag=CONTROL_STATUS,
+            color=MUTED_TEXT,
+        )
         dpg.bind_item_theme(FUNCTION_NODE, UTILITY_THEME)
         dpg.bind_item_theme(VCO_NODE, VCO_THEME)
         dpg.bind_item_theme(MIXER_NODE, MIXER_THEME)
@@ -4889,20 +5103,46 @@ def build_ui(
     return runtime
 
 
-def main() -> None:
-    """Run the Noodler desktop application."""
+def _parse_cli_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="noodler",
+        description="Open the Noodler rack or a .noodler patch document.",
+    )
+    parser.add_argument(
+        "patch",
+        nargs="?",
+        type=Path,
+        help="patch document to open",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run the Noodler desktop application, optionally opening a patch."""
+    args = _parse_cli_args(argv)
+    preset: PatchPreset | None = None
+    if args.patch is not None:
+        try:
+            preset = read_patch_preset(args.patch)
+        except (OSError, ValueError) as exc:
+            raise SystemExit(f"noodler: could not open {args.patch}: {exc}") from exc
+
     runtime: AppRuntime | None = None
     gesture_monitor = MacMagnifyMonitor(_capture_macos_magnification)
     dpg.create_context()
     try:
         dpg.create_viewport(
-            title="Noodler",
+            title=(
+                f"Noodler — {preset.name}"
+                if preset is not None
+                else "Noodler"
+            ),
             width=1280,
             height=800,
             min_width=900,
             min_height=600,
         )
-        runtime = build_ui()
+        runtime = build_ui(preset=preset)
         dpg.setup_dearpygui()
         dpg.set_primary_window(PRIMARY_WINDOW, True)
         dpg.show_viewport()

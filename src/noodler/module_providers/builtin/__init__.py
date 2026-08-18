@@ -2,6 +2,8 @@
 
 from types import MappingProxyType
 
+from pydantic import BaseModel
+
 from noodler.module_providers import ProviderManifest
 
 from .brains import (
@@ -158,7 +160,14 @@ class BuiltinProvider:
             module_type = BUILTIN_MODULE_TYPES[module_id]
         except KeyError as exc:
             raise KeyError(f"unknown built-in module: {module_id}") from exc
-        return module_type() if parameters is None else module_type(parameters)
+        module = module_type()
+        if parameters is None:
+            return module
+        defaults = getattr(module, "parameters", None)
+        if not isinstance(defaults, BaseModel):
+            raise TypeError(f"{module_id} has no validated parameter model")
+        validated = type(defaults).model_validate(parameters)
+        return module_type(validated)
 
 
 __all__ = [

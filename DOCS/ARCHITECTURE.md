@@ -85,10 +85,15 @@ other rack module; repeated selections create numbered instances instead of
 replacing an existing voice.
 
 Dragging empty rack background treats every module as one rack view,
-preserving the lane hierarchy while moving around the canvas. The gesture is
-recovered from its press origin if the underlying node editor first claims it
-for box selection, and the native selection marquee is suppressed. Space-drag
-is also retained as a shortcut that can begin over a module. Background
+preserving the lane hierarchy while moving around the canvas. Dear PyGui repeats
+its mouse-down callback for every frame a button is held, so the pan is begun
+once and then left alone; beginning it again each frame moved its origin to the
+current pointer and left the drag with nothing to travel. The node editor's own
+box selection cannot be turned off, so a plain background drag pans with the
+marquee themed away, and Shift keeps box selection on the modified drag, where
+the marquee is worth drawing. Those colours belong to the editor rather than to
+a node, and had no effect until they were declared against `mvNodeEditor`.
+Space-drag is also retained as a shortcut that can begin over a module. Background
 detection uses the editor bounds and the known module rectangles; canvas pan
 never mutates native module draggability, so module and knob interactions stay
 distinct from empty-canvas drag. A small AppKit event monitor
