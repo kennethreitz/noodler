@@ -1,0 +1,554 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Hijaz Machine",
+  "modules": [
+    {
+      "instance_id": "key",
+      "module_type": "key",
+      "provider": "builtin",
+      "parameters": {
+        "system": "arabic",
+        "tonic": "Do",
+        "octave": 3,
+        "scale_name": "hijaz",
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "woggle",
+      "module_type": "wogglebug",
+      "provider": "builtin",
+      "parameters": {
+        "clock_rate_hz": 2.4,
+        "chaos": 0.62,
+        "ego_id_balance": 0.7,
+        "woggle": 0.8,
+        "audio_level": 0.05,
+        "seed": 1729
+      }
+    },
+    {
+      "instance_id": "drift",
+      "module_type": "wogglebug",
+      "provider": "builtin",
+      "parameters": {
+        "clock_rate_hz": 0.31,
+        "chaos": 0.35,
+        "ego_id_balance": 0.35,
+        "woggle": 0.55,
+        "audio_level": 0.0,
+        "seed": 90210
+      }
+    },
+    {
+      "instance_id": "shape",
+      "module_type": "function_utility",
+      "provider": "builtin",
+      "parameters": {
+        "channel_1": {
+          "rise_seconds": 23.0,
+          "fall_seconds": 31.0,
+          "curve": 0.3,
+          "cycle": true,
+          "attenuverter": 0.55
+        },
+        "channel_2_attenuverter": 0.0,
+        "channel_3_attenuverter": 0.0,
+        "channel_4": {
+          "rise_seconds": 61.0,
+          "fall_seconds": 47.0,
+          "curve": -0.25,
+          "cycle": true,
+          "attenuverter": 0.4
+        }
+      }
+    },
+    {
+      "instance_id": "lead_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "pad_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 110.0,
+        "transpose_octaves": -1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "lead",
+      "module_type": "complex_vco",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 220.0,
+        "fine_tune_cents": 0.0,
+        "amplitude": 0.2,
+        "frequency_cv_1_amount": 0.0,
+        "frequency_cv_2_amount": 0.02,
+        "linear_fm_amount": 0.0,
+        "pulse_width": 0.5,
+        "morph": 0.25,
+        "wave_b": "saw"
+      }
+    },
+    {
+      "instance_id": "bloom",
+      "module_type": "low_pass_gate",
+      "provider": "builtin",
+      "parameters": {
+        "decay_seconds": 1.6,
+        "brightness": 0.78,
+        "character": 0.62,
+        "level": 0.9
+      }
+    },
+    {
+      "instance_id": "pad",
+      "module_type": "complex_vco",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 110.0,
+        "fine_tune_cents": 0.0,
+        "amplitude": 0.16,
+        "frequency_cv_1_amount": 0.0,
+        "frequency_cv_2_amount": 0.0,
+        "linear_fm_amount": 0.0,
+        "pulse_width": 0.5,
+        "morph": 0.6,
+        "wave_b": "pulse"
+      }
+    },
+    {
+      "instance_id": "haze",
+      "module_type": "state_variable_filter",
+      "provider": "builtin",
+      "parameters": {
+        "cutoff_hz": 520.0,
+        "resonance": 0.42,
+        "drive": 1.4,
+        "output_level": 1.0
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.54,
+        "feedback": 0.44,
+        "mix": 0.34,
+        "damping": 0.6,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "reverb",
+      "provider": "builtin",
+      "parameters": {
+        "mix": 0.5,
+        "decay_seconds": 9.5,
+        "damping": 0.6,
+        "diffusion": 0.9,
+        "pre_delay_ms": 55.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "out",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.8,
+          0.8,
+          0.4,
+          0.1,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.75,
+          0.75,
+          0.2,
+          -0.35,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "master": 0.42
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "lead_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "pad_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "woggle",
+        "port_id": "stepped"
+      },
+      "target": {
+        "module_id": "lead_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shape",
+        "port_id": "channel_4"
+      },
+      "target": {
+        "module_id": "pad_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "drift",
+        "port_id": "smooth"
+      },
+      "target": {
+        "module_id": "lead_pitch",
+        "port_id": "transpose"
+      }
+    },
+    {
+      "source": {
+        "module_id": "lead_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "lead",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "pad_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "pad",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "lead",
+        "port_id": "morph"
+      },
+      "target": {
+        "module_id": "bloom",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "lead_pitch",
+        "port_id": "trigger"
+      },
+      "target": {
+        "module_id": "bloom",
+        "port_id": "strike"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shape",
+        "port_id": "channel_1"
+      },
+      "target": {
+        "module_id": "bloom",
+        "port_id": "decay_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "pad",
+        "port_id": "morph"
+      },
+      "target": {
+        "module_id": "haze",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shape",
+        "port_id": "channel_1"
+      },
+      "target": {
+        "module_id": "haze",
+        "port_id": "cutoff_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "drift",
+        "port_id": "smooth"
+      },
+      "target": {
+        "module_id": "haze",
+        "port_id": "resonance_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bloom",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "woggle",
+        "port_id": "burst"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "freeze"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shape",
+        "port_id": "channel_4"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "decay_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "left"
+      },
+      "target": {
+        "module_id": "out",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "right"
+      },
+      "target": {
+        "module_id": "out",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "haze",
+        "port_id": "low"
+      },
+      "target": {
+        "module_id": "out",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "woggle",
+        "port_id": "ring_mod"
+      },
+      "target": {
+        "module_id": "out",
+        "port_id": "channel_4"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "out",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "out",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.7
+  },
+  "view": {
+    "zoom": 0.8,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "key",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "woggle",
+        "position": {
+          "x": 40.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "drift",
+        "position": {
+          "x": 40.0,
+          "y": 620.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "shape",
+        "position": {
+          "x": 40.0,
+          "y": 900.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "lead_pitch",
+        "position": {
+          "x": 400.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "pad_pitch",
+        "position": {
+          "x": 400.0,
+          "y": 360.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "lead",
+        "position": {
+          "x": 760.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "pad",
+        "position": {
+          "x": 760.0,
+          "y": 400.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bloom",
+        "position": {
+          "x": 1120.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "haze",
+        "position": {
+          "x": 1120.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1460.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1460.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "out",
+        "position": {
+          "x": 1820.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "system_output",
+        "position": {
+          "x": 1820.0,
+          "y": 520.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}
