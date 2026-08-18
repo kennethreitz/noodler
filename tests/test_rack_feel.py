@@ -22,6 +22,7 @@ from noodler.app import (
     RACK_OUTLINE_BODY,
     RACK_RAILS,
     RACK,
+    REVEAL_PATIENCE,
     RAIL_SPRINGS,
     SAVE_PATCH_DIALOG,
     VCO_NODE,
@@ -44,6 +45,7 @@ from noodler.app import (
     _refresh_ui,
     _release_pan_momentum,
     _remove_module_node,
+    _reveal_rack_once,
     _reveal_node,
     _settle_rack_rails,
     _tidy_rack,
@@ -909,5 +911,66 @@ def test_a_module_drag_cannot_turn_into_a_pan_partway(monkeypatch) -> None:
         _begin_knob_drag("test", None, (KNOB_INTERACTION, None))
         _drag_knob("test", None, KNOB_INTERACTION)
         assert CANVAS_INTERACTION.panning is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_rack_is_centred_only_once_it_can_be_measured(monkeypatch) -> None:
+    """A panel has no size until it has been drawn once.
+
+    Centring before then centres a one-by-one point rather than a rack, which
+    lands the panel wherever its own corner falls — off the edge, as often as
+    not.
+    """
+    dpg.create_context()
+    try:
+        build_ui()
+        placed = tuple(dpg.get_item_pos(OUTPUT_NODE))
+
+        # The editor is laid out; the panel has not been drawn yet.
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [950, 700] if item == RACK else [0, 0],
+        )
+        _reveal_rack_once()
+        assert CANVAS_INTERACTION.pending_reveal is True
+        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == placed, "moved too early"
+
+        # Now it has a real size.
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [950, 700] if item == RACK else [232, 300],
+        )
+        _reveal_rack_once()
+
+        x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
+        assert x + 116.0 == pytest.approx(475.0, abs=1.0)
+        assert y + 150.0 == pytest.approx(350.0, abs=1.0)
+        assert CANVAS_INTERACTION.pending_reveal is False
+
+        # And it never moves the rack again.
+        _reveal_rack_once()
+        assert float(dpg.get_item_pos(OUTPUT_NODE)[0]) == pytest.approx(x)
+    finally:
+        dpg.destroy_context()
+
+
+def test_centring_gives_up_waiting_rather_than_never_happening(monkeypatch) -> None:
+    """A panel that never reports a size must not strand the rack off-screen."""
+    dpg.create_context()
+    try:
+        build_ui()
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [950, 700] if item == RACK else [0, 0],
+        )
+
+        for _ in range(REVEAL_PATIENCE + 1):
+            _reveal_rack_once()
+
+        assert CANVAS_INTERACTION.pending_reveal is False
     finally:
         dpg.destroy_context()

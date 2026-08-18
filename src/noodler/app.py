@@ -387,6 +387,7 @@ class CanvasInteraction:
     drag_classified: bool = False
     drag_pans: bool = False
     pending_reveal: bool = True
+    reveal_attempts: int = 0
     """The rack has not been put in front of the user yet."""
     """A press already answered by a one-shot control, held until release."""
     recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
@@ -412,6 +413,7 @@ class CanvasInteraction:
         self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
         self.press_consumed = False
         self.pending_reveal = True
+        self.reveal_attempts = 0
         self.stop_glide()
 
     def stop_glide(self) -> None:
@@ -1851,14 +1853,37 @@ def _frame_rack(
     _set_patch_status("FRAMED THE RACK  ·  PRESS F ANY TIME")
 
 
+REVEAL_PATIENCE = 240
+"""Frames to wait for panels to be measured before centring anyway."""
+
+
+def _rack_content_is_measured() -> bool:
+    """Report whether every panel has been drawn at least once.
+
+    Dear PyGui gives an item a size only after it has been rendered, so on the
+    frames before that a panel measures zero by zero. Centring then centres a
+    point rather than a rack, which puts the panel wherever its own corner
+    happens to land — off the edge, as often as not.
+    """
+    measured = False
+    for node in RACK_NODES:
+        if not dpg.does_item_exist(node):
+            continue
+        width, height = dpg.get_item_rect_size(node)
+        if float(width) <= 1.0 or float(height) <= 1.0:
+            return False
+        measured = True
+    return measured
+
+
 def _reveal_rack_once() -> None:
-    """Centre the rack the first frame the window is big enough to know how.
+    """Centre the rack the first frame it can actually be measured.
 
     Start-up positions are chosen before anything is laid out, against a window
     whose size is not known yet, so a coordinate that fits one machine puts the
     system output past the edge of another. Rather than tune the number, wait
-    until the viewport is real and put the rack in the middle of it — once, so
-    it never fights the user afterwards.
+    for a real viewport and real panels, then put the rack in the middle of it —
+    once, so it never fights the user afterwards.
     """
     interaction = CANVAS_INTERACTION
     if not interaction.pending_reveal or not dpg.does_item_exist(RACK):
@@ -1868,6 +1893,12 @@ def _reveal_rack_once() -> None:
     )
     if view_width <= 1.0 or view_height <= 1.0:
         return
+
+    interaction.reveal_attempts += 1
+    patient = interaction.reveal_attempts < REVEAL_PATIENCE
+    if patient and not _rack_content_is_measured():
+        return
+
     bounds = _rack_content_bounds()
     interaction.pending_reveal = False
     if bounds is None:
