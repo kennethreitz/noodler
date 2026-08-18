@@ -128,6 +128,7 @@ MODULE_SELECTOR_SEARCH = "noodler.module_selector.search"
 MODULE_SELECTOR_STATUS = "noodler.module_selector.status"
 RACK_OUTLINE_BODY = "noodler.rack_outline.body"
 RACK_OUTLINE_STATUS = "noodler.rack_outline.status"
+RACK_SUMMARY = "noodler.rack_summary"
 MODULE_LIBRARY_HEADER = "noodler.module_library.header"
 LIBRARY_PANE_BUTTON = "noodler.library_pane"
 MODULE_LIBRARY_SECTIONS = (
@@ -235,6 +236,25 @@ DEFAULT_CONTROL_STATUS = (
 
 
 
+
+KNOB_COLUMN_CHARS = 12
+"""Width of one control column, in characters of the rack's monospace font.
+
+Panels are laid out in a monospace face, so a fixed character count is a fixed
+pixel width: padding a label and its readout to the same count is what makes
+columns line up under one another instead of running together.
+"""
+
+UNIT_SUFFIXES = (
+    ("_hz", " Hz"),
+    ("_seconds", " s"),
+    ("_ms", " ms"),
+    ("_cents", " ct"),
+    ("_db", " dB"),
+)
+"""Field-name endings that name a unit, which belongs on the value."""
+
+LABEL_ABBREVIATIONS = {"frequency": "freq", "modulation": "mod"}
 
 KNOB_HINT_DRAG_LIMIT = 3
 MIN_RACK_ZOOM = 0.55
@@ -1898,15 +1918,50 @@ def _tidy_rack(
     _set_patch_status("TIDIED  ·  RAILS NOW FOLLOW THE SIGNAL")
 
 
+def _reflow_rail_lanes() -> None:
+    """Keep the audio lane clear of whatever height the control lane needs.
+
+    The lanes sat at fixed heights chosen when panels were short, so a tall
+    control module simply grew down through the audio path. Overlapping panels
+    are not only hard to read: they make every drag ambiguous, because two
+    modules claim the same pointer.
+    """
+    rail_y = CANVAS_INTERACTION.rail_y
+    if CONTROL_RAIL not in rail_y or AUDIO_RAIL not in rail_y:
+        return
+    tallest = 0.0
+    for node in RACK_RAILS[CONTROL_RAIL]:
+        if dpg.does_item_exist(node):
+            tallest = max(tallest, float(dpg.get_item_rect_size(node)[1]))
+    if tallest <= 1.0:
+        return
+    rail_y[AUDIO_RAIL] = (
+        rail_y[CONTROL_RAIL]
+        + tallest
+        + RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
+    )
+
+
 def _dragged_rack_node() -> int | str | None:
-    """Return the node currently under a native node-drag gesture."""
+    """Return the module the pointer is actually dragging.
+
+    Asking which rectangle contains the pointer answers the wrong question once
+    panels overlap: the first module in list order wins every drag, and every
+    other module is sprung back as though it had never been touched — which is
+    exactly what an immovable panel feels like. Dear PyGui already knows which
+    item is under interaction, so ask it, and only fall back to geometry, front
+    to back, when nothing claims the gesture.
+    """
     if CANVAS_INTERACTION.panning or not dpg.is_mouse_button_dragging(
         dpg.mvMouseButton_Left,
         threshold=1.0,
     ):
         return None
-    mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
     for node in RACK_NODES:
+        if dpg.does_item_exist(node) and dpg.is_item_active(node):
+            return node
+    mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
+    for node in reversed(RACK_NODES):
         if not dpg.does_item_exist(node):
             continue
         minimum_x, minimum_y = dpg.get_item_rect_min(node)
@@ -1924,6 +1979,7 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
         or not CANVAS_INTERACTION.rail_y
     ):
         return
+    _reflow_rail_lanes()
     active_node = _dragged_rack_node()
     gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
     for rail, nodes in RACK_RAILS.items():
@@ -3132,8 +3188,10 @@ def _add_knob(
     size = max(42, round(size * MODULE_KNOB_SCALE))
     position = _control_position(value, minimum, maximum, logarithmic)
     knob_minimum, knob_maximum = ((0.0, 1.0) if logarithmic else (minimum, maximum))
+    plain_formatter = formatter
+    formatter = lambda shown, inner=plain_formatter: _fit_column(inner(shown))
     with dpg.group():
-        dpg.add_text(label.upper(), color=MUTED_TEXT)
+        dpg.add_text(_fit_column(label.upper()), color=MUTED_TEXT)
         knob = dpg.add_knob_float(
             label="",
             tag=tag,
@@ -3235,6 +3293,35 @@ def _set_dynamic_parameter(
         module.parameters = type(parameters).model_validate(values)
 
 
+def _fit_column(text: str, width: int = KNOB_COLUMN_CHARS) -> str:
+    """Pad or trim one cell so control columns align down the panel."""
+    if len(text) > width:
+        return text[: max(1, width - 1)] + "…"
+    return text.ljust(width)
+
+
+def _control_label_and_unit(field_name: str) -> tuple[str, str]:
+    """Turn a parameter name into a short label and the unit it implies.
+
+    A generated panel took its labels straight from the field names, so a row
+    of three knobs read "FREQUENCY FINE TUNE CENTS AMPLITUDE" — three labels
+    with nothing between them and their values somewhere underneath. Units move
+    to the readout, where the number they describe actually is.
+    """
+    name = field_name
+    unit = ""
+    for suffix, symbol in UNIT_SUFFIXES:
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            unit = symbol
+            break
+    name = name.removesuffix("_amount")
+    words = [
+        LABEL_ABBREVIATIONS.get(word, word) for word in name.split("_") if word
+    ]
+    return " ".join(words).title(), unit
+
+
 def _format_dynamic_value(value: float) -> str:
     magnitude = abs(value)
     if magnitude >= 1_000.0:
@@ -3250,6 +3337,7 @@ def _add_dynamic_float_control(
     value: float,
     field_path: tuple[str | int, ...],
     label: str,
+    unit: str = "",
 ) -> None:
     minimum, maximum = _dynamic_parameter_bounds(field_info, value)
     logarithmic = minimum > 0.0 and maximum / minimum >= 100.0
@@ -3258,7 +3346,7 @@ def _add_dynamic_float_control(
         label,
         minimum,
         maximum,
-        _format_dynamic_value,
+        lambda shown, suffix=unit: _format_dynamic_value(shown) + suffix,
         lambda changed, target=module, target_path=field_path: (
             _set_dynamic_parameter(target, target_path, changed)
         ),
@@ -3273,29 +3361,30 @@ def _add_dynamic_parameter_controls(
     path: tuple[str | int, ...] = (),
 ) -> None:
     pending_floats: list[
-        tuple[object, float, tuple[str | int, ...], str]
+        tuple[object, float, tuple[str | int, ...], str, str]
     ] = []
 
     def flush_float_row() -> None:
         if not pending_floats:
             return
         with dpg.group(horizontal=True):
-            for field_info, value, field_path, label in pending_floats:
+            for field_info, value, field_path, label, unit in pending_floats:
                 _add_dynamic_float_control(
                     module,
                     field_info,
                     value,
                     field_path,
                     label,
+                    unit,
                 )
         pending_floats.clear()
 
     for field_name, field_info in type(parameters).model_fields.items():
         value = getattr(parameters, field_name)
         field_path = (*path, field_name)
-        label = field_name.replace("_", " ").title()
+        label, unit = _control_label_and_unit(field_name)
         if isinstance(value, float):
-            pending_floats.append((field_info, value, field_path, label))
+            pending_floats.append((field_info, value, field_path, label, unit))
             if len(pending_floats) == 3:
                 flush_float_row()
             continue
@@ -4412,8 +4501,23 @@ def _rack_outline_unpatched_modules(
     return grouped
 
 
+def _rack_summary_text(runtime: AppRuntime) -> str:
+    """Describe the rack in the words the header should be using right now."""
+    modules = len(runtime.patch.modules)
+    connections = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+    if not modules:
+        return "EMPTY RACK  ·  ADD A MODULE TO BEGIN"
+    panels = "1 MODULE" if modules == 1 else f"{modules} MODULES"
+    cables = "1 CABLE" if connections == 1 else f"{connections} CABLES"
+    return f"{panels}  ·  {cables}"
+
+
 def _refresh_rack_outline(runtime: AppRuntime) -> None:
     """Rebuild the left outline from the real graph after a topology edit."""
+    if dpg.does_item_exist(RACK_SUMMARY):
+        # The header described the rack it was built with, not the one in front
+        # of the user: it still read "empty" over three mounted modules.
+        dpg.set_value(RACK_SUMMARY, _rack_summary_text(runtime))
     if not dpg.does_item_exist(RACK_OUTLINE_BODY):
         return
     dpg.delete_item(RACK_OUTLINE_BODY, children_only=True)
@@ -4963,7 +5067,7 @@ def _build_empty_rack_ui(
         _add_rack_menu(runtime)
         with dpg.group(horizontal=True):
             dpg.add_text(patch_name.upper(), color=SCALE_ACCENT)
-            dpg.add_text(rack_summary, color=TEXT)
+            dpg.add_text(rack_summary, tag=RACK_SUMMARY, color=TEXT)
             dpg.add_spacer(width=24)
             dpg.add_text("CV", color=SIGNAL_COLORS["cv"])
             dpg.add_text("AUDIO", color=SIGNAL_COLORS["audio"])
