@@ -49,8 +49,17 @@ so anything with a clock input can be patched to the tempo in the menu bar.
 so what a bar contains is decided rather than drawn. **PyTheory Raga** improvises in
 any of the library's fifty-four ragas the way a raga is played — up by the
 aroha, down by the avaroha, sometimes the pakad — in just intonation from the
-raga's own ratios; a **Tone Row** steps through a twelve-tone row in any of
-its forms; **PyTheory FX** streams the library's chorus, phaser, tremolo,
+raga's own ratios; **PyTheory Maqam** walks any of its ten maqamat the way a
+maqam is played, quarter-tones and all, justly tuned from a tonic; a **Tone
+Row** steps through a twelve-tone row in any of its forms; **PyTheory
+Progression** plays any of the library's thirty-odd chord progressions — or
+numerals you write — in any key and mode, a chord every so many bars on the
+clock, voiced close, open, drop-two or inverted, as four pitches with a root,
+a gate and a trigger, or wanders, each chord one PyTheory suggests after the
+last; the **PyTheory Chord Ear** names the chord the pitches patched into it
+make and puts out its root and its dissonance; **PyTheory Negative Harmony**
+mirrors a line about a key's axis, so major turns minor and a rising line
+falls, still in the key. **PyTheory FX** streams the library's chorus, phaser, tremolo,
 overdrive, tape saturation and cabinet. **PyTheory Reverb** puts a
 signal in any of the library's rooms — Schroeder's
 algorithm, or an impulse response it synthesises for a hall, a plate, a
@@ -219,12 +228,12 @@ documents.
 
 ## Modules
 
-The built-in provider currently contains 31 modules, grouped around the way a
+The built-in provider currently contains 35 modules, grouped around the way a
 patch is made rather than around implementation details.
 
 | Shelf | Modules |
 | --- | --- |
-| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, PyTheory Score, PyTheory Raga, Tone Row, Scale Generator, Function Utility, Wogglebug |
+| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, PyTheory Score, PyTheory Raga, PyTheory Maqam, PyTheory Progression, PyTheory Chord Ear, PyTheory Negative Harmony, Tone Row, Scale Generator, Function Utility, Wogglebug |
 | Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
 | Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb, PyTheory Reverb, PyTheory FX |

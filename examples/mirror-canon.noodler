@@ -1,0 +1,1039 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Mirror Canon",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 2.0,
+        "beats_per_bar": 4,
+        "trigger_ms": 6.0
+      }
+    },
+    {
+      "instance_id": "changes",
+      "module_type": "pytheory_progression",
+      "provider": "builtin",
+      "parameters": {
+        "progression": "Pachelbel",
+        "custom": "I V vi IV",
+        "tonic": "D",
+        "mode": "major",
+        "voicing": "open",
+        "octave": 4,
+        "style": "loop",
+        "bars_per_chord": 1,
+        "follow_clock": true,
+        "rate_hz": 0.5,
+        "gate_length": 0.95,
+        "reference_frequency_hz": 220.0,
+        "seed": 3
+      }
+    },
+    {
+      "instance_id": "mirror_1",
+      "module_type": "pytheory_negative_harmony",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "D",
+        "mode": "major",
+        "mirror": true,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "mirror_2",
+      "module_type": "pytheory_negative_harmony",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "D",
+        "mode": "major",
+        "mirror": true,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "mirror_3",
+      "module_type": "pytheory_negative_harmony",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "D",
+        "mode": "major",
+        "mirror": true,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "mirror_4",
+      "module_type": "pytheory_negative_harmony",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "D",
+        "mode": "major",
+        "mirror": true,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "ear",
+      "module_type": "pytheory_chord_ear",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "hold": true
+      }
+    },
+    {
+      "instance_id": "hijaz",
+      "module_type": "pytheory_maqam",
+      "provider": "builtin",
+      "parameters": {
+        "maqam": "Hijaz",
+        "tonic": "D3",
+        "style": "walk",
+        "span_octaves": 2,
+        "rest_chance": 0.25,
+        "density": 0.7,
+        "gate_length": 0.55,
+        "rate_hz": 2.0,
+        "reference_frequency_hz": 220.0,
+        "seed": 5
+      }
+    },
+    {
+      "instance_id": "piano",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.34,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "piano_2",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.28,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "piano_3",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.28,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "piano_4",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.28,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "shadow_1",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "piano",
+        "level": 0.2,
+        "release_ms": 1200.0,
+        "reference_frequency_hz": 440.0
+      }
+    },
+    {
+      "instance_id": "shadow_2",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "piano",
+        "level": 0.2,
+        "release_ms": 1200.0,
+        "reference_frequency_hz": 440.0
+      }
+    },
+    {
+      "instance_id": "shadow_3",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "piano",
+        "level": 0.2,
+        "release_ms": 1200.0,
+        "reference_frequency_hz": 440.0
+      }
+    },
+    {
+      "instance_id": "shadow_4",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "piano",
+        "level": 0.2,
+        "release_ms": 1200.0,
+        "reference_frequency_hz": 440.0
+      }
+    },
+    {
+      "instance_id": "oud",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "oud",
+        "level": 0.4,
+        "release_ms": 500.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "bass",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "contrabass",
+        "level": 0.5,
+        "release_ms": 600.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "piano_sum",
+      "module_type": "polarizing_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "channels": 4,
+        "gains": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "instance_id": "shadow_sum",
+      "module_type": "polarizing_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "channels": 4,
+        "gains": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "instance_id": "room",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "hall",
+        "mix": 1.0,
+        "decay_seconds": 3.5,
+        "width": 0.9,
+        "pre_delay_ms": 0.0,
+        "level": 1.0
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.375,
+        "feedback": 0.3,
+        "mix": 1.0,
+        "damping": 0.55,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.65,
+          0.55,
+          0.65,
+          0.7,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.35,
+          0.4,
+          0.1,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.0,
+          0.0,
+          0.45,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.5,
+          0.7,
+          0.35,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.4,
+          0.55
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.5
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "eighth"
+      },
+      "target": {
+        "module_id": "hijaz",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "hijaz",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "piano",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "piano_2",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "piano_3",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "piano_4",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "piano",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "piano_2",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "piano_3",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "piano_4",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "mirror_1",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "mirror_2",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "mirror_3",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "mirror_4",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "mirror_1",
+        "port_id": "out"
+      },
+      "target": {
+        "module_id": "shadow_1",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "mirror_2",
+        "port_id": "out"
+      },
+      "target": {
+        "module_id": "shadow_2",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "mirror_3",
+        "port_id": "out"
+      },
+      "target": {
+        "module_id": "shadow_3",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "mirror_4",
+        "port_id": "out"
+      },
+      "target": {
+        "module_id": "shadow_4",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "shadow_1",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "shadow_2",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "shadow_3",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "shadow_4",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "ear",
+        "port_id": "pitch_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "ear",
+        "port_id": "pitch_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "ear",
+        "port_id": "pitch_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "mirror_1",
+        "port_id": "out"
+      },
+      "target": {
+        "module_id": "ear",
+        "port_id": "pitch_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "change"
+      },
+      "target": {
+        "module_id": "ear",
+        "port_id": "listen"
+      }
+    },
+    {
+      "source": {
+        "module_id": "hijaz",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "oud",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "hijaz",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "oud",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "changes",
+        "port_id": "root"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "beat"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "piano",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "piano_sum",
+        "port_id": "input_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "piano_2",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "piano_sum",
+        "port_id": "input_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "piano_3",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "piano_sum",
+        "port_id": "input_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "piano_4",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "piano_sum",
+        "port_id": "input_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shadow_1",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "shadow_sum",
+        "port_id": "input_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shadow_2",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "shadow_sum",
+        "port_id": "input_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shadow_3",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "shadow_sum",
+        "port_id": "input_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shadow_4",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "shadow_sum",
+        "port_id": "input_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "piano_sum",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "shadow_sum",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "oud",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "room",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "room",
+        "port_id": "wet_left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "room",
+        "port_id": "wet_right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.7
+  },
+  "transport": {
+    "bpm": 72.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.66,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "clock",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "changes",
+        "position": {
+          "x": 40.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "mirror_1",
+        "position": {
+          "x": 420.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "mirror_2",
+        "position": {
+          "x": 420.0,
+          "y": 520.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "mirror_3",
+        "position": {
+          "x": 420.0,
+          "y": 720.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "mirror_4",
+        "position": {
+          "x": 420.0,
+          "y": 920.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "ear",
+        "position": {
+          "x": 760.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "hijaz",
+        "position": {
+          "x": 40.0,
+          "y": 900.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "piano",
+        "position": {
+          "x": 760.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "piano_2",
+        "position": {
+          "x": 760.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "piano_3",
+        "position": {
+          "x": 760.0,
+          "y": 800.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "piano_4",
+        "position": {
+          "x": 760.0,
+          "y": 1040.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "shadow_1",
+        "position": {
+          "x": 1120.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "shadow_2",
+        "position": {
+          "x": 1120.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "shadow_3",
+        "position": {
+          "x": 1120.0,
+          "y": 800.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "shadow_4",
+        "position": {
+          "x": 1120.0,
+          "y": 1040.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "oud",
+        "position": {
+          "x": 420.0,
+          "y": 1140.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bass",
+        "position": {
+          "x": 1480.0,
+          "y": 320.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "piano_sum",
+        "position": {
+          "x": 1120.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "shadow_sum",
+        "position": {
+          "x": 1480.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "room",
+        "position": {
+          "x": 1480.0,
+          "y": 620.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1480.0,
+          "y": 900.0
+        },
+        "collapsed": false
+      }
+    ],
+    "groups": []
+  }
+}

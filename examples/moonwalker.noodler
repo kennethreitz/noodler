@@ -1,0 +1,316 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "moonwalker",
+  "modules": [
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.0,
+          0.0,
+          0.7217372597004993,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.0,
+          0.0,
+          0.7212420672363055,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.5,
+          0.55
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.8
+      }
+    },
+    {
+      "instance_id": "delay",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.375,
+        "feedback": 0.35,
+        "mix": 1.0,
+        "damping": 0.5,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "reverb",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "hall",
+        "mix": 1.0,
+        "decay_seconds": 2.5,
+        "width": 0.9,
+        "pre_delay_ms": 0.0,
+        "level": 1.0
+      }
+    },
+    {
+      "instance_id": "tone_row",
+      "module_type": "tone_row",
+      "provider": "builtin",
+      "parameters": {
+        "row": "0 11 7 8 3 1 2 10 6 5 4 9",
+        "form": "P",
+        "transposition": 0,
+        "span_octaves": 1,
+        "gate_length": 0.5,
+        "rate_hz": 2.533333333333333,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "classic_vco",
+      "module_type": "classic_vco",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 110.0,
+        "fine_tune_cents": 0.0,
+        "fm_amount": 0.0,
+        "pulse_width": 0.5,
+        "amplitude": 0.2
+      }
+    },
+    {
+      "instance_id": "fm_voice",
+      "module_type": "fm_voice",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 53.71216617287041,
+        "ratio": 1.512224917915452,
+        "index": 1.5,
+        "feedback": 0.08,
+        "amplitude": 0.18
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "delay",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "delay",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "reverb",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "reverb",
+        "port_id": "wet_left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "reverb",
+        "port_id": "wet_right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tone_row",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "classic_vco",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "classic_vco",
+        "port_id": "sine"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_6"
+      }
+    },
+    {
+      "source": {
+        "module_id": "fm_voice",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tone_row",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "fm_voice",
+        "port_id": "pitch"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.8
+  },
+  "transport": {
+    "bpm": 152.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 1.0,
+    "rails": {
+      "control": 299.0,
+      "audio": 509.0
+    },
+    "nodes": [
+      {
+        "node_id": "delay",
+        "position": {
+          "x": 648.0,
+          "y": 530.0
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "reverb",
+        "position": {
+          "x": 809.0,
+          "y": 492.0
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "tone_row",
+        "position": {
+          "x": 204.0,
+          "y": 57.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "classic_vco",
+        "position": {
+          "x": 623.0,
+          "y": 39.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "fm_voice",
+        "position": {
+          "x": 972.0,
+          "y": 76.0
+        },
+        "collapsed": false
+      }
+    ],
+    "groups": []
+  }
+}

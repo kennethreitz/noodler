@@ -29,6 +29,15 @@ whole patch retunes.
 
 ## Keeping time
 
+`mirror-canon` is Pachelbel's changes, their negative, and an oud over the top.
+PyTheory Progression plays the canon's eight chords in D, a chord a bar on the
+clock, voiced open on an electric piano; the same four voices go through
+PyTheory Negative Harmony — mirrored about D major's axis, so major turns minor
+and rising lines fall — into a softer piano an octave down, so the progression
+and its negative sound at once, and the Chord Ear names what they make together
+in its label. Over that PyTheory Maqam walks Hijaz on D, justly tuned, on an
+oud, in eighths; the bass plays each chord's root on every beat. Saved at 72 BPM.
+
 `highlife-kalimba` is a groove that follows the clock in the menu bar. PyTheory
 Beats plays the library's highlife pattern through its own drum synthesis; a
 Clock module turns the same transport into triggers, and every brain is

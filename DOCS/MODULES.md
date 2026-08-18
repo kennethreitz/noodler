@@ -142,9 +142,49 @@ them across one to four octaves, and emits musical note, pitch, position, gate,
 and trigger. Harmony Brain can therefore drive four oscillators directly or
 feed one Arpeggio Brain and a single oscillator.
 
+`PyTheory Progression` (`pytheory_progression`) realises any of the library's
+named progressions -- I-V-vi-IV, the twelve-bar blues, Pachelbel, the
+Andalusian cadence, rhythm changes' bridge, some thirty-odd -- or numerals
+written into it, through `Key(tonic, mode).progression(...)`, in eight modes.
+It changes chords on the rack's clock, every so many bars, or on a step
+trigger, or at its own rate; each chord is voiced by PyTheory (close, open,
+drop-two, first or second inversion), pulled into a chosen octave and put out
+low to high as four pitch voltages with the root an octave under, a gate for
+most of the chord's length, a trigger at each change, and a position ramp.
+Its `wander` style asks `Key.suggest_next` after every chord and takes one at
+random; `random` draws a fresh `random_progression` each time round. The
+label is the sounding chord.
+
+`PyTheory Maqam` (`pytheory_maqam`) walks one of the library's ten maqamat --
+Rast, Bayati, Hijaz, Saba and the rest -- on the just frequencies PyTheory
+tunes it to from a tonic, quarter-tones included: mostly by step in a
+direction, turning round now and then, leaping sometimes, and resting on the
+tonic or the fifth as a seyir does; or straight up and down its ladder over
+one or two octaves. It is clocked like the raga and puts out pitch, hertz,
+gate, trigger, a degree ramp and a trigger on landings on the tonic.
+
+`PyTheory Chord Ear` (`pytheory_chord_ear`) is analysis rather than
+generation: it reads up to four pitch voltages, names the chord they make
+with `Chord.identify`, and puts out the root (in the lowest voice's octave),
+the chord's dissonance as a voltage, a gate while it recognises something,
+and a trigger when the name changes. It listens on every block, or only at
+each rising edge of its `listen` input; with `hold` on it keeps the last name
+through unreadable moments.
+
+`PyTheory Negative Harmony` (`pytheory_negative_harmony`) reflects a pitch
+voltage about a key's axis of negative harmony -- three and a half semitones
+above the tonic, between E flat and E for C -- choosing the octave copy
+nearest the original so a line does not leap, which is the mapping
+`Key.negative_harmony` reports and `Chord.negative_harmony` applies. A gate
+input, or the switch, decides whether it mirrors; the untouched pitch is
+also put out, for playing a line and its mirror at once.
+
 All PyTheory scale, chord, progression, and voicing preparation happens outside
 the real-time callback. Live blocks contain only numeric arrays; no `Chord`,
-`Tone`, or Pydantic object is constructed or passed while rendering audio.
+`Tone`, or Pydantic object is constructed or passed while rendering audio --
+the chord ear being the one exception, and a deliberate one: it builds a
+`Chord` when the notes on its inputs change, which is a few times a second at
+most, and never per sample.
 
 ## Built-in triangle-core complex VCO
 
