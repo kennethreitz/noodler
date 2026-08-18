@@ -1,0 +1,798 @@
+import dearpygui.dearpygui as dpg
+import pytest
+
+from noodler.app import (
+    ADD_MODULE_BUTTON,
+    APP_FONT,
+    APP_THEME,
+    AUDIO_RAIL,
+    CANVAS_INTERACTION,
+    CONTROL_STATUS,
+    FUNCTION_NODE,
+    LPG_NODE,
+    LPG_REVERB_LINK,
+    MIXER_NODE,
+    MODULE_SELECTOR,
+    MODULE_SELECTOR_SEARCH,
+    MODULE_SELECTOR_STATUS,
+    MODULE_COLLAPSE,
+    MIXER_LPG_LINK,
+    OUTPUT_NODE,
+    OUTPUT_METER,
+    PRIMARY_WINDOW,
+    RACK,
+    RACK_NODES,
+    RACK_RAILS,
+    REVERB_LEFT_OUTPUT_LINK,
+    REVERB_NODE,
+    REVERB_RIGHT_OUTPUT_LINK,
+    SCALE_NODE,
+    SCALE_NAME_CONTROL,
+    SCALE_NOTE_STATUS,
+    SCALE_SYSTEM_CONTROL,
+    SCALE_LPG_LINK,
+    SCALE_VCO_LINK,
+    SAVE_PATCH_BUTTON,
+    SAVE_PATCH_DIALOG,
+    UTILITY_REVERB_LINK,
+    UTILITY_VCO_LINK,
+    UNPLUG_ALL_BUTTON,
+    VCO_NODE,
+    VCO_MIXER_LINK,
+    VCO_TRIANGLE_MIXER_LINK,
+    WOGGLE_NODE,
+    WOGGLE_MIXER_LINK,
+    WOGGLE_REVERB_LINK,
+    WOGGLE_SCALE_LINK,
+    WOGGLE_VCO_LINK,
+    ZOOM_IN_BUTTON,
+    ZOOM_RESET_BUTTON,
+    INPUT_HANDLERS,
+    INSTANCE_NODE_TAGS,
+    KNOB_HINT_DRAG_LIMIT,
+    KNOB_INTERACTION,
+    _control_position,
+    _capture_current_preset,
+    _add_selected_module,
+    _begin_knob_drag,
+    _drag_knob,
+    _end_knob_drag,
+    _filter_module_selector,
+    _mouse_is_over_rack_background,
+    _node_attributes,
+    _pan_rack,
+    _patch_link_created,
+    _point_is_over_rack_background,
+    _queue_rack_zoom,
+    _rail_x_targets,
+    _set_rack_zoom,
+    _set_module_collapsed,
+    _set_dynamic_parameter,
+    _save_patch_dialog,
+    _settle_rack_zoom,
+    _vertical_drag_position,
+    _zoomed_position,
+    build_ui,
+)
+from noodler.module_providers.builtin import BUILTIN_PROVIDER_MANIFEST
+from noodler.patch import OutputChannel
+from noodler.preset import read_patch_preset
+
+
+def test_rack_ui_tracks_the_mixer_channel_count() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(mixer_channels=6)
+
+        for item in (
+            PRIMARY_WINDOW,
+            RACK,
+            VCO_NODE,
+            MIXER_NODE,
+            FUNCTION_NODE,
+            OUTPUT_NODE,
+            WOGGLE_NODE,
+            SCALE_NODE,
+            LPG_NODE,
+            REVERB_NODE,
+            SCALE_SYSTEM_CONTROL,
+            SCALE_NAME_CONTROL,
+            SCALE_NOTE_STATUS,
+            WOGGLE_VCO_LINK,
+            WOGGLE_SCALE_LINK,
+            SCALE_VCO_LINK,
+            SCALE_LPG_LINK,
+            UTILITY_VCO_LINK,
+            UTILITY_REVERB_LINK,
+            VCO_MIXER_LINK,
+            VCO_TRIANGLE_MIXER_LINK,
+            WOGGLE_MIXER_LINK,
+            MIXER_LPG_LINK,
+            LPG_REVERB_LINK,
+            WOGGLE_REVERB_LINK,
+            REVERB_LEFT_OUTPUT_LINK,
+            REVERB_RIGHT_OUTPUT_LINK,
+            OUTPUT_METER,
+            INPUT_HANDLERS,
+        ):
+            assert dpg.does_item_exist(item)
+        assert runtime.mixer.parameters.channels == 6
+        assert runtime.mixer.parameters.gains[:3] == (0.48, 0.14, 0.12)
+        assert runtime.utility.parameters.channel_1.cycle is True
+        assert runtime.utility.parameters.channel_1.rise_seconds == 11.0
+        assert runtime.utility.parameters.channel_1.fall_seconds == 17.0
+        assert runtime.utility.parameters.channel_4.cycle is True
+        assert dpg.does_item_exist(APP_FONT)
+        assert dpg.does_item_exist(APP_THEME)
+        assert dpg.does_item_exist(f"{MIXER_NODE}.input_6")
+        frequency_control = f"{VCO_NODE}.control.frequency"
+        assert dpg.get_item_type(frequency_control).endswith("mvKnobFloat")
+        configuration = dpg.get_item_configuration(frequency_control)
+        binding = configuration["user_data"]
+        configuration["callback"](
+            frequency_control,
+            _control_position(440.0, 1.0, 20_000.0, True),
+            binding,
+        )
+        assert runtime.vco.parameters.frequency == pytest.approx(440.0)
+        assert runtime.vco.parameters.frequency_cv_2_amount == pytest.approx(0.018)
+        rate_control = f"{WOGGLE_NODE}.control.rate"
+        rate_configuration = dpg.get_item_configuration(rate_control)
+        rate_configuration["callback"](
+            rate_control,
+            0.0,
+            rate_configuration["user_data"],
+        )
+        assert runtime.wogglebug.parameters.clock_rate_hz == pytest.approx(0.01)
+        system_control = dpg.get_item_configuration(SCALE_SYSTEM_CONTROL)
+        system_control["callback"](
+            SCALE_SYSTEM_CONTROL,
+            "blues",
+            system_control["user_data"],
+        )
+        scale_control = dpg.get_item_configuration(SCALE_NAME_CONTROL)
+        scale_control["callback"](
+            SCALE_NAME_CONTROL,
+            "minor pentatonic",
+            scale_control["user_data"],
+        )
+        assert runtime.scale_generator.parameters.system == "blues"
+        assert runtime.scale_generator.parameters.scale_name == "minor pentatonic"
+        start = _control_position(440.0, 1.0, 20_000.0, True)
+        coarse = _vertical_drag_position(start, -45.0, binding)
+        fine = _vertical_drag_position(start, -45.0, binding, fine=True)
+        assert coarse > fine > start
+        assert KNOB_INTERACTION.tooltip_tags
+        tooltip = KNOB_INTERACTION.tooltip_tags[0]
+        for drag in range(KNOB_HINT_DRAG_LIMIT):
+            KNOB_INTERACTION.active_knob = frequency_control
+            _end_knob_drag("test", None, KNOB_INTERACTION)
+            assert dpg.get_item_configuration(tooltip)["show"] is (
+                drag < KNOB_HINT_DRAG_LIMIT - 1
+            )
+        assert dpg.get_item_configuration(
+            f"{FUNCTION_NODE}.channel_1"
+        )["show"] is True
+        assert dpg.get_item_configuration(
+            f"{FUNCTION_NODE}.channel_1_signal"
+        )["show"] is False
+        assert dpg.get_item_configuration(
+            f"{FUNCTION_NODE}.channel_4_eoc"
+        )["show"] is False
+        assert runtime.patch.processing_order == (
+            "utility",
+            "wogglebug",
+            "scale_generator",
+            "vco",
+            "mixer",
+            "low_pass_gate",
+            "reverb",
+        )
+        assert [
+            (
+                cable.source.module_id,
+                cable.source.port_id,
+                cable.target.module_id,
+                cable.target.port_id,
+            )
+            for cable in runtime.patch.cables
+        ] == [
+            ("utility", "channel_1", "vco", "morph_cv"),
+            ("wogglebug", "woggle", "vco", "frequency_cv_2"),
+            ("wogglebug", "clock", "scale_generator", "clock"),
+            ("scale_generator", "pitch", "vco", "pitch"),
+            ("vco", "morph", "mixer", "input_1"),
+            ("vco", "triangle", "mixer", "input_2"),
+            ("wogglebug", "ring_mod", "mixer", "input_3"),
+            ("mixer", "output", "low_pass_gate", "audio"),
+            ("scale_generator", "trigger", "low_pass_gate", "strike"),
+            ("utility", "channel_4", "reverb", "decay_cv"),
+            ("low_pass_gate", "output", "reverb", "audio"),
+            ("wogglebug", "burst", "reverb", "freeze"),
+        ]
+        assert len(runtime.patch.output_taps) == 2
+        assert [tap.channel for tap in runtime.patch.output_taps] == [
+            OutputChannel.LEFT,
+            OutputChannel.RIGHT,
+        ]
+        assert runtime.wogglebug is runtime.patch.modules["wogglebug"]
+        assert runtime.scale_generator is runtime.patch.modules["scale_generator"]
+        assert runtime.low_pass_gate is runtime.patch.modules["low_pass_gate"]
+        assert runtime.reverb is runtime.patch.modules["reverb"]
+    finally:
+        dpg.destroy_context()
+
+
+def test_module_selector_exposes_every_builtin_module() -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+
+        assert dpg.does_item_exist(ADD_MODULE_BUTTON)
+        assert dpg.does_item_exist(MODULE_SELECTOR)
+        assert dpg.does_item_exist(MODULE_SELECTOR_SEARCH)
+        assert dpg.get_value(MODULE_SELECTOR_STATUS) == (
+            f"{len(BUILTIN_PROVIDER_MANIFEST.modules)} MODULES"
+        )
+        for manifest in BUILTIN_PROVIDER_MANIFEST.modules:
+            assert dpg.does_item_exist(
+                f"noodler.module_selector.item.{manifest.id}"
+            )
+    finally:
+        dpg.destroy_context()
+
+
+def test_module_selector_adds_unique_executable_instances_to_the_rack() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+
+        _add_selected_module(
+            "test",
+            None,
+            (runtime, "state_variable_filter"),
+        )
+
+        instance_id = "state_variable_filter"
+        node = INSTANCE_NODE_TAGS[instance_id]
+        assert instance_id in runtime.patch.modules
+        assert dpg.does_item_exist(node)
+        assert node in RACK_NODES
+        assert node in RACK_RAILS[AUDIO_RAIL]
+        assert dpg.does_item_exist(f"{node}.audio")
+        assert dpg.does_item_exist(f"{node}.low")
+
+        _patch_link_created(
+            "test",
+            (f"{VCO_NODE}.saw", f"{node}.audio"),
+            runtime,
+        )
+        _patch_link_created(
+            "test",
+            (f"{node}.low", f"{MIXER_NODE}.input_4"),
+            runtime,
+        )
+        assert any(
+            cable.source.module_id == "state_variable_filter"
+            for cable in runtime.patch.cables
+        )
+        assert dpg.get_item_configuration(f"{node}.audio")["show"] is True
+        assert dpg.get_item_configuration(f"{node}.low")["show"] is True
+        rendered = runtime.patch.render(64, 48_000.0)
+        assert rendered.shape == (64,)
+
+        _add_selected_module(
+            "test",
+            None,
+            (runtime, "state_variable_filter"),
+        )
+        assert "state_variable_filter_2" in runtime.patch.modules
+        assert dpg.does_item_exist(
+            INSTANCE_NODE_TAGS["state_variable_filter_2"]
+        )
+
+        captured = _capture_current_preset(runtime, "Expanded Palette")
+        assert {module.instance_id for module in captured.modules} >= {
+            "state_variable_filter",
+            "state_variable_filter_2",
+        }
+        assert {node.node_id for node in captured.view.nodes} >= {
+            "state_variable_filter",
+            "state_variable_filter_2",
+        }
+    finally:
+        dpg.destroy_context()
+
+
+def test_module_selector_search_filters_names_categories_and_descriptions() -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+
+        _filter_module_selector("test", "filter", None)
+
+        assert dpg.get_item_configuration(
+            "noodler.module_selector.item.state_variable_filter"
+        )["show"] is True
+        assert dpg.get_item_configuration(
+            "noodler.module_selector.item.melody_brain"
+        )["show"] is False
+        assert dpg.get_value(MODULE_SELECTOR_STATUS) == "2 MODULES"
+    finally:
+        dpg.destroy_context()
+
+
+def test_generated_module_controls_update_validated_parameters() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "function_utility"))
+        utility = runtime.patch.modules["function_utility"]
+
+        _set_dynamic_parameter(
+            utility,
+            ("channel_1", "rise_seconds"),
+            3.5,
+        )
+
+        assert utility.parameters.channel_1.rise_seconds == pytest.approx(3.5)
+    finally:
+        dpg.destroy_context()
+
+
+def test_patch_bays_start_with_only_live_signal_flow_visible() -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+
+        assert dpg.get_value(f"{VCO_NODE}.patch_bay.status") == (
+            "SIGNAL PATH  ·  3 IN  →  2 OUT"
+        )
+        assert dpg.get_item_configuration(f"{VCO_NODE}.morph_cv")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.pitch")["show"]
+        assert dpg.get_item_configuration(
+            f"{VCO_NODE}.frequency_cv_2"
+        )["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
+        assert not dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
+        assert dpg.get_value(f"{WOGGLE_NODE}.patch_bay.status") == (
+            "SIGNAL PATH  ·  4 OUT"
+        )
+        assert dpg.get_value(f"{REVERB_NODE}.patch_bay.status") == (
+            "SIGNAL PATH  ·  3 IN  →  2 OUT"
+        )
+        assert dpg.get_value(f"{LPG_NODE}.patch_bay.status") == (
+            "SIGNAL PATH  ·  2 IN  →  1 OUT"
+        )
+        assert dpg.get_item_configuration(f"{MIXER_NODE}.input_2")["show"]
+        assert not dpg.get_item_configuration(f"{MIXER_NODE}.input_4")["show"]
+
+        toggle = f"{VCO_NODE}.patch_bay.expanded"
+        toggle_configuration = dpg.get_item_configuration(toggle)
+        dpg.set_value(toggle, True)
+        toggle_configuration["callback"](
+            toggle,
+            True,
+            toggle_configuration["user_data"],
+        )
+        assert dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
+        assert dpg.get_item_configuration(f"{VCO_NODE}.sync")["show"]
+
+        dpg.set_value(toggle, False)
+        toggle_configuration["callback"](
+            toggle,
+            False,
+            toggle_configuration["user_data"],
+        )
+        assert not dpg.get_item_configuration(f"{VCO_NODE}.sine")["show"]
+
+        assert dpg.get_item_pos(FUNCTION_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
+        assert dpg.get_item_pos(WOGGLE_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
+        assert dpg.get_item_pos(SCALE_NODE)[1] < dpg.get_item_pos(VCO_NODE)[1]
+        assert dpg.get_item_pos(VCO_NODE)[0] < dpg.get_item_pos(MIXER_NODE)[0]
+        assert dpg.get_item_pos(MIXER_NODE)[0] < dpg.get_item_pos(REVERB_NODE)[0]
+        assert dpg.get_item_pos(MIXER_NODE)[0] < dpg.get_item_pos(LPG_NODE)[0]
+        assert dpg.get_item_pos(LPG_NODE)[0] < dpg.get_item_pos(REVERB_NODE)[0]
+        assert dpg.get_item_pos(REVERB_NODE)[0] < dpg.get_item_pos(OUTPUT_NODE)[0]
+    finally:
+        dpg.destroy_context()
+
+
+def test_space_pan_moves_the_rack_hierarchy_as_one_view(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+        CANVAS_INTERACTION.panning = True
+        CANVAS_INTERACTION.last_mouse_x = 100.0
+        CANVAS_INTERACTION.last_mouse_y = 200.0
+        original_rails = dict(CANVAS_INTERACTION.rail_y)
+        monkeypatch.setattr(
+            dpg,
+            "get_mouse_pos",
+            lambda *, local=False: (125.0, 165.0),
+        )
+
+        _pan_rack()
+
+        for node, (original_x, original_y) in original.items():
+            node_x, node_y = dpg.get_item_pos(node)
+            assert node_x == pytest.approx(original_x + 25.0)
+            assert node_y == pytest.approx(original_y - 35.0)
+        for rail, original_y in original_rails.items():
+            assert CANVAS_INTERACTION.rail_y[rail] == pytest.approx(
+                original_y - 35.0
+            )
+        assert dpg.get_item_configuration(RACK)["minimap"] is True
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.panning is False
+    finally:
+        dpg.destroy_context()
+
+
+def test_dragging_empty_background_begins_canvas_pan(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            dpg,
+            "get_mouse_pos",
+            lambda *, local=False: (320.0, 240.0),
+        )
+
+        _begin_knob_drag("test", None, KNOB_INTERACTION)
+
+        assert CANVAS_INTERACTION.panning is True
+        assert CANVAS_INTERACTION.last_mouse_x == 320.0
+        assert CANVAS_INTERACTION.last_mouse_y == 240.0
+        for node in RACK_NODES:
+            assert dpg.get_item_configuration(node)["draggable"] is True
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.panning is False
+        for node in RACK_NODES:
+            assert dpg.get_item_configuration(node)["draggable"] is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_background_hit_test_uses_node_geometry(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack",
+            lambda _position: True,
+        )
+
+        assert _point_is_over_rack_background((5_000.0, 5_000.0)) is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_background_drag_recovers_when_node_editor_claims_mouse_down(
+    monkeypatch,
+) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+        monkeypatch.setattr(
+            dpg,
+            "get_mouse_pos",
+            lambda *, local=False: (325.0, 205.0),
+        )
+        monkeypatch.setattr(
+            dpg,
+            "get_mouse_drag_delta",
+            lambda **_kwargs: (25.0, -35.0),
+        )
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background",
+            lambda position: position == (300.0, 240.0),
+        )
+
+        _drag_knob("test", None, KNOB_INTERACTION)
+
+        assert CANVAS_INTERACTION.panning is True
+        for node, (original_x, original_y) in original.items():
+            node_x, node_y = dpg.get_item_pos(node)
+            assert node_x == pytest.approx(original_x + 25.0)
+            assert node_y == pytest.approx(original_y - 35.0)
+    finally:
+        dpg.destroy_context()
+
+
+def test_module_drag_origin_is_never_promoted_to_canvas_pan(
+    monkeypatch,
+) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        monkeypatch.setattr(
+            dpg,
+            "get_mouse_pos",
+            lambda *, local=False: (325.0, 205.0),
+        )
+        monkeypatch.setattr(
+            dpg,
+            "get_mouse_drag_delta",
+            lambda **_kwargs: (25.0, -35.0),
+        )
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background",
+            lambda _position: False,
+        )
+
+        _drag_knob("test", None, KNOB_INTERACTION)
+
+        assert CANVAS_INTERACTION.panning is False
+        for node in RACK_NODES:
+            assert dpg.get_item_configuration(node)["draggable"] is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_module_title_collapse_preserves_graph_and_attribute_visibility() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        attributes = _node_attributes(VCO_NODE)
+        visibility = {
+            attribute: dpg.get_item_configuration(attribute)["show"]
+            for attribute in attributes
+        }
+        cable_count = len(runtime.patch.cables)
+
+        _set_module_collapsed(VCO_NODE, True, runtime)
+
+        assert MODULE_COLLAPSE.is_collapsed(VCO_NODE) is True
+        assert dpg.get_item_configuration(VCO_NODE)["label"] == "▸"
+        assert all(
+            dpg.get_item_configuration(attribute)["show"] is False
+            for attribute in attributes
+        )
+        assert dpg.get_item_configuration(
+            f"{VCO_NODE}.spine.attribute"
+        )["show"] is True
+        assert dpg.get_item_configuration(VCO_MIXER_LINK)["show"] is False
+        assert dpg.get_item_configuration(WOGGLE_SCALE_LINK)["show"] is True
+        assert len(runtime.patch.cables) == cable_count
+
+        _set_module_collapsed(VCO_NODE, False, runtime)
+
+        assert MODULE_COLLAPSE.is_collapsed(VCO_NODE) is False
+        assert {
+            attribute: dpg.get_item_configuration(attribute)["show"]
+            for attribute in attributes
+        } == visibility
+        assert dpg.get_item_configuration(
+            f"{VCO_NODE}.spine.attribute"
+        )["show"] is False
+        assert dpg.get_item_configuration(VCO_MIXER_LINK)["show"] is True
+        assert len(runtime.patch.cables) == cable_count
+    finally:
+        dpg.destroy_context()
+
+
+def test_save_patch_dialog_writes_current_graph_controls_and_rack_view(
+    tmp_path,
+) -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _set_module_collapsed(WOGGLE_NODE, True, runtime)
+        dpg.set_item_pos(VCO_NODE, [444.0, 666.0])
+        destination = tmp_path / "Moon Garden"
+
+        _save_patch_dialog(
+            "test",
+            {"file_path_name": str(destination)},
+            runtime,
+        )
+
+        saved = read_patch_preset(tmp_path / "Moon Garden.noodler")
+        assert dpg.does_item_exist(SAVE_PATCH_BUTTON)
+        assert dpg.does_item_exist(SAVE_PATCH_DIALOG)
+        assert saved.name == "Moon Garden"
+        assert saved.cables == runtime.patch.cables
+        assert saved.output_taps == runtime.patch.output_taps
+        assert saved.system_output.master_gain == runtime.audio.master_gain
+        node_views = {node.node_id: node for node in saved.view.nodes}
+        assert node_views["wogglebug"].collapsed is True
+        assert node_views["vco"].position.x == 444.0
+        assert node_views["vco"].position.y == 666.0
+
+        captured = _capture_current_preset(runtime, "Moon Garden")
+        assert captured.modules == saved.modules
+    finally:
+        dpg.destroy_context()
+
+
+def test_trackpad_zoom_queues_fractional_motion_and_eases() -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+
+        _queue_rack_zoom(1.06, screen_anchor=(400.0, 300.0))
+
+        assert CANVAS_INTERACTION.zoom == 1.0
+        assert CANVAS_INTERACTION.zoom_target == pytest.approx(1.06)
+        _settle_rack_zoom()
+        assert 1.0 < CANVAS_INTERACTION.zoom < 1.06
+        assert CANVAS_INTERACTION.zoom_target == pytest.approx(1.06)
+    finally:
+        dpg.destroy_context()
+
+
+def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
+    assert _zoomed_position((200.0, 100.0), (50.0, 25.0), 0.5) == (
+        125.0,
+        62.5,
+    )
+
+    dpg.create_context()
+    try:
+        build_ui()
+        original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+
+        _set_rack_zoom(1.12, screen_anchor=(0.0, 0.0))
+
+        assert CANVAS_INTERACTION.zoom == pytest.approx(1.12)
+        for node, (original_x, original_y) in original.items():
+            node_x, node_y = dpg.get_item_pos(node)
+            assert node_x == pytest.approx(original_x * 1.12, abs=1.0)
+            assert node_y == pytest.approx(original_y * 1.12, abs=1.0)
+        assert dpg.get_item_configuration(ZOOM_RESET_BUTTON)["label"] == "112%"
+
+        zoom_in = dpg.get_item_configuration(ZOOM_IN_BUTTON)
+        zoom_in["callback"](
+            ZOOM_IN_BUTTON,
+            None,
+            zoom_in["user_data"],
+        )
+        assert CANVAS_INTERACTION.zoom > 1.12
+    finally:
+        dpg.destroy_context()
+
+
+def test_rail_layout_makes_room_without_changing_signal_order() -> None:
+    positions = (20.0, 180.0, 430.0)
+    widths = (200.0, 180.0, 220.0)
+
+    assert _rail_x_targets(
+        positions,
+        widths,
+        active_index=1,
+        gap=40.0,
+    ) == (-60.0, 180.0, 430.0)
+    assert _rail_x_targets(
+        positions,
+        widths,
+        active_index=None,
+        gap=40.0,
+    ) == (20.0, 260.0, 480.0)
+
+
+def test_node_editor_repatches_the_live_graph() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        editor = dpg.get_item_configuration(RACK)
+        link = editor["callback"]
+        delink = editor["delink_callback"]
+        user_data = editor["user_data"]
+
+        assert dpg.get_item_user_data(VCO_MIXER_LINK) == runtime.patch.cables[4]
+        assert dpg.get_item_user_data(WOGGLE_SCALE_LINK) == runtime.patch.cables[2]
+        assert dpg.get_item_user_data(SCALE_VCO_LINK) == runtime.patch.cables[3]
+        assert dpg.get_item_user_data(MIXER_LPG_LINK) == runtime.patch.cables[7]
+        assert dpg.get_item_user_data(LPG_REVERB_LINK) == runtime.patch.cables[10]
+        assert (
+            dpg.get_item_user_data(REVERB_LEFT_OUTPUT_LINK)
+            == runtime.patch.output_taps[0]
+        )
+        assert (
+            dpg.get_item_user_data(REVERB_RIGHT_OUTPUT_LINK)
+            == runtime.patch.output_taps[1]
+        )
+
+        delink(RACK, VCO_MIXER_LINK, user_data)
+        assert not dpg.does_item_exist(VCO_MIXER_LINK)
+        assert len(runtime.patch.cables) == 11
+        assert not dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
+        assert not dpg.get_item_configuration(f"{MIXER_NODE}.input_1")["show"]
+
+        # Dear PyGui reports numeric item IDs and users may drag input-to-output.
+        link(
+            RACK,
+            (
+                dpg.get_alias_id(f"{MIXER_NODE}.input_1"),
+                dpg.get_alias_id(f"{VCO_NODE}.triangle"),
+            ),
+            user_data,
+        )
+        assert runtime.patch.cables[-1].source.port_id == "triangle"
+        assert runtime.patch.cables[-1].target.port_id == "input_1"
+        assert dpg.get_item_configuration(f"{VCO_NODE}.triangle")["show"]
+        assert dpg.get_item_configuration(f"{MIXER_NODE}.input_1")["show"]
+
+        delink(RACK, REVERB_LEFT_OUTPUT_LINK, user_data)
+        delink(RACK, REVERB_RIGHT_OUTPUT_LINK, user_data)
+        assert runtime.patch.output_taps == ()
+        link(
+            RACK,
+            (
+                dpg.get_alias_id(f"{OUTPUT_NODE}.mono"),
+                dpg.get_alias_id(f"{VCO_NODE}.sine"),
+            ),
+            user_data,
+        )
+        assert runtime.patch.output_taps[0].source.module_id == "vco"
+        assert runtime.patch.output_taps[0].source.port_id == "sine"
+        assert runtime.patch.output_taps[0].channel is OutputChannel.BOTH
+
+        cable_count = len(runtime.patch.cables)
+        link(
+            RACK,
+            (
+                dpg.get_alias_id(f"{VCO_NODE}.saw"),
+                dpg.get_alias_id(f"{MIXER_NODE}.input_1"),
+            ),
+            user_data,
+        )
+        assert len(runtime.patch.cables) == cable_count
+        assert dpg.get_value(CONTROL_STATUS).startswith("CAN'T PATCH:")
+
+        delink(RACK, UTILITY_VCO_LINK, user_data)
+        link(
+            RACK,
+            (
+                dpg.get_alias_id(f"{WOGGLE_NODE}.stepped"),
+                dpg.get_alias_id(f"{VCO_NODE}.morph_cv"),
+            ),
+            user_data,
+        )
+        assert runtime.patch.cables[-1].source.module_id == "wogglebug"
+        assert runtime.patch.cables[-1].source.port_id == "stepped"
+        assert runtime.patch.cables[-1].target.port_id == "morph_cv"
+    finally:
+        dpg.destroy_context()
+
+
+def test_unplug_all_button_clears_visual_and_executable_cables() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        initial_count = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+        button = dpg.get_item_configuration(UNPLUG_ALL_BUTTON)
+
+        button["callback"](
+            UNPLUG_ALL_BUTTON,
+            None,
+            button["user_data"],
+        )
+
+        assert initial_count > 0
+        assert runtime.patch.cables == ()
+        assert runtime.patch.output_taps == ()
+        assert dpg.get_item_children(RACK).get(0, []) == []
+        assert not dpg.get_item_configuration(f"{VCO_NODE}.morph_cv")["show"]
+        assert dpg.get_value(CONTROL_STATUS) == (
+            f"UNPLUGGED ALL  ·  {initial_count} CABLES REMOVED"
+        )
+
+        button["callback"](
+            UNPLUG_ALL_BUTTON,
+            None,
+            button["user_data"],
+        )
+        assert dpg.get_value(CONTROL_STATUS) == "NO CABLES TO UNPLUG"
+    finally:
+        dpg.destroy_context()
