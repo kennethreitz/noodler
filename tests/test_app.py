@@ -115,9 +115,10 @@ def test_default_rack_starts_quiet_with_only_the_master() -> None:
             "right",
         }
         # The console: eight strips and the master, and nothing else.
-        # Eight strips, two returns, the master, and twelve jack posts.
+        # Eight strips, the master, two effect strips, and fourteen jack
+        # posts: one per channel, and a send out and a return L and R per effect.
         assert set(RACK_NODES) == set(PINNED_NODES)
-        assert len(PINNED_NODES) == 23
+        assert len(PINNED_NODES) == 25
         assert dpg.does_item_exist(OUTPUT_NODE)
         assert not dpg.does_item_exist(VCO_NODE)
         assert not dpg.does_item_exist(WOGGLE_NODE)

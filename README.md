@@ -44,7 +44,10 @@ plays any of the library's hundred rhythm presets — funk, teental, bossa nova,
 trap — through its own drum synthesis, locked to the rack's clock so beat one
 is beat one; and a **Clock** module turns that clock into triggers and a ramp,
 so anything with a clock input can be patched to the tempo in the menu bar.
-**PyTheory Reverb** puts a signal in any of the library's rooms — Schroeder's
+**PyTheory Score** plays a phrase written down — `E5:q D5:e C5:e r:q
+[A3,C4,E4]:h` — round and round on the clock, PyTheory reading the note names,
+so what a bar contains is decided rather than drawn. **PyTheory Reverb** puts a
+signal in any of the library's rooms — Schroeder's
 algorithm, or an impulse response it synthesises for a hall, a plate, a
 spring, a cathedral, a cave, a canyon, a parking garage or the Taj Mahal —
 convolved in real time, a twelve-second room for a fifth of a millisecond a
@@ -96,13 +99,15 @@ Every output jack and cable glows with the signal on it, and a right-click on
 any module offers its local actions: collapse, duplicate, reset, unplug, or
 remove.
 
-Each strip has **M** and **S**. The sends come out of the master strip as
-jacks and come back on two **return strips** — patch **Send A** into a reverb
-and the reverb's outputs into RET A, and every strip that turns its A up is in
-the same room, while the eight channels stay free for sources. A return is
-stereo, has a level and a mute of its own, and goes straight to the bus; the
-loop it closes through the master runs one block late, which is what a reverb
-is.
+Each strip has **M** and **S**. To the right of the channels sit the master
+— only its level — and two **effect strips**, FX A and FX B, each with its
+send jack out and its return L and R in standing above it: patch FX A's send
+into a reverb and the reverb's outputs back into its L and R, and every strip
+that turns its A up is in the same room, while the eight channels stay free
+for sources. A return is stereo, has a level and a mute of its own, and goes
+straight to the bus; the loop it closes through the master runs one block
+late, which is what a reverb is. A new rack opens with a delay on A and a hall
+on B already patched.
 
 To open a saved patch directly:
 
@@ -181,12 +186,12 @@ documents.
 
 ## Modules
 
-The built-in provider currently contains 27 modules, grouped around the way a
+The built-in provider currently contains 28 modules, grouped around the way a
 patch is made rather than around implementation details.
 
 | Shelf | Modules |
 | --- | --- |
-| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, Scale Generator, Function Utility, Wogglebug |
+| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, PyTheory Score, Scale Generator, Function Utility, Wogglebug |
 | Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
 | Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb, PyTheory Reverb |

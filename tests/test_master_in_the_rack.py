@@ -188,7 +188,7 @@ def test_each_strip_has_a_jack_post_standing_above_its_middle(monkeypatch) -> No
     dpg.create_context()
     try:
         build_ui()
-        assert len(POST_ANCHORS) == 12  # eight channels, two stereo returns
+        assert len(POST_ANCHORS) == 14  # eight channels; a send out and L/R in per effect
         strip = CONSOLE_STRIP.format(channel=3)
         post = CONSOLE_POST.format(name="channel_3")
         assert dpg.does_item_exist(f"{OUTPUT_NODE}.channel_3")

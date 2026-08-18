@@ -73,6 +73,12 @@ from .pytheory_reverb import (
     PyTheoryReverbParameters,
     SPACES as REVERB_SPACES,
 )
+from .score import (
+    PYTHEORY_SCORE_MANIFEST,
+    PyTheoryScore,
+    PyTheoryScoreParameters,
+    parse_phrase,
+)
 from .clocked import (
     CLOCK_MANIFEST,
     Clock,
@@ -148,6 +154,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
         INSTRUMENT_VOICE_MANIFEST,
         PYTHEORY_VOICE_MANIFEST,
         PYTHEORY_BEATS_MANIFEST,
+        PYTHEORY_SCORE_MANIFEST,
         PYTHEORY_REVERB_MANIFEST,
         CLOCK_MANIFEST,
         MASTER_MIXER_MANIFEST,
@@ -181,6 +188,7 @@ BUILTIN_MODULE_TYPES = MappingProxyType({
         (INSTRUMENT_VOICE_MANIFEST, InstrumentVoice),
         (PYTHEORY_VOICE_MANIFEST, PyTheoryVoice),
         (PYTHEORY_BEATS_MANIFEST, PyTheoryBeats),
+        (PYTHEORY_SCORE_MANIFEST, PyTheoryScore),
         (PYTHEORY_REVERB_MANIFEST, PyTheoryReverb),
         (CLOCK_MANIFEST, Clock),
         (MASTER_MIXER_MANIFEST, MasterMixer),
@@ -238,6 +246,10 @@ __all__ = [
     "PATTERN_NAMES",
     "PYTHEORY_BEATS_MANIFEST",
     "PYTHEORY_REVERB_MANIFEST",
+    "PYTHEORY_SCORE_MANIFEST",
+    "PyTheoryScore",
+    "PyTheoryScoreParameters",
+    "parse_phrase",
     "PyTheoryBeats",
     "PyTheoryBeatsParameters",
     "PyTheoryReverb",

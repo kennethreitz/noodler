@@ -90,11 +90,9 @@ viewport is real — once, so it never fights the user afterwards.
 
 The console is exempt, because it is not placed at all. The master, eight
 channel strips and two returns are pinned in a row along the bottom edge of the
-canvas — master first, returns last, because a node editor draws every cable
-leaving an output to the right and arriving at an input from the left, so the
-master's sends leave the left end of the console heading toward the effects and
-what the effects give back arrives at the right end from the left, while the
-channels between take cables straight down from above and the
+canvas — the channels, then the master (which is only its level), then two
+effect strips that each carry their own send jack out and return L and R in,
+so a send and its return are one thing on the desk and the
 camera does not carry them: the rack pans and zooms underneath while they stay
 where they are. Where everything goes should not be somewhere you can lose,
 and it was — three separate bug reports were the output panel having been

@@ -1312,12 +1312,13 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
     # effects, and what the effects give back arrives at the right end from
     # the left. Channels sit between, taking cables straight down from above.
     posts = [CONSOLE_POST.format(name=f"channel_{c}") for c in range(1, MASTER_CHANNELS + 1)]
-    posts += [
-        CONSOLE_POST.format(name=port)
-        for bus in SENDS
-        for port in RETURN_PORTS[bus]
-    ]
-    PINNED_NODES[:] = [OUTPUT_NODE, *strips, *returns, *posts]
+    for bus in SENDS:
+        posts.append(CONSOLE_POST.format(name=f"send_{bus}"))
+        posts += [CONSOLE_POST.format(name=port) for port in RETURN_PORTS[bus]]
+    # Channels, then the master, then the two effect strips -- each of which
+    # carries its own send out and its return in, so a send and its return
+    # are one thing on the desk, and the master is only its level.
+    PINNED_NODES[:] = [*strips, OUTPUT_NODE, *returns, *posts]
     strips = strips + returns + posts
     for strip in strips:
         if strip not in RACK_NODES:
@@ -1779,9 +1780,12 @@ def _add_visual_link(
 
 
 def _is_console_route(route: object) -> bool:
-    """Whether a cable lands on the console -- and so is drawn by hand."""
+    """Whether a cable touches the console -- and so is drawn by hand."""
     target = getattr(route, "target", None)
-    return target is not None and target.module_id == MASTER_ID
+    source = getattr(route, "source", None)
+    return (target is not None and target.module_id == MASTER_ID) or (
+        source is not None and source.module_id == MASTER_ID
+    )
 
 
 def _default_cable(
@@ -2328,6 +2332,8 @@ RETURN_BALLISTICS: list[MeterBallistics] = []
 
 PORT_TEXTS: dict[tuple[str, str], tuple[int | str, str]] = {}
 """Each output jack's label and signal type, for lighting it with its signal."""
+INPUT_TEXTS: dict[tuple[str, str], int | str] = {}
+"""Each input jack's label, for drawing a send cable to it."""
 PORT_ACTIVITY: dict[tuple[str, str], float] = {}
 PORT_STEPS: dict[tuple[str, str], int] = {}
 PORT_INDEX_KEY: list[tuple[str, ...]] = []
@@ -2354,20 +2360,33 @@ def _index_port_texts(runtime: AppRuntime) -> None:
     PORT_INDEX_KEY[:] = [key]
     PORT_TEXTS.clear()
     PORT_STEPS.clear()
+    INPUT_TEXTS.clear()
     for instance_id, node in INSTANCE_NODE_TAGS.items():
         module = runtime.patch.modules.get(instance_id)
         if module is None:
             continue
         for port in module.manifest.ports:
-            if port.direction is not PortDirection.OUTPUT:
-                continue
             attribute = f"{node}.{port.id}"
             if not dpg.does_item_exist(attribute):
                 continue
-            for child in dpg.get_item_children(attribute).get(1, ()):
-                if dpg.get_item_type(child).endswith("mvText"):
-                    PORT_TEXTS[(instance_id, port.id)] = (child, port.signal_type.value)
-                    break
+            text = _first_text_in(attribute)
+            if text is None:
+                continue
+            if port.direction is PortDirection.OUTPUT:
+                PORT_TEXTS[(instance_id, port.id)] = (text, port.signal_type.value)
+            else:
+                INPUT_TEXTS[(instance_id, port.id)] = text
+
+
+def _first_text_in(item: int | str) -> int | str | None:
+    """The first text anywhere under an item -- a port label, wherever it sits."""
+    pending = list(dpg.get_item_children(item).get(1, ()))
+    while pending:
+        child = pending.pop(0)
+        if dpg.get_item_type(child).endswith("mvText"):
+            return child
+        pending.extend(dpg.get_item_children(child).get(1, ()))
+    return None
 
 
 def _link_glow_theme(signal: str, step: int) -> str:
@@ -2476,14 +2495,17 @@ def _console_pin_position(post: str) -> tuple[float, float] | None:
     if text is None or not (dpg.does_item_exist(post) and dpg.does_item_exist(text)):
         return None
     try:
-        left = float(dpg.get_item_rect_min(post)[0])
+        if post in POST_OUTPUTS:
+            edge = float(dpg.get_item_rect_max(post)[0])
+        else:
+            edge = float(dpg.get_item_rect_min(post)[0])
         top = float(dpg.get_item_rect_min(text)[1])
         height = float(dpg.get_item_rect_size(text)[1])
     except (KeyError, SystemError):
         return None
     if height <= 0.0:
         return None
-    return left, top + height * 0.5
+    return edge, top + height * 0.5
 
 
 def _source_pin_position(module_id: str, port_id: str) -> tuple[float, float] | None:
@@ -2503,6 +2525,42 @@ def _source_pin_position(module_id: str, port_id: str) -> tuple[float, float] | 
     if height <= 0.0:
         return None
     return right, top + height * 0.5
+
+
+def _send_cable_points(
+    start: tuple[float, float], end: tuple[float, float]
+) -> tuple[tuple[float, float], ...]:
+    """A cable that rises out of a send jack and arrives at a module from the left."""
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = max(1.0, math.hypot(dx, dy))
+    rise = max(50.0, 0.6 * abs(dy))
+    reach = min(80.0, max(30.0, 0.2 * length))
+    return (
+        start,
+        (start[0], start[1] - rise),
+        (end[0] - reach, end[1]),
+        end,
+    )
+
+
+def _target_pin_position(module_id: str, port_id: str) -> tuple[float, float] | None:
+    """Where a module's input pin is: its left edge, at the port label's height."""
+    node = INSTANCE_NODE_TAGS.get(module_id)
+    entry = INPUT_TEXTS.get((module_id, port_id))
+    if node is None or entry is None or not dpg.does_item_exist(node):
+        return None
+    if not dpg.does_item_exist(entry):
+        return None
+    try:
+        left = float(dpg.get_item_rect_min(node)[0])
+        top = float(dpg.get_item_rect_min(entry)[1])
+        height = float(dpg.get_item_rect_size(entry)[1])
+    except (KeyError, SystemError):
+        return None
+    if height <= 0.0:
+        return None
+    return left, top + height * 0.5
 
 
 def _console_cable_points(
@@ -2570,13 +2628,21 @@ def _refresh_console_cables(runtime: AppRuntime) -> None:
         route = dpg.get_item_user_data(link)
         if not _is_console_route(route):
             continue
-        post = CONSOLE_POST.format(name=route.target.port_id)
-        start = _source_pin_position(route.source.module_id, route.source.port_id)
-        end = _console_pin_position(post)
-        if start is None or end is None:
-            continue
+        if route.target.module_id == MASTER_ID:
+            post = CONSOLE_POST.format(name=route.target.port_id)
+            start = _source_pin_position(route.source.module_id, route.source.port_id)
+            end = _console_pin_position(post)
+            if start is None or end is None:
+                continue
+            points = _console_cable_points(start, end)
+        else:
+            post = CONSOLE_POST.format(name=route.source.port_id)
+            start = _console_pin_position(post)
+            end = _target_pin_position(route.target.module_id, route.target.port_id)
+            if start is None or end is None:
+                continue
+            points = _send_cable_points(start, end)
         live.add(link)
-        points = _console_cable_points(start, end)
         CONSOLE_CABLE_PATHS[link] = points
         signal = _endpoint_signal(runtime.patch, route.source)
         step = PORT_STEPS.get((route.source.module_id, route.source.port_id), 0)
@@ -3375,7 +3441,10 @@ def _settle_console() -> None:
             continue
         strip_x, strip_y = (float(v) for v in dpg.get_item_pos(strip))
         strip_width = float(dpg.get_item_rect_size(strip)[0])
-        wanted = [strip_x + strip_width * across, strip_y - JACK_POST_LIFT]
+        x = strip_x + strip_width * across
+        if post in POST_OUTPUTS:
+            x -= float(dpg.get_item_rect_size(post)[0])
+        wanted = [x, strip_y - JACK_POST_LIFT]
         if [round(v) for v in dpg.get_item_pos(post)] != [round(v) for v in wanted]:
             dpg.set_item_pos(post, wanted)
 
@@ -6645,13 +6714,16 @@ def _return_level_changed(master: MasterMixer, bus: str, level: float) -> None:
 def _build_return_strip(bus: str, master: MasterMixer) -> None:
     """A return: what came back from a send, in stereo, with a level and a mute."""
     left_port, right_port = RETURN_PORTS[bus]
-    with dpg.node(tag=CONSOLE_RETURN.format(bus=bus), label=f"RET {bus.upper()}"):
+    with dpg.node(tag=CONSOLE_RETURN.format(bus=bus), label=f"FX {bus.upper()}"):
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            # The two jacks stand on posts above; this row only says which is which.
+            # Three jacks stand on posts above -- the send out, then the
+            # return's left and right in; this row only says which is which.
             with dpg.group(horizontal=True, horizontal_spacing=0):
-                dpg.add_spacer(width=14)
+                dpg.add_spacer(width=2)
+                dpg.add_text("OUT", color=MUTED_TEXT)
+                dpg.add_spacer(width=10)
                 dpg.add_text("L", color=SIGNAL_COLORS["audio"])
-                dpg.add_spacer(width=18)
+                dpg.add_spacer(width=14)
                 dpg.add_text("R", color=SIGNAL_COLORS["audio"])
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.return_levels[SENDS.index(bus)]
@@ -6677,21 +6749,31 @@ def _build_return_strip(bus: str, master: MasterMixer) -> None:
             _paint_return_mute(master, bus)
 
 
-def _build_jack_post(name: str, attribute_tag: str, strip: str, across: float) -> None:
+POST_OUTPUTS: set[str] = set()
+"""Posts whose jack is an output: the pin is drawn at the right edge."""
+
+
+def _build_jack_post(
+    name: str, attribute_tag: str, strip: str, across: float, *, output: bool = False
+) -> None:
     """Stand a jack at a point along the top of a strip.
 
-    The post is a node with an empty title and one input row holding nothing,
-    themed invisible, so all that shows is its pin -- and its left edge, where
-    the pin is drawn, is put at the strip's middle by the console's settle.
+    The post is a node with an empty title and one row holding nothing,
+    themed invisible, so all that shows is its pin -- drawn at the left edge
+    for an input and the right for an output -- and the console's settle puts
+    that edge where the jack should be.
     """
     post = CONSOLE_POST.format(name=name)
+    kind = dpg.mvNode_Attr_Output if output else dpg.mvNode_Attr_Input
     with dpg.node(tag=post, label=""):
-        with dpg.node_attribute(tag=attribute_tag, attribute_type=dpg.mvNode_Attr_Input):
+        with dpg.node_attribute(tag=attribute_tag, attribute_type=kind):
             # A text rather than a spacer: a text reports where it is, and the
             # pin is drawn at the centre of this row.
             POST_TEXTS[post] = dpg.add_text(" ")
     dpg.bind_item_theme(post, JACK_POST_THEME)
     POST_ANCHORS[post] = (strip, across)
+    if output:
+        POST_OUTPUTS.add(post)
 
 
 def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
@@ -6707,22 +6789,12 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
     """
     POST_ANCHORS.clear()
     POST_TEXTS.clear()
+    POST_OUTPUTS.clear()
     for channel in range(1, MASTER_CHANNELS + 1):
         _build_strip(channel, master)
     for bus in SENDS:
         _build_return_strip(bus, master)
     with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
-        for port_id, name, description in (
-            ("send_a", "SEND A", "Every channel's send A, summed. Patch it to an effect."),
-            ("send_b", "SEND B", "Every channel's send B, summed."),
-            ("sum", "SUM", "Mono fold-down, for metering or feedback."),
-        ):
-            with dpg.node_attribute(
-                tag=f"{OUTPUT_NODE}.{port_id}",
-                label=name.title(),
-                attribute_type=dpg.mvNode_Attr_Output,
-            ):
-                _add_port_text(name, "audio", description)
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.master
             with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
@@ -6760,8 +6832,10 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
         )
     for bus in SENDS:
         left_port, right_port = RETURN_PORTS[bus]
-        _build_jack_post(left_port, f"{OUTPUT_NODE}.{left_port}", CONSOLE_RETURN.format(bus=bus), 0.3)
-        _build_jack_post(right_port, f"{OUTPUT_NODE}.{right_port}", CONSOLE_RETURN.format(bus=bus), 0.7)
+        strip = CONSOLE_RETURN.format(bus=bus)
+        _build_jack_post(f"send_{bus}", f"{OUTPUT_NODE}.send_{bus}", strip, 0.2, output=True)
+        _build_jack_post(left_port, f"{OUTPUT_NODE}.{left_port}", strip, 0.5)
+        _build_jack_post(right_port, f"{OUTPUT_NODE}.{right_port}", strip, 0.78)
 
 
 def _console_titles(patch: PatchGraph) -> None:
@@ -7771,6 +7845,7 @@ def build_ui(
     KNOB_INTERACTION.reset()
     KNOB_STATES.clear()
     PORT_TEXTS.clear()
+    INPUT_TEXTS.clear()
     PORT_ACTIVITY.clear()
     PORT_STEPS.clear()
     PORT_INDEX_KEY.clear()
