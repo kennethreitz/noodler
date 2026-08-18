@@ -143,13 +143,12 @@ noodler/
 ├── pyproject.toml
 ├── uv.lock
 ├── DOCS/
-├── src/
-│   └── noodler/
-│       ├── app.py
-│       ├── engine/
-│       ├── modules/
-│       ├── patch/
-│       └── ui/
+├── noodler/
+│   ├── app.py
+│   ├── engine/
+│   ├── module_providers/
+│   ├── patch/
+│   └── ui/
 └── tests/
 ```
 

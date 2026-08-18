@@ -834,7 +834,7 @@ def default_rack_preset() -> PatchPreset:
 
 def _example_documents() -> tuple[Path, ...]:
     """The example patches shipped beside the package, if this is a checkout."""
-    folder = Path(__file__).resolve().parents[2] / "examples"
+    folder = Path(__file__).resolve().parent.parent / "examples"
     if not folder.is_dir():
         return ()
     return tuple(sorted(folder.glob("*.noodler")))
