@@ -76,11 +76,11 @@ shows its parameters and jacks.
 
 ## Modules
 
-Thirty-seven, in four shelves:
+Thirty-eight, in four shelves:
 
 | Shelf | Modules |
 | --- | --- |
-| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, QWERTY Keys, PyTheory Beats, Score, Raga, Maqam, Progression, Chord Ear, Negative Harmony, Tone Row, Scale Generator, Function Utility, Wogglebug |
+| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, LFO, QWERTY Keys, PyTheory Beats, Score, Raga, Maqam, Progression, Chord Ear, Negative Harmony, Tone Row, Scale Generator, Function Utility, Wogglebug |
 | Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
 | Mix & Space | Master Mixer, Polarizing Mixer, Scope, Echo Delay, Stereo Reverb, PyTheory Reverb, PyTheory FX |

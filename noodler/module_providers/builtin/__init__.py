@@ -184,6 +184,7 @@ from .scale_generator import (
     scale_names,
 )
 from .reverb import REVERB_MANIFEST, Reverb, ReverbParameters
+from .lfo import LFO, LFO_MANIFEST, LFOParameters, SHAPES as LFO_SHAPES
 from .wogglebug import (
     WOGGLEBUG_MANIFEST,
     Wogglebug,
@@ -229,6 +230,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
         SCOPE_MANIFEST,
         FUNCTION_UTILITY_MANIFEST,
         WOGGLEBUG_MANIFEST,
+        LFO_MANIFEST,
         SCALE_GENERATOR_MANIFEST,
         LOW_PASS_GATE_MANIFEST,
         ECHO_DELAY_MANIFEST,
@@ -272,6 +274,7 @@ BUILTIN_MODULE_TYPES = MappingProxyType({
         (POLARIZING_MIXER_MANIFEST, PolarizingMixer),
         (FUNCTION_UTILITY_MANIFEST, FunctionUtility),
         (WOGGLEBUG_MANIFEST, Wogglebug),
+        (LFO_MANIFEST, LFO),
         (SCALE_GENERATOR_MANIFEST, ScaleGenerator),
         (LOW_PASS_GATE_MANIFEST, LowPassGate),
         (ECHO_DELAY_MANIFEST, EchoDelay),
@@ -434,6 +437,10 @@ __all__ = [
     "VCAParameters",
     "VCAResponse",
     "WaveB",
+    "LFO",
+    "LFO_MANIFEST",
+    "LFOParameters",
+    "LFO_SHAPES",
     "WOGGLEBUG_MANIFEST",
     "Wogglebug",
     "WogglebugParameters",

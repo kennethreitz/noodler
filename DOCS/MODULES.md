@@ -179,6 +179,18 @@ nearest the original so a line does not leap, which is the mapping
 input, or the switch, decides whether it mirrors; the untouched pitch is
 also put out, for playing a line and its mirror at once.
 
+`LFO` (`lfo`, Modulation) is one phase and every shape at once: sine,
+triangle, saw, ramp, square at a pulse width, sample-and-hold and a smooth
+random walk (a cosine glide to a new target every cycle), each on its own
+jack, and the chosen one on the main output with depth and offset applied --
+depth about the shape's own zero, so a unipolar LFO scales from its floor.
+The rate takes the clock's divisions like every rate, and a rate CV that
+doubles it per volt; a reset trigger restarts the cycle from the phase knob;
+a trigger goes out at the top of every cycle. The phase is a cumulative sum
+cut at each reset and wrapped, so a reset lands sample-exactly and a wrap is
+found where the floor steps up. Fifty hertz at the top: an LFO into a VCA is
+a tremolo.
+
 `Scope` (`scope`, Utilities) keeps the last two and a half seconds of whatever
 is patched into it and its panel draws a window of it -- a millisecond to two
 seconds wide -- as a trace, one point per pixel: in `trigger` mode held still

@@ -355,7 +355,7 @@ LIBRARY_PANE_BUTTON = "noodler.library_pane"
 MODULE_LIBRARY_SECTIONS = (
     (
         "COMPOSE & MODULATE",
-        ("Musical Brains", "Sequencers", "Random & Chaos"),
+        ("Musical Brains", "Sequencers", "Modulation", "Random & Chaos"),
     ),
     (
         "GENERATE",
@@ -7681,7 +7681,7 @@ def _module_appearance(module_id: str, category: str) -> tuple[str, str, tuple]:
         return CONTROL_RAIL, SCALE_THEME, SCALE_ACCENT
     if module_id in {"scale_generator"} or category == "Sequencers":
         return CONTROL_RAIL, SCALE_THEME, SCALE_ACCENT
-    if module_id in {"wogglebug", "adsr_envelope", "function_utility"}:
+    if module_id in {"wogglebug", "adsr_envelope", "function_utility"} or category == "Modulation":
         return CONTROL_RAIL, WOGGLE_THEME, WOGGLE_ACCENT
     if category in {"Oscillators", "Sources", "Noise & Random"}:
         return AUDIO_RAIL, VCO_THEME, VCO_ACCENT
