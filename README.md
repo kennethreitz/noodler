@@ -46,7 +46,12 @@ is beat one; and a **Clock** module turns that clock into triggers and a ramp,
 so anything with a clock input can be patched to the tempo in the menu bar.
 **PyTheory Score** plays a phrase written down — `E5:q D5:e C5:e r:q
 [A3,C4,E4]:h` — round and round on the clock, PyTheory reading the note names,
-so what a bar contains is decided rather than drawn. **PyTheory Reverb** puts a
+so what a bar contains is decided rather than drawn. **PyTheory Raga** improvises in
+any of the library's fifty-four ragas the way a raga is played — up by the
+aroha, down by the avaroha, sometimes the pakad — in just intonation from the
+raga's own ratios; a **Tone Row** steps through a twelve-tone row in any of
+its forms; **PyTheory FX** streams the library's chorus, phaser, tremolo,
+overdrive, tape saturation and cabinet. **PyTheory Reverb** puts a
 signal in any of the library's rooms — Schroeder's
 algorithm, or an impulse response it synthesises for a hall, a plate, a
 spring, a cathedral, a cave, a canyon, a parking garage or the Taj Mahal —
@@ -193,15 +198,15 @@ documents.
 
 ## Modules
 
-The built-in provider currently contains 28 modules, grouped around the way a
+The built-in provider currently contains 31 modules, grouped around the way a
 patch is made rather than around implementation details.
 
 | Shelf | Modules |
 | --- | --- |
-| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, PyTheory Score, Scale Generator, Function Utility, Wogglebug |
+| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, PyTheory Score, PyTheory Raga, Tone Row, Scale Generator, Function Utility, Wogglebug |
 | Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
-| Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb, PyTheory Reverb |
+| Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb, PyTheory Reverb, PyTheory FX |
 
 PyTheory brains prepare musical structures on the control path. Oscillators,
 filters, dynamics, utilities, and effects implement the block-processing
