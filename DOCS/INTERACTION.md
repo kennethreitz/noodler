@@ -103,12 +103,23 @@ panned off the edge of the window.
 The strips live *inside* the node editor because that is the only place a
 cable can land: DPG draws links between node attributes and nowhere else, so
 "drop a cable on a mixer slot" is only possible if the slot is a node. Each
-strip is a jack at the top centre — DPG only draws a pin on a node's edge, but
-imnodes lets a pin be pulled in from that edge, and pulled in by half a strip's
-width it sits at the top of the strip in the middle, as on a desk — a level
-dial whose outer ring is its meter, and pan, A and B beneath, and M and S centred under the dial — dials rather than faders, because a strip that is 116
+strip is a jack at the top centre, a level dial whose outer ring is its meter,
+and pan, A and B beneath, and M and S centred under the dial — dials rather than faders, because a strip that is 116
 pixels tall leaves the rack the room it needs. The console keeps its own font
 and its dials their own size when the rack zooms: a fader is a fader.
+
+The jack deserves its own paragraph, because it took three tries. Dear PyGui
+draws a pin on a node's left or right edge and nowhere else. imnodes has a pin
+offset, and it is set on the strips' theme — and does nothing, because pin
+positions are computed after every node's styles have been popped, so only an
+editor-wide offset applies, and that would drag every module's pins into their
+panels. So each jack is a *post*: a separate node with an empty title and one
+empty input row, themed invisible, whose left edge — where its pin is drawn —
+the console settles onto the strip's middle. The post stands twenty pixels
+above the strip, so its pin sits just above the top edge rather than on it:
+clicking a node brings it to the front, and a pin drawn over the strip went
+under the strip the moment the strip was clicked. Nothing can cover what
+stands above the top edge.
 
 The band the console stands in is reserved. Centring, framing and revealing a
 new module all reason about "the visible area", and that area is the canvas

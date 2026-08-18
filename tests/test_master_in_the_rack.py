@@ -179,3 +179,32 @@ def test_nothing_to_adopt_leaves_a_patch_alone() -> None:
 
     assert patch.modules == {}
     assert patch.output_taps == ()
+
+
+def test_each_strip_has_a_jack_post_standing_above_its_middle(monkeypatch) -> None:
+    """The jack is a separate, invisible node whose pin is at the strip's top centre."""
+    from noodler.app import CONSOLE_POST, CONSOLE_STRIP, JACK_POST_LIFT, POST_ANCHORS
+
+    dpg.create_context()
+    try:
+        build_ui()
+        assert len(POST_ANCHORS) == 12  # eight channels, two stereo returns
+        strip = CONSOLE_STRIP.format(channel=3)
+        post = CONSOLE_POST.format(name="channel_3")
+        assert dpg.does_item_exist(f"{OUTPUT_NODE}.channel_3")
+        parent = dpg.get_item_parent(f"{OUTPUT_NODE}.channel_3")
+        assert parent in (post, dpg.get_alias_id(post))
+
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [950, 700] if item == RACK else ([8, 22] if item in POST_ANCHORS else [78, 118]),
+        )
+        _settle_console()
+
+        strip_x, strip_y = dpg.get_item_pos(strip)
+        post_x, post_y = dpg.get_item_pos(post)
+        assert post_x == pytest.approx(strip_x + 39.0, abs=1.0), "the pin at the middle"
+        assert post_y == pytest.approx(strip_y - JACK_POST_LIFT, abs=1.0), "standing above the top edge"
+    finally:
+        dpg.destroy_context()

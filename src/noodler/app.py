@@ -127,9 +127,28 @@ CONSOLE_MASTER_METER = CONSOLE_PREFIX + "master_meter"
 CONSOLE_MASTER_READOUT = CONSOLE_PREFIX + "master_readout"
 CONSOLE_THEME = "noodler.theme.console"
 CONSOLE_STRIP_THEME = "noodler.theme.console_strip"
-STRIP_JACK_INSET = 38.0
-RETURN_JACK_INSET = 30.0
+STRIP_JACK_INSET = 0.0
+RETURN_JACK_INSET = 0.0
 CONSOLE_RETURN_THEME = "noodler.theme.console_return"
+CONSOLE_POST = CONSOLE_PREFIX + "post_{name}"
+JACK_POST_THEME = "noodler.theme.jack_post"
+JACK_POST_LIFT = 20.0
+"""How far above a strip's top its jack posts stand.
+
+The pin lands about fourteen pixels below a post's top, so this puts it just
+above the strip's edge -- touching it, not on it. That matters: clicking a
+node brings it to the front, and a pin drawn over the strip would go under
+the strip the moment the strip was clicked. Nothing can cover what stands
+above the top edge."""
+POST_ANCHORS: dict[str, tuple[str, float]] = {}
+"""Each jack post and where it stands: which strip, and how far across it.
+
+A jack post is a node that is nothing but a pin. Dear PyGui draws a pin on a
+node's left edge and nowhere else, and offsets set on a node's theme are read
+after the node's styles are gone, so the only way to put a jack at the top
+centre of a strip is to stand a separate, invisible node there whose left edge
+is the strip's middle. The cable lands on the post; the strip has no jack of
+its own."""
 """How far a strip's jack is pulled in from its edge, to sit at the top centre.
 
 Dear PyGui draws a pin on a node's left or right edge, and nowhere else. But
@@ -1241,8 +1260,14 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
     # master's sends leave the left end of the console heading toward the
     # effects, and what the effects give back arrives at the right end from
     # the left. Channels sit between, taking cables straight down from above.
-    PINNED_NODES[:] = [OUTPUT_NODE, *strips, *returns]
-    strips = strips + returns
+    posts = [CONSOLE_POST.format(name=f"channel_{c}") for c in range(1, MASTER_CHANNELS + 1)]
+    posts += [
+        CONSOLE_POST.format(name=port)
+        for bus in SENDS
+        for port in RETURN_PORTS[bus]
+    ]
+    PINNED_NODES[:] = [OUTPUT_NODE, *strips, *returns, *posts]
+    strips = strips + returns + posts
     for strip in strips:
         if strip not in RACK_NODES:
             RACK_NODES.append(strip)
@@ -1483,6 +1508,23 @@ def _configure_theme() -> None:
         (CONSOLE_RETURN_THEME, RETURN_JACK_INSET),
     ):
         _console_theme(tag, inset)
+    with dpg.theme(tag=JACK_POST_THEME):
+        # A jack post is not seen, only its pin: no body, no title, no border.
+        with dpg.theme_component(dpg.mvNode):
+            for node_color in (
+                dpg.mvNodeCol_NodeBackground,
+                dpg.mvNodeCol_NodeBackgroundHovered,
+                dpg.mvNodeCol_NodeBackgroundSelected,
+                dpg.mvNodeCol_NodeOutline,
+                dpg.mvNodeCol_TitleBar,
+                dpg.mvNodeCol_TitleBarHovered,
+                dpg.mvNodeCol_TitleBarSelected,
+            ):
+                dpg.add_theme_color(node_color, (0, 0, 0, 0), category=dpg.mvThemeCat_Nodes)
+            dpg.add_theme_style(dpg.mvNodeStyleVar_NodePadding, 2, 1, category=dpg.mvThemeCat_Nodes)
+            dpg.add_theme_style(dpg.mvNodeStyleVar_NodeBorderThickness, 0.0, category=dpg.mvThemeCat_Nodes)
+            dpg.add_theme_style(dpg.mvNodeStyleVar_PinCircleRadius, 6, category=dpg.mvThemeCat_Nodes)
+            dpg.add_theme_style(dpg.mvNodeStyleVar_PinHoverRadius, 12, category=dpg.mvThemeCat_Nodes)
     for tag, background, foreground in (
         (TOGGLE_OFF_THEME, (36, 36, 34, 255), MUTED_TEXT),
         (MUTE_ON_THEME, METER_HOT, (28, 26, 22, 255)),
@@ -3005,7 +3047,7 @@ def _console_band() -> float:
             tallest = max(tallest, height)
     if tallest <= 1.0:
         return CONSOLE_BAND_ESTIMATE
-    return tallest + CONSOLE_MARGIN * 2.0
+    return tallest + JACK_POST_LIFT + CONSOLE_MARGIN * 2.0
 
 
 def _rack_view_size() -> tuple[float, float]:
@@ -3150,7 +3192,7 @@ def _settle_console() -> None:
         return
     x = CONSOLE_MARGIN
     for node in PINNED_NODES:
-        if not dpg.does_item_exist(node):
+        if node in POST_ANCHORS or not dpg.does_item_exist(node):
             continue
         width, height = (float(v) for v in dpg.get_item_rect_size(node))
         if width <= 1.0 or height <= 1.0:
@@ -3159,6 +3201,16 @@ def _settle_console() -> None:
         if [round(v) for v in dpg.get_item_pos(node)] != [round(v) for v in wanted]:
             dpg.set_item_pos(node, wanted)
         x += width + CONSOLE_GAP
+    # Then the jacks, standing on their strips: the post's left edge -- where
+    # its pin is drawn -- at the strip's middle, its pin over the title bar.
+    for post, (strip, across) in POST_ANCHORS.items():
+        if not (dpg.does_item_exist(post) and dpg.does_item_exist(strip)):
+            continue
+        strip_x, strip_y = (float(v) for v in dpg.get_item_pos(strip))
+        strip_width = float(dpg.get_item_rect_size(strip)[0])
+        wanted = [strip_x + strip_width * across, strip_y - JACK_POST_LIFT]
+        if [round(v) for v in dpg.get_item_pos(post)] != [round(v) for v in wanted]:
+            dpg.set_item_pos(post, wanted)
 
 
 def _reveal_rack_once() -> None:
@@ -6320,14 +6372,6 @@ def _meter_colour(level: float) -> tuple[int, int, int, int]:
 def _build_strip(channel: int, master: MasterMixer) -> None:
     """One console strip: the jack at the top, then level, then pan, A, B."""
     with dpg.node(tag=CONSOLE_STRIP.format(channel=channel), label=f"{channel}"):
-        with dpg.node_attribute(
-            tag=f"{OUTPUT_NODE}.channel_{channel}",
-            label=f"Channel {channel}",
-            attribute_type=dpg.mvNode_Attr_Input,
-        ):
-            # Nothing but room for the jack, which the theme pulls in to the
-            # top centre of the strip; the row's text would sit under it.
-            dpg.add_spacer(height=6)
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.levels[channel - 1]
             # Stacked narrow -- dial and readout, then M S, then pan A B -- so
@@ -6466,21 +6510,13 @@ def _build_return_strip(bus: str, master: MasterMixer) -> None:
     """A return: what came back from a send, in stereo, with a level and a mute."""
     left_port, right_port = RETURN_PORTS[bus]
     with dpg.node(tag=CONSOLE_RETURN.format(bus=bus), label=f"RET {bus.upper()}"):
-        for port_id, name in ((left_port, "L"), (right_port, "R")):
-            with dpg.node_attribute(
-                tag=f"{OUTPUT_NODE}.{port_id}",
-                label=f"Return {bus.upper()} {name}",
-                attribute_type=dpg.mvNode_Attr_Input,
-            ):
-                # The jack sits in from the edge; L and R stack down the middle,
-                # so the letter goes to the right of where the pin lands.
-                with dpg.group(horizontal=True):
-                    dpg.add_spacer(width=int(RETURN_JACK_INSET) + 4)
-                    _add_port_text(
-                        name,
-                        "audio",
-                        f"The {'left' if name == 'L' else 'right'} of what came back from send {bus.upper()}.",
-                    )
+        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
+            # The two jacks stand on posts above; this row only says which is which.
+            with dpg.group(horizontal=True, horizontal_spacing=0):
+                dpg.add_spacer(width=14)
+                dpg.add_text("L", color=SIGNAL_COLORS["audio"])
+                dpg.add_spacer(width=18)
+                dpg.add_text("R", color=SIGNAL_COLORS["audio"])
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.return_levels[SENDS.index(bus)]
             with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
@@ -6505,6 +6541,21 @@ def _build_return_strip(bus: str, master: MasterMixer) -> None:
             _paint_return_mute(master, bus)
 
 
+def _build_jack_post(name: str, attribute_tag: str, strip: str, across: float) -> None:
+    """Stand a jack at a point along the top of a strip.
+
+    The post is a node with an empty title and one input row holding nothing,
+    themed invisible, so all that shows is its pin -- and its left edge, where
+    the pin is drawn, is put at the strip's middle by the console's settle.
+    """
+    post = CONSOLE_POST.format(name=name)
+    with dpg.node(tag=post, label=""):
+        with dpg.node_attribute(tag=attribute_tag, attribute_type=dpg.mvNode_Attr_Input):
+            dpg.add_spacer(width=4, height=2)
+    dpg.bind_item_theme(post, JACK_POST_THEME)
+    POST_ANCHORS[post] = (strip, across)
+
+
 def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
     """Build the console: eight strips and the master, pinned along the bottom.
 
@@ -6516,6 +6567,7 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
     editor because that is the only place a cable can land, and they are
     pinned so the rack pans and zooms underneath them.
     """
+    POST_ANCHORS.clear()
     for channel in range(1, MASTER_CHANNELS + 1):
         _build_strip(channel, master)
     for bus in SENDS:
@@ -6549,7 +6601,7 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
                 tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
             )
     for node in PINNED_NODES:
-        if not dpg.does_item_exist(node):
+        if not dpg.does_item_exist(node) or node in POST_ANCHORS:
             continue
         if node == OUTPUT_NODE:
             theme = CONSOLE_THEME
@@ -6558,6 +6610,19 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
         else:
             theme = CONSOLE_STRIP_THEME
         dpg.bind_item_theme(node, theme)
+    # The jacks: one post at the top centre of each strip, two on each return.
+    # Built last so they draw above the strips.
+    for channel in range(1, MASTER_CHANNELS + 1):
+        _build_jack_post(
+            f"channel_{channel}",
+            f"{OUTPUT_NODE}.channel_{channel}",
+            CONSOLE_STRIP.format(channel=channel),
+            0.5,
+        )
+    for bus in SENDS:
+        left_port, right_port = RETURN_PORTS[bus]
+        _build_jack_post(left_port, f"{OUTPUT_NODE}.{left_port}", CONSOLE_RETURN.format(bus=bus), 0.3)
+        _build_jack_post(right_port, f"{OUTPUT_NODE}.{right_port}", CONSOLE_RETURN.format(bus=bus), 0.7)
 
 
 def _console_titles(patch: PatchGraph) -> None:

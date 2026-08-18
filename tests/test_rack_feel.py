@@ -484,7 +484,8 @@ def test_a_module_already_in_view_does_not_move_the_camera(monkeypatch) -> None:
         monkeypatch.setattr(
             dpg, "get_item_rect_size", _sized((900, 600), (200, 150))
         )
-        dpg.set_item_pos(VCO_NODE, [300.0, 200.0])
+        # Well inside the part of the canvas above the console band.
+        dpg.set_item_pos(VCO_NODE, [300.0, 120.0])
 
         assert _reveal_node(VCO_NODE) is False
         assert CANVAS_INTERACTION.recenter_x.target == 0.0
