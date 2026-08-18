@@ -458,7 +458,13 @@ def test_module_selector_search_filters_names_categories_and_descriptions() -> N
         assert dpg.get_item_configuration(
             _module_library_category_tag("Musical Brains")
         )["show"] is False
-        assert dpg.get_value(MODULE_SELECTOR_STATUS) == "2 MODULES"
+        # Counted from the catalogue rather than restated, so adding a module
+        # that happens to mention filtering does not fail this test.
+        matching = sum(
+            "filter" in f"{m.name} {m.category} {m.description}".lower()
+            for m in BUILTIN_PROVIDER_MANIFEST.modules
+        )
+        assert dpg.get_value(MODULE_SELECTOR_STATUS) == f"{matching} MODULES"
     finally:
         dpg.destroy_context()
 
