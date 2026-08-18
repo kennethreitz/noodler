@@ -151,6 +151,14 @@ def assess_connection(
         )
 
     signal_pair = {source.signal_type, target.signal_type}
+    if signal_pair == {SignalType.GATE, SignalType.TRIGGER}:
+        # A trigger is a short gate. Every module reads both at the rising
+        # edge, and in a rack they are the same voltage on the same cable.
+        return ConnectionAssessment(
+            compatible=True,
+            disposition=ConnectionDisposition.CROSS_SIGNAL,
+            reason="a trigger is a short gate; both are read at the rising edge",
+        )
     if signal_pair != {SignalType.AUDIO, SignalType.CV}:
         return ConnectionAssessment(
             compatible=False,

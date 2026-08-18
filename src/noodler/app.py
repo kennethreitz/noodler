@@ -64,11 +64,11 @@ from .patch import (
     PatchGraph,
 )
 from .preset import (
-    read_patch_preset,
     PatchPreset,
     Point,
     RackNodePreset,
     RackViewPreset,
+    TransportPreset,
     capture_patch_preset,
     read_patch_preset,
     write_patch_preset,
@@ -144,6 +144,8 @@ LIBRARY_HEADER_ROOM = 36
 TIDY_RACK_BUTTON = "noodler.tidy_rack"
 SAVE_PATCH_DIALOG = "noodler.save_patch_dialog"
 OPEN_PATCH_DIALOG = "noodler.open_patch_dialog"
+NEW_PATCH_MENU_ITEM = "noodler.menu.new_patch"
+EXAMPLES_MENU = "noodler.menu.examples"
 OPEN_PATCH_MENU_ITEM = "noodler.menu.open"
 SAVE_PATCH_MENU_ITEM = "noodler.menu.save"
 SAVE_AS_MENU_ITEM = "noodler.menu.save_as"
@@ -617,6 +619,39 @@ def _open_patch_dialog(
         _set_patch_status(f"OPENING  ·  {preset.name}")
     except (OSError, TypeError, ValueError) as error:
         _set_patch_status(f"COULD NOT OPEN: {error}", error=True)
+
+
+def _new_patch(_sender: int | str = 0, _app_data: object = None, _u: object = None) -> None:
+    """Queue an empty rack -- just the master -- to replace this one next frame.
+
+    Rebuilt from the frame callback like an opened document, and for the same
+    reason: taking the window apart mid-dispatch is how a menu turns into a
+    crash. Save no longer knows a path, so it will ask.
+    """
+    CURRENT_PATCH_PATH.clear()
+    PENDING_OPEN[:] = [PatchPreset(name="Untitled Patch", modules=())]
+    _set_patch_status("NEW RACK")
+
+
+def _example_documents() -> tuple[Path, ...]:
+    """The example patches shipped beside the package, if this is a checkout."""
+    folder = Path(__file__).resolve().parents[2] / "examples"
+    if not folder.is_dir():
+        return ()
+    return tuple(sorted(folder.glob("*.noodler")))
+
+
+def _open_example(_sender: int | str, _app_data: object, document: Path) -> None:
+    """Open one of the shipped examples, without a dialog."""
+    try:
+        preset = read_patch_preset(document)
+    except (OSError, TypeError, ValueError) as error:
+        _set_patch_status(f"COULD NOT OPEN: {error}", error=True)
+        return
+    # An example is a starting point, not a file to write back over: Save asks.
+    CURRENT_PATCH_PATH.clear()
+    PENDING_OPEN[:] = [preset]
+    _set_patch_status(f"OPENING  ·  {preset.name}")
 
 
 def _consume_pending_open() -> AppRuntime | None:
@@ -1644,6 +1679,11 @@ def _capture_current_preset(runtime: AppRuntime, name: str) -> PatchPreset:
         patch=runtime.patch,
         master_gain=runtime.audio.master_gain,
         view=view,
+        transport=TransportPreset(
+            bpm=TRANSPORT.bpm,
+            beats_per_bar=TRANSPORT.beats_per_bar,
+            beat_unit=TRANSPORT.beat_unit,
+        ),
     )
 
 
@@ -3255,11 +3295,26 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
     with dpg.menu_bar(tag=RACK_MENU_BAR):
         with dpg.menu(label="File"):
             dpg.add_menu_item(
+                label="New",
+                tag=NEW_PATCH_MENU_ITEM,
+                shortcut="⌘N",
+                callback=_new_patch,
+            )
+            dpg.add_menu_item(
                 label="Open…",
                 tag=OPEN_PATCH_MENU_ITEM,
                 shortcut="⌘O",
                 callback=_show_open_patch_dialog,
             )
+            examples = _example_documents()
+            if examples:
+                with dpg.menu(label="Open Example", tag=EXAMPLES_MENU):
+                    for document in examples:
+                        dpg.add_menu_item(
+                            label=document.stem.replace("-", " ").title(),
+                            callback=_open_example,
+                            user_data=document,
+                        )
             dpg.add_separator()
             dpg.add_menu_item(
                 label="Save",
@@ -3816,6 +3871,15 @@ def _open_shortcut(
         _show_open_patch_dialog(sender, app_data, None)
 
 
+def _new_shortcut(
+    sender: int | str,
+    app_data: object,
+    _runtime: AppRuntime,
+) -> None:
+    if _commanded() and not _keyboard_is_captured():
+        _new_patch(sender, app_data, None)
+
+
 def _save_shortcut(
     sender: int | str,
     app_data: object,
@@ -3910,6 +3974,7 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             (dpg.mvKey_Z, _undo_or_redo_rack_edit),
             (dpg.mvKey_Q, _quit_shortcut),
             (dpg.mvKey_O, _open_shortcut),
+            (dpg.mvKey_N, _new_shortcut),
             (dpg.mvKey_S, _save_shortcut),
         ):
             dpg.add_key_press_handler(
@@ -6244,6 +6309,13 @@ def build_ui(
     """Build the initial rack and return its live application runtime."""
     if starter_patch and preset is not None:
         raise ValueError("choose either a starter patch or a patch document")
+    if preset is not None:
+        # The clock travels with the document: a patch with a beat in it is
+        # not the same patch at another tempo. Set before the menu is built,
+        # so its controls come up reading what the document says.
+        TRANSPORT.set_bpm(preset.transport.bpm)
+        TRANSPORT.set_signature(preset.transport.beats_per_bar, preset.transport.beat_unit)
+        TRANSPORT.rewind()
     _reset_rack_registry(starter_patch=starter_patch and preset is None)
     KNOB_INTERACTION.reset()
     CANVAS_INTERACTION.reset()

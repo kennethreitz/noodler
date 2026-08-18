@@ -7,6 +7,7 @@ import pytest
 
 from noodler.app import build_runtime_from_preset
 from noodler.preset import read_patch_preset
+from noodler.transport import Transport
 
 
 EXAMPLES = sorted(Path("examples").glob("*.noodler"))
@@ -226,3 +227,46 @@ def test_the_set_leaves_headroom() -> None:
         levels[stem] = float(np.sqrt(np.mean(audio**2)))
     loudest, quietest = max(levels.values()), min(levels.values())
     assert loudest / quietest < 4.0, levels
+
+
+def _strongest_period(audio: np.ndarray, low: float = 0.2, high: float = 6.0) -> float:
+    """The period, in seconds, that the loudness of a passage most repeats at."""
+    envelope = np.convolve(np.abs(audio).mean(axis=1), np.ones(2_400) / 2_400, mode="same")
+    spectrum = np.abs(np.fft.rfft(envelope - envelope.mean()))
+    frequencies = np.fft.rfftfreq(envelope.size, 1.0 / 48_000.0)
+    band = (frequencies > low) & (frequencies < high)
+    return float(1.0 / frequencies[band][np.argmax(spectrum[band])])
+
+
+def test_the_highlife_example_keeps_time_with_the_transport() -> None:
+    """Drums, chords, arpeggio, melody and bass all follow the menu-bar clock."""
+    preset = read_patch_preset(Path("examples/highlife-kalimba.noodler"))
+    assert preset.transport.bpm == 108.0
+    runtime = build_runtime_from_preset(preset)
+    runtime.patch.prepare(48_000.0, 256)
+
+    def play(bpm: float, seconds: float) -> np.ndarray:
+        transport = Transport(bpm=bpm)
+        blocks = []
+        for _ in range(int(seconds * 48_000 / 256)):
+            runtime.patch.transport = transport.tick(256, 48_000.0)
+            blocks.append(runtime.patch.render_stereo(256, 48_000.0))
+        return np.concatenate(blocks)
+
+    at_108 = play(108.0, 16.0)
+    at_150 = play(150.0, 12.0)
+
+    # The loudest repetition is the beat or a simple division of it -- the
+    # eighths and the beat are close in energy -- and it moves with the tempo.
+    def beats_per_period(audio: np.ndarray, bpm: float) -> float:
+        return _strongest_period(audio) * bpm / 60.0
+
+    for audio, bpm in ((at_108, 108.0), (at_150, 150.0)):
+        ratio = beats_per_period(audio, bpm)
+        assert any(abs(ratio - simple) < 0.03 for simple in (0.5, 1.0, 2.0)), ratio
+    assert float(np.max(np.abs(at_108))) < 0.9
+
+    clocked = [
+        m for m in runtime.patch.modules.values() if getattr(m, "uses_transport", False)
+    ]
+    assert {m.manifest.id for m in clocked} == {"clock", "pytheory_beats"}

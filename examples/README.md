@@ -27,6 +27,17 @@ whole patch retunes.
 | `nineteen` | 19-tet | Ordinary chord shapes in nineteen equal steps: sweeter thirds, and sharps and flats stop being the same note. Rhodes, strings, upright bass. |
 | `makam-divan` | makam | Hicaz on the fifty-three-comma octave. Oud, ney, contrabass. |
 
+## Keeping time
+
+`highlife-kalimba` is a groove that follows the clock in the menu bar. PyTheory
+Beats plays the library's highlife pattern through its own drum synthesis; a
+Clock module turns the same transport into triggers, and every brain is
+clocked from it — chords change on the bar, the arpeggio runs in eighths, the
+melody in sixteenths, the bass on every beat — so changing the tempo changes
+everything at once. Kalimba, marimba and upright bass are PyTheory voices in
+yo, and the room and the echo hang off the master's sends. It is saved at 108
+BPM, and the tempo travels with the document.
+
 `hijaz-machine` is the earlier generative showcase (arabic hijaz, oscillator
 voices), and `somesound` is a two-module starter.
 
@@ -37,6 +48,7 @@ The set is generated, so it can be regenerated after a change to the modules:
 ```console
 uv run python examples/build_tone_systems.py
 uv run python examples/build_pelog_bell_garden.py
+uv run python examples/build_highlife_kalimba.py
 ```
 
 Both scripts write over the documents here.

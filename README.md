@@ -182,7 +182,8 @@ The format is human-readable and friendly to source control. See the
 [example patches](examples/) for the complete shape — including a set of
 seven tone-system patches (pelog, slendro, Bohlen-Pierce, carnatic, shruti,
 19-TET, makam), every one played by PyTheory's own synthesis and tuned by a
-single Key.
+single Key, and a groove that follows the clock in the menu bar. They are all
+under **File → Open Example**, and the tempo travels with each document.
 
 ## Architecture
 
