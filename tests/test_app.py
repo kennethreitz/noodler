@@ -845,22 +845,36 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
         dpg.destroy_context()
 
 
-def test_rail_layout_makes_room_without_changing_signal_order() -> None:
-    positions = (20.0, 180.0, 430.0)
+def test_rail_layout_packs_the_row_and_closes_its_gaps() -> None:
+    """A rack that can only spread is one the user has to keep tidying."""
     widths = (200.0, 180.0, 220.0)
+    spread = (20.0, 500.0, 900.0)
 
     assert _rail_x_targets(
-        positions,
-        widths,
-        active_index=1,
-        gap=40.0,
-    ) == (-60.0, 180.0, 430.0)
-    assert _rail_x_targets(
-        positions,
+        spread,
         widths,
         active_index=None,
         gap=40.0,
     ) == (20.0, 260.0, 480.0)
+
+    # The module under the pointer keeps its own position, but its slot is
+    # still reserved so the rest of the rail parts for it.
+    assert _rail_x_targets(
+        spread,
+        widths,
+        active_index=1,
+        gap=40.0,
+    ) == (20.0, 260.0, 480.0)
+
+
+def test_rail_layout_packs_from_where_the_row_already_is() -> None:
+    assert _rail_x_targets(
+        (300.0, 320.0),
+        (100.0, 100.0),
+        active_index=None,
+        gap=20.0,
+    ) == (300.0, 420.0)
+    assert _rail_x_targets((), (), active_index=None, gap=20.0) == ()
 
 
 def test_node_editor_repatches_the_live_graph() -> None:

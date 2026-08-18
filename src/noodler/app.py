@@ -117,6 +117,7 @@ RACK_WORKSPACE = "noodler.rack_workspace"
 UNPLUG_ALL_BUTTON = "noodler.unplug_all"
 SAVE_PATCH_BUTTON = "noodler.save_patch"
 FRAME_RACK_BUTTON = "noodler.frame_rack"
+TIDY_RACK_BUTTON = "noodler.tidy_rack"
 SAVE_PATCH_DIALOG = "noodler.save_patch_dialog"
 ADD_MODULE_BUTTON = "noodler.add_module"
 MODULE_SELECTOR = "noodler.module_selector"
@@ -221,11 +222,12 @@ SIGNAL_COLORS = {
     "musical": (163, 126, 205, 255),
 }
 DEFAULT_CONTROL_STATUS = (
-    "DRAG JACKS TO PATCH  ·  SELECT + DELETE TO UNPATCH OR REMOVE  ·  "
-    "⌘Z = UNDO  ·  ⌘K = ADD MODULE  ·  F = FRAME ALL  ·  "
-    "SPACE + MOVE = PAN  ·  DRAG BACKGROUND = PAN  ·  SHIFT + DRAG = SELECT  ·  "
-    "PINCH = ZOOM  ·  DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET"
+    "DRAG JACKS TO PATCH  ·  DRAG MODULES SIDEWAYS TO REORDER  ·  "
+    "T = TIDY  ·  F = FRAME ALL  ·  ⌘Z = UNDO  ·  ⌘K = ADD MODULE  ·  "
+    "SPACE + MOVE = PAN  ·  PINCH = ZOOM  ·  SELECT + DELETE TO REMOVE  ·  "
+    "DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET"
 )
+
 
 
 KNOB_HINT_DRAG_LIMIT = 3
@@ -1797,27 +1799,95 @@ def _rail_x_targets(
     active_index: int | None,
     gap: float,
 ) -> tuple[float, ...]:
-    """Make room around an active module while preserving semantic order."""
+    """Pack a rail left to right, closing every gap it can.
+
+    The rule this replaces only ever pushed modules apart: a gap opened by one
+    drag stayed open for the rest of the session, so a rack could spread but
+    never tidy, and the only way back was to drag everything again. Packing
+    from the rail's left edge keeps the row as compact as its modules allow and
+    leaves a horizontal drag deciding one thing — order.
+
+    The module under the pointer keeps whatever position the pointer gives it;
+    its slot is still reserved here so the rest of the rail opens a gap for it.
+    """
     if len(positions) != len(widths):
         raise ValueError("rail positions and widths must have the same length")
     if not positions:
         return ()
-    targets = list(positions)
-    if active_index is None:
-        for index in range(1, len(targets)):
-            minimum = targets[index - 1] + widths[index - 1] + gap
-            targets[index] = max(targets[index], minimum)
-        return tuple(targets)
-    if not 0 <= active_index < len(targets):
+    if active_index is not None and not 0 <= active_index < len(positions):
         raise ValueError("active rail index is out of range")
 
-    for index in range(active_index - 1, -1, -1):
-        maximum = targets[index + 1] - widths[index] - gap
-        targets[index] = min(targets[index], maximum)
-    for index in range(active_index + 1, len(targets)):
-        minimum = targets[index - 1] + widths[index - 1] + gap
-        targets[index] = max(targets[index], minimum)
+    targets = []
+    cursor = min(positions)
+    for width in widths:
+        targets.append(cursor)
+        cursor += width + gap
     return tuple(targets)
+
+
+def _rail_slot_for(
+    center: float,
+    targets: tuple[float, ...],
+    widths: tuple[float, ...],
+) -> int:
+    """Find the packed slot a dragged module is currently closest to."""
+    if not targets:
+        return 0
+    centers = [
+        target + width * 0.5 for target, width in zip(targets, widths)
+    ]
+    return min(range(len(centers)), key=lambda index: abs(centers[index] - center))
+
+
+def _module_depths(patch: PatchGraph) -> dict[str, int]:
+    """How far along the signal each module sits, in cables from a source.
+
+    The graph already knows: `processing_order` is a topological sort, so one
+    pass over it in order settles the longest path to every module.
+    """
+    depths = {module_id: 0 for module_id in patch.modules}
+    outgoing: dict[str, list[str]] = {module_id: [] for module_id in patch.modules}
+    for cable in patch.cables:
+        if cable.source.module_id in outgoing:
+            outgoing[cable.source.module_id].append(cable.target.module_id)
+    for module_id in patch.processing_order:
+        for target in outgoing.get(module_id, ()):
+            depths[target] = max(depths.get(target, 0), depths[module_id] + 1)
+    return depths
+
+
+def _tidy_rack(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    runtime: AppRuntime | None = None,
+) -> None:
+    """Order every rail by the way signal actually runs through the patch.
+
+    Left to right is the one thing a rack layout has to say, and the patch
+    already knows it. Ordering by depth means the arrangement is a reading of
+    the instrument rather than a record of what was added when — and packing
+    does the spacing, so this never has to touch a coordinate.
+    """
+    if runtime is None or _keyboard_is_captured():
+        return
+    depths = _module_depths(runtime.patch)
+    furthest = max(depths.values(), default=0)
+    node_depth = {
+        node: depths.get(instance_id, 0)
+        for instance_id, node in INSTANCE_NODE_TAGS.items()
+    }
+    node_depth[OUTPUT_NODE] = furthest + 1
+
+    for lane in RACK_RAILS.values():
+        lane.sort(
+            key=lambda node: (
+                node_depth.get(node, 0),
+                float(dpg.get_item_pos(node)[0])
+                if dpg.does_item_exist(node)
+                else 0.0,
+            )
+        )
+    _set_patch_status("TIDIED  ·  RAILS NOW FOLLOW THE SIGNAL")
 
 
 def _dragged_rack_node() -> int | str | None:
@@ -1866,6 +1936,36 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
             active_index=active_index,
             gap=gap,
         )
+        if active_index is not None:
+            # Dragging a module sideways moves it through the rail rather than
+            # to a coordinate, so its neighbours part for it as it passes.
+            slot = _rail_slot_for(
+                positions[active_index] + widths[active_index] * 0.5,
+                targets,
+                widths,
+            )
+            if slot != active_index:
+                reordered = list(available)
+                reordered.pop(active_index)
+                reordered.insert(slot, active_node)
+                lane = RACK_RAILS[rail]
+                if set(lane) == set(reordered):
+                    lane[:] = reordered
+                available = tuple(reordered)
+                positions = tuple(
+                    float(dpg.get_item_pos(node)[0]) for node in available
+                )
+                widths = tuple(
+                    max(1.0, float(dpg.get_item_rect_size(node)[0]))
+                    for node in available
+                )
+                active_index = slot
+                targets = _rail_x_targets(
+                    positions,
+                    widths,
+                    active_index=active_index,
+                    gap=gap,
+                )
         target_y = CANVAS_INTERACTION.rail_y[rail]
         for node, current_x, target_x in zip(available, positions, targets):
             current_y = float(dpg.get_item_pos(node)[1])
@@ -2225,6 +2325,14 @@ def _add_rack_controls(runtime: AppRuntime) -> None:
     )
     with dpg.tooltip(FRAME_RACK_BUTTON):
         dpg.add_text("Bring every module back into view.  ·  F")
+    dpg.add_button(
+        label="TIDY",
+        tag=TIDY_RACK_BUTTON,
+        callback=_tidy_rack,
+        user_data=runtime,
+    )
+    with dpg.tooltip(TIDY_RACK_BUTTON):
+        dpg.add_text("Order the rails by the way signal flows.  ·  T")
     dpg.add_button(
         label="UNPLUG ALL",
         tag=UNPLUG_ALL_BUTTON,
@@ -2897,6 +3005,7 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             (dpg.mvKey_Escape, _dismiss_rack_focus),
             (dpg.mvKey_K, _open_module_selector_shortcut),
             (dpg.mvKey_F, _frame_rack),
+            (dpg.mvKey_T, _tidy_rack),
             (dpg.mvKey_Z, _undo_or_redo_rack_edit),
         ):
             dpg.add_key_press_handler(

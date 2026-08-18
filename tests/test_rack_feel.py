@@ -44,6 +44,8 @@ from noodler.app import (
     _reveal_node,
     _settle_rack_rails,
     _settle_space_pan,
+    _tidy_rack,
+    _module_depths,
     _settle_recenter,
     _settle_rack_zoom,
     _toggle_module_from_title,
@@ -811,5 +813,77 @@ def test_a_stray_release_does_not_steal_the_pointer_back(monkeypatch) -> None:
         _end_knob_drag("test", None, KNOB_INTERACTION)
 
         assert "reset" not in cursor.events
+    finally:
+        dpg.destroy_context()
+
+
+def test_tidy_orders_a_rail_by_the_way_signal_flows() -> None:
+    """The patch already knows left-to-right; the layout should just read it."""
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        lane = RACK_RAILS[AUDIO_RAIL]
+        lane[:] = list(reversed(lane))
+        assert lane[0] == OUTPUT_NODE, "deliberately backwards to start"
+
+        _tidy_rack("test", None, runtime)
+
+        order = [INSTANCE_NODE_TAGS.get(m) for m in ("vco", "mixer", "low_pass_gate", "reverb")]
+        positions = [RACK_RAILS[AUDIO_RAIL].index(node) for node in order]
+        assert positions == sorted(positions), "signal order, left to right"
+        assert RACK_RAILS[AUDIO_RAIL][-1] == OUTPUT_NODE, "the output ends the rail"
+        assert "TIDIED" in dpg.get_value(CONTROL_STATUS)
+    finally:
+        dpg.destroy_context()
+
+
+def test_module_depth_follows_the_cables() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        depths = _module_depths(runtime.patch)
+
+        assert depths["vco"] < depths["mixer"] < depths["low_pass_gate"]
+        assert depths["low_pass_gate"] < depths["reverb"]
+        assert depths["wogglebug"] == 0, "a source starts at the beginning"
+    finally:
+        dpg.destroy_context()
+
+
+def test_tidy_leaves_an_unpatched_rack_alone() -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        before = list(RACK_RAILS[AUDIO_RAIL])
+
+        _tidy_rack("test", None, runtime)
+
+        assert RACK_RAILS[AUDIO_RAIL] == before
+    finally:
+        dpg.destroy_context()
+
+
+def test_dragging_a_module_sideways_reorders_its_rail(monkeypatch) -> None:
+    """A horizontal drag decides order, not a coordinate."""
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        lane = RACK_RAILS[AUDIO_RAIL]
+        first, second = lane[0], lane[1]
+
+        # Carry the first module past its neighbour.
+        beyond = float(dpg.get_item_pos(second)[0]) + 400.0
+        dpg.set_item_pos(first, [beyond, float(dpg.get_item_pos(first)[1])])
+        monkeypatch.setattr("noodler.app._dragged_rack_node", lambda: first)
+        monkeypatch.setattr(
+            dpg, "get_item_rect_size", lambda item: [220, 150]
+        )
+
+        _settle_rack_rails(1.0 / 60.0)
+
+        assert RACK_RAILS[AUDIO_RAIL].index(first) > RACK_RAILS[AUDIO_RAIL].index(
+            second
+        ), "the dragged module took the later slot"
+        assert set(RACK_RAILS[AUDIO_RAIL]) == set(lane), "nothing was lost"
     finally:
         dpg.destroy_context()
