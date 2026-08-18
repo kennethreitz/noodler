@@ -1,0 +1,26 @@
+[project]
+name = "noodler"
+version = "0.1.0"
+description = "A modular music environment inspired by Eurorack."
+requires-python = "==3.14.*"
+dependencies = [
+    "dearpygui>=2.3.1",
+    "numpy>=2",
+    "pillow>=12.3",
+    "pydantic>=2",
+    "pyobjc-framework-Cocoa>=12.2.1; sys_platform == 'darwin'",
+    "pytheory>=0.57.13",
+    "sounddevice>=0.5.5",
+]
+
+[project.scripts]
+noodler = "noodler.app:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12"]
+build-backend = "uv_build"
