@@ -70,6 +70,14 @@ from .preset import (
     write_patch_preset,
 )
 from .spine import render_spine_texture
+from .transport import (
+    CHOICES as CLOCK_CHOICES,
+    FREE,
+    MAX_BPM,
+    MIN_BPM,
+    Transport,
+    is_rate_field,
+)
 
 
 PRIMARY_WINDOW = "noodler.primary_window"
@@ -129,6 +137,9 @@ MODULE_SELECTOR_STATUS = "noodler.module_selector.status"
 RACK_OUTLINE_BODY = "noodler.rack_outline.body"
 RACK_OUTLINE_STATUS = "noodler.rack_outline.status"
 RACK_SUMMARY = "noodler.rack_summary"
+CLOCK_READOUT = "noodler.clock.readout"
+CLOCK_BPM_INPUT = "noodler.clock.bpm"
+CLOCK_RUN_ITEM = "noodler.clock.run"
 MODULE_LIBRARY_HEADER = "noodler.module_library.header"
 LIBRARY_PANE_BUTTON = "noodler.library_pane"
 MODULE_LIBRARY_SECTIONS = (
@@ -456,6 +467,89 @@ RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
 """One critically damped spring pair per rack node, in rack coordinates."""
 
 METER_BALLISTICS = MeterBallistics()
+
+TRANSPORT = Transport()
+"""The rack's tempo, shared by every module that repeats."""
+
+
+@dataclass(slots=True)
+class RateSync:
+    """A rate control the transport may drive, and the division it follows."""
+
+    module: object
+    path: tuple[str | int, ...]
+    binding: KnobBinding
+    division: str = FREE
+
+
+RATE_SYNCS: dict[int | str, RateSync] = {}
+"""Keyed by the knob that shows the rate."""
+
+
+def _set_rate_division(_sender: int | str, division: str, knob: int | str) -> None:
+    sync = RATE_SYNCS.get(knob)
+    if sync is None:
+        return
+    sync.division = division
+    _set_patch_status(
+        f"{sync.binding.label.upper()}  ·  "
+        + ("FREE RUNNING" if division == FREE else f"SYNCED {division}")
+    )
+
+
+def _apply_transport_sync() -> None:
+    """Drive every synced rate from the clock, at control rate.
+
+    The DSP never learns about tempo: a division is turned into the hertz the
+    module already understands, and written through the same validated model a
+    hand on the knob would write through.
+    """
+    for knob, sync in RATE_SYNCS.items():
+        hertz = TRANSPORT.hz_for(sync.division)
+        if hertz is None:
+            continue
+        binding = sync.binding
+        value = min(binding.maximum, max(binding.minimum, hertz))
+        try:
+            _set_dynamic_parameter(sync.module, sync.path, value)
+        except Exception:
+            continue
+        if dpg.does_item_exist(knob):
+            dpg.set_value(
+                knob,
+                _control_position(
+                    value, binding.minimum, binding.maximum, binding.logarithmic
+                ),
+            )
+        if dpg.does_item_exist(binding.value_label):
+            dpg.set_value(binding.value_label, binding.formatter(value))
+
+
+def _refresh_clock(dt: float) -> None:
+    """Run the clock and show where it is."""
+    TRANSPORT.advance(dt)
+    _apply_transport_sync()
+    if not dpg.does_item_exist(CLOCK_READOUT):
+        return
+    marker = "●" if TRANSPORT.running and TRANSPORT.on_beat() else "○"
+    dpg.set_value(
+        CLOCK_READOUT,
+        f"{marker} {TRANSPORT.bpm:.0f} BPM  ·  {TRANSPORT.beat}/{TRANSPORT.beats_per_bar}",
+    )
+    dpg.configure_item(
+        CLOCK_READOUT,
+        color=SCALE_ACCENT if TRANSPORT.running and TRANSPORT.on_beat() else MUTED_TEXT,
+    )
+
+
+def _set_clock_bpm(_sender: int | str, value: float, _user_data: object) -> None:
+    TRANSPORT.set_bpm(value)
+    _set_patch_status(f"TEMPO  {TRANSPORT.bpm:.0f} BPM")
+
+
+def _toggle_clock(_sender: int | str = 0, _app_data: object = None, _u: object = None) -> None:
+    TRANSPORT.running = not TRANSPORT.running
+    _set_patch_status("CLOCK RUNNING" if TRANSPORT.running else "CLOCK STOPPED")
 
 RACK_CURSOR = MacCursor()
 """The pointer shape, while a pan gesture holds it."""
@@ -1340,6 +1434,7 @@ def _refresh_frame(
     _settle_recenter(dt)
     _settle_rack_zoom(dt)
     _settle_rack_rails(dt)
+    _refresh_clock(dt)
     _refresh_ui(runtime, dt)
     _refresh_module_close_buttons()
     dpg.set_frame_callback(
@@ -2755,6 +2850,23 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
     worth a key rather than permanent space beside the controls used constantly.
     """
     with dpg.menu_bar(tag=RACK_MENU_BAR):
+        with dpg.menu(label="Clock"):
+            dpg.add_slider_float(
+                tag=CLOCK_BPM_INPUT,
+                label="BPM",
+                default_value=TRANSPORT.bpm,
+                min_value=MIN_BPM,
+                max_value=MAX_BPM,
+                format="%.0f",
+                width=180,
+                callback=_set_clock_bpm,
+            )
+            dpg.add_menu_item(
+                label="Run / Stop",
+                tag=CLOCK_RUN_ITEM,
+                shortcut="Space",
+                callback=_toggle_clock,
+            )
         with dpg.menu(label="View"):
             dpg.add_menu_item(
                 label="Frame All",
@@ -2798,6 +2910,7 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 callback=_unplug_all,
                 user_data=runtime,
             )
+        dpg.add_text("", tag=CLOCK_READOUT, color=MUTED_TEXT)
 
 
 def _settle_library_layout() -> None:
@@ -3134,9 +3247,20 @@ def _keyboard_is_captured() -> bool:
         SAVE_PATCH_DIALOG
     ):
         return True
-    return dpg.does_item_exist(MODULE_SELECTOR_SEARCH) and (
-        dpg.is_item_active(MODULE_SELECTOR_SEARCH)
-        or dpg.is_item_focused(MODULE_SELECTOR_SEARCH)
+    # Focus is the wrong question: Dear PyGui reports a field as focused for as
+    # long as its window is, so asking that handed every shortcut to the search
+    # box forever after the user went near it — L stopped bringing the library
+    # back, having promised in writing that it would. A field only holds the
+    # keyboard while it is being typed into, and a hidden one never is.
+    if dpg.does_item_exist(MODULE_SELECTOR) and not dpg.is_item_shown(
+        MODULE_SELECTOR
+    ):
+        # A collapsed pane cannot be typed into, whatever its field reports:
+        # visibility is not inherited from a hidden ancestor.
+        return False
+    return (
+        dpg.does_item_exist(MODULE_SELECTOR_SEARCH)
+        and dpg.is_item_active(MODULE_SELECTOR_SEARCH)
     )
 
 
@@ -3474,10 +3598,10 @@ def _add_dynamic_float_control(
     field_path: tuple[str | int, ...],
     label: str,
     unit: str = "",
-) -> None:
+) -> int | str:
     minimum, maximum = _dynamic_parameter_bounds(field_info, value)
     logarithmic = minimum > 0.0 and maximum / minimum >= 100.0
-    _add_knob(
+    return _add_knob(
         value,
         label,
         minimum,
@@ -3488,6 +3612,25 @@ def _add_dynamic_float_control(
         ),
         logarithmic=logarithmic,
         size=58,
+    )
+
+
+def _add_rate_sync_control(
+    module: object,
+    field_path: tuple[str | int, ...],
+    knob: int | str,
+) -> None:
+    """Offer the clock as an alternative to setting a rate by hand."""
+    binding = KNOB_INTERACTION.bindings.get(knob)
+    if binding is None:
+        return
+    RATE_SYNCS[knob] = RateSync(module=module, path=field_path, binding=binding)
+    dpg.add_combo(
+        list(CLOCK_CHOICES),
+        default_value=FREE,
+        width=KNOB_COLUMN_CHARS * 9,
+        callback=_set_rate_division,
+        user_data=knob,
     )
 
 
@@ -3505,7 +3648,7 @@ def _add_dynamic_parameter_controls(
             return
         with dpg.group(horizontal=True):
             for field_info, value, field_path, label, unit in pending_floats:
-                _add_dynamic_float_control(
+                knob = _add_dynamic_float_control(
                     module,
                     field_info,
                     value,
@@ -3513,6 +3656,8 @@ def _add_dynamic_parameter_controls(
                     label,
                     unit,
                 )
+                if is_rate_field(str(field_path[-1])):
+                    _add_rate_sync_control(module, field_path, knob)
         pending_floats.clear()
 
     for field_name, field_info in type(parameters).model_fields.items():
@@ -5363,6 +5508,7 @@ def build_ui(
     TIDY_TARGETS.clear()
     METER_BALLISTICS.reset()
     RACK_HISTORY.clear()
+    RATE_SYNCS.clear()
     KEY_LATCH.clear()
     _configure_font()
     _configure_theme()
@@ -5700,6 +5846,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         gesture_monitor.start()
         CANVAS_INTERACTION.native_scroll = scroll_monitor.start()
         dpg.set_frame_callback(1, _refresh_frame, user_data=runtime)
+        # The rack is an instrument: it should be live when it opens. An empty
+        # rack is silent anyway, so this costs nothing until something is
+        # patched, and System Output still has Start and Stop.
+        try:
+            runtime.audio.start()
+        except Exception:
+            # System Output owns Start and Stop and shows the device state, so
+            # a device that will not open is reported there rather than from
+            # here, where there may not be an interface to report it to yet.
+            pass
         dpg.start_dearpygui()
     finally:
         RACK_CURSOR.reset()

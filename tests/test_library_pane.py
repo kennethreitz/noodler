@@ -8,6 +8,7 @@ from noodler.app import (
     MODULE_LIBRARY_HEADER,
     MODULE_SELECTOR,
     MODULE_SELECTOR_SEARCH,
+    _keyboard_is_captured,
     _show_module_selector,
     _toggle_library_pane,
     build_ui,
@@ -83,5 +84,54 @@ def test_the_pane_toggle_stands_down_for_a_text_field(monkeypatch) -> None:
         _toggle_library_pane()
 
         assert dpg.is_item_shown(MODULE_SELECTOR) is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_focused_search_box_does_not_hold_every_shortcut(monkeypatch) -> None:
+    """Dear PyGui calls a field focused whenever its window is.
+
+    Treating that as "the user is typing" handed the whole keyboard to the
+    search box for the rest of the session, so L stopped bringing the library
+    back — after the status line had promised that it would.
+    """
+    dpg.create_context()
+    try:
+        build_ui()
+        monkeypatch.setattr(dpg, "is_item_focused", lambda _item: True)
+        monkeypatch.setattr(dpg, "is_item_active", lambda _item: False)
+
+        assert _keyboard_is_captured() is False
+
+        _toggle_library_pane()
+        assert dpg.is_item_shown(MODULE_SELECTOR) is False
+        _toggle_library_pane()
+        assert dpg.is_item_shown(MODULE_SELECTOR) is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_actually_typing_still_holds_the_keyboard(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        monkeypatch.setattr(dpg, "is_item_active", lambda item: item == MODULE_SELECTOR_SEARCH)
+
+        assert _keyboard_is_captured() is True
+
+        _toggle_library_pane()
+        assert dpg.is_item_shown(MODULE_SELECTOR) is True, "L must not fire mid-word"
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_hidden_search_box_never_holds_the_keyboard(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        build_ui()
+        _toggle_library_pane()
+        monkeypatch.setattr(dpg, "is_item_active", lambda _item: True)
+
+        assert _keyboard_is_captured() is False
     finally:
         dpg.destroy_context()
