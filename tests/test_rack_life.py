@@ -625,3 +625,37 @@ def test_a_selected_module_wears_an_amber_outline_and_a_shift_drag_draws_the_mar
     finally:
         CANVAS_INTERACTION.marquee_origin = None
         dpg.destroy_context()
+
+
+def test_each_outline_row_carries_its_own_arrow_and_no_details_row(monkeypatch) -> None:
+    from noodler.app import RACK_OUTLINE_BODY, _toggle_outline_details, default_rack_preset
+
+    dpg.create_context()
+    try:
+        build_ui(preset=default_rack_preset())
+        arrows, labels = [], []
+        pending = [RACK_OUTLINE_BODY]
+        while pending:
+            item = pending.pop()
+            for slot in dpg.get_item_children(item).values():
+                for child in slot:
+                    kind = dpg.get_item_type(child)
+                    configuration = dpg.get_item_configuration(child)
+                    if kind.endswith("mvButton") and configuration.get("arrow"):
+                        arrows.append(child)
+                    if kind.endswith("mvTreeNode"):
+                        labels.append(configuration["label"])
+                    pending.append(child)
+        assert len(arrows) == 2, "one arrow per module row: the delay and the room"
+        assert "DETAILS" not in labels, "the name's row is the details' row"
+        arrow = arrows[0]
+        details = dpg.get_item_user_data(arrow)
+        assert not dpg.is_item_shown(details), "closed until asked"
+        _toggle_outline_details(arrow, None, details)
+        assert dpg.is_item_shown(details)
+        assert dpg.get_item_configuration(arrow)["direction"] == dpg.mvDir_Down
+        _toggle_outline_details(arrow, None, details)
+        assert not dpg.is_item_shown(details)
+        assert dpg.get_item_configuration(arrow)["direction"] == dpg.mvDir_Right
+    finally:
+        dpg.destroy_context()

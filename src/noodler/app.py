@@ -1654,6 +1654,16 @@ def _configure_theme() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (135, 119, 211, 40))
             dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (135, 119, 211, 70))
             dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0)
+    with dpg.theme(tag=OUTLINE_ARROW_THEME):
+        # The disclosure arrow on a module's row: the tree's own arrow, as a
+        # button with no body, so the row reads as one line of the tree.
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (135, 119, 211, 40))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (135, 119, 211, 70))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, TEXT)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 2, 1)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 3)
     with dpg.theme(tag=JACK_POST_THEME):
         # A jack post is not seen, only its pin: no body, no title, no border.
         with dpg.theme_component(dpg.mvNode):
@@ -7232,6 +7242,8 @@ def _rack_outline_module_label(
 
 
 OUTLINE_LINK_THEME = "noodler.theme.outline_link"
+OUTLINE_ARROW_THEME = "noodler.theme.outline_arrow"
+OUTLINE_DETAIL_INDENT = 22
 OUTLINE_LINKS: dict[int | str, int] = {}
 """Each outline link and how wide its name is, for the underline on hover."""
 OUTLINE_LAYER = "noodler.outline_layer"
@@ -7293,6 +7305,43 @@ def _add_module_link(
     # The underline appears only under the pointer, as a web link's does, drawn
     # on the overlay right against the letters; the colour says link otherwise.
     OUTLINE_LINKS[link] = len(name) * OUTLINE_CHAR_PX
+
+
+def _add_module_row(
+    parent: int | str, runtime: AppRuntime, instance_id: str, connection: str | None = None
+) -> int | str:
+    """One module in the outline, as one line: a disclosure arrow, the name as
+    a link, what it feeds, and the remove button. Beneath, hidden until the
+    arrow is clicked, the group its details go in -- which is returned.
+
+    The name is what the tree's arrow used to be. There was a DETAILS row
+    under every name that opened to the ports and parameters; the arrow now
+    sits at the front of the name's own row, and there is nothing to read
+    twice.
+    """
+    row = dpg.add_group(parent=parent, horizontal=True, horizontal_spacing=2)
+    details = dpg.add_group(parent=parent, indent=OUTLINE_DETAIL_INDENT, show=False)
+    arrow = dpg.add_button(
+        parent=row,
+        arrow=True,
+        direction=dpg.mvDir_Right,
+        callback=_toggle_outline_details,
+        user_data=details,
+    )
+    dpg.bind_item_theme(arrow, OUTLINE_ARROW_THEME)
+    _add_module_link(row, runtime, instance_id, connection)
+    _add_rack_outline_remove_button(row, runtime, instance_id)
+    return details
+
+
+def _toggle_outline_details(sender: int | str, _app_data: object, details: int | str) -> None:
+    """Open or close the details under a module's row; the arrow turns."""
+    if not dpg.does_item_exist(details):
+        return
+    opening = not dpg.is_item_shown(details)
+    dpg.configure_item(details, show=opening)
+    if dpg.does_item_exist(sender):
+        dpg.configure_item(sender, direction=dpg.mvDir_Down if opening else dpg.mvDir_Right)
 
 
 def _centre_module_from_outline(
@@ -7499,13 +7548,9 @@ def _add_rack_outline_signal_branch(
             color=MUTED_TEXT,
         )
         return
-    # The name on its own line, a link that goes to the module; beneath it a
-    # closed DETAILS tree with its parameters, its ports and what feeds it. A
-    # tree opened in the same row as the link pushed the link about.
-    row = dpg.add_group(parent=parent, horizontal=True)
-    _add_module_link(row, runtime, instance_id, connection)
-    _add_rack_outline_remove_button(row, runtime, instance_id)
-    branch = dpg.add_tree_node(label="DETAILS", parent=parent, default_open=False, indent=14)
+    # One line: the arrow, the name as a link that goes to the module, what it
+    # feeds. Under it, closed, its parameters, its ports and what feeds it.
+    branch = _add_module_row(parent, runtime, instance_id, connection)
     _add_rack_outline_ports(branch, runtime, instance_id)
     if instance_id in trail:
         dpg.add_text("SHARED SIGNAL", parent=branch, color=MUTED_TEXT)
@@ -7657,10 +7702,7 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
                 default_open=True,
             )
             for instance_id in instance_ids:
-                row = dpg.add_group(parent=lane, horizontal=True)
-                _add_module_link(row, runtime, instance_id)
-                _add_rack_outline_remove_button(row, runtime, instance_id)
-                branch = dpg.add_tree_node(label="DETAILS", parent=lane, default_open=False, indent=14)
+                branch = _add_module_row(lane, runtime, instance_id)
                 _add_rack_outline_ports(branch, runtime, instance_id)
 
     panels = len(runtime.patch.modules)
