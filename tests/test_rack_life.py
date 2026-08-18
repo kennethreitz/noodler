@@ -659,3 +659,48 @@ def test_each_outline_row_carries_its_own_arrow_and_no_details_row(monkeypatch) 
         assert dpg.get_item_configuration(arrow)["direction"] == dpg.mvDir_Right
     finally:
         dpg.destroy_context()
+
+
+def test_new_modules_land_in_the_middle_of_the_view_and_then_beside_each_other(monkeypatch) -> None:
+    from noodler.app import (
+        NEW_MODULE_ESTIMATE,
+        PENDING_PLACEMENTS,
+        RACK,
+        _box_is_free,
+        _mount_new_module,
+        _settle_pending_placements,
+        _spiral_offsets,
+    )
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        sizes: dict[object, list[int]] = {}
+        monkeypatch.setattr(dpg, "get_item_rect_size", lambda item: [1000, 800] if item == RACK else sizes.get(item, [78, 118]))
+        # The console band is taken from the strips (118 tall + post + margins).
+        from noodler.app import _rack_view_size
+        view_width, view_height = _rack_view_size()
+        first = _mount_new_module(runtime, "clock")
+        estimate_w, estimate_h = NEW_MODULE_ESTIMATE
+        x, y = dpg.get_item_pos(first)
+        assert abs(x + estimate_w / 2 - view_width / 2) < 1.0 and abs(y + estimate_h / 2 - view_height / 2) < 1.0
+        assert first in PENDING_PLACEMENTS, "placed again once measured"
+        # It measures: 300 by 200, so it is re-centred on that.
+        sizes[first] = [300, 200]
+        _settle_pending_placements()
+        assert first not in PENDING_PLACEMENTS
+        x, y = dpg.get_item_pos(first)
+        assert abs(x + 150 - view_width / 2) < 1.0 and abs(y + 100 - view_height / 2) < 1.0
+        # A second module cannot sit on the first: it goes to the nearest free spot, still in view.
+        second = _mount_new_module(runtime, "clock")
+        sizes[second] = [300, 200]
+        _settle_pending_placements()
+        sx, sy = dpg.get_item_pos(second)
+        assert _box_is_free(sx, sy, 300, 200, [(x, y, x + 300, y + 200)])
+        assert 0 <= sx and sx + 300 <= view_width and 0 <= sy and sy + 200 <= view_height
+        assert (sx, sy) != (x, y)
+        # The spiral is nearest-first: the origin, then the ring around it.
+        assert _spiral_offsets(1)[0] == (0, 0) and len(_spiral_offsets(1)) == 9
+    finally:
+        PENDING_PLACEMENTS.clear()
+        dpg.destroy_context()

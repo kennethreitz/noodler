@@ -143,7 +143,10 @@ user: a module remains where it is dragged, and nothing silently snaps it back.
 Order belongs to the patch: **Tidy** is the deliberate act that reads the
 executable graph and lays its signal flow out from left to right. Panning,
 zooming, framing, and revealing new modules treat the console band as reserved
-space, so the camera does not hide modules beneath it.
+space, so the camera does not hide modules beneath it. A module added from the
+library lands in the middle of the view — or, if something is already there,
+at the nearest free spot that still fits in view, so a run of additions fans
+out around the middle rather than piling up on it.
 
 Every declared jack is visible by default. Modules can be dragged, removed
 with the close target in their title, or collapsed by double-clicking the title

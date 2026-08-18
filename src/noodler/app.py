@@ -3020,6 +3020,7 @@ def _refresh_frame(
         _settle_rack_rails(dt)
         _settle_console()
         _park_default_effects()
+        _settle_pending_placements()
         _refresh_clock(dt)
         _refresh_ui(runtime, dt)
         _refresh_transport_button(runtime)
@@ -7773,6 +7774,175 @@ def _place_dynamic_node(node: int | str, rail: str) -> None:
     dpg.set_item_pos(node, [x, CANVAS_INTERACTION.rail_y[rail]])
 
 
+NEW_MODULE_ESTIMATE = (280.0, 200.0)
+"""What a fresh panel is taken to measure before it has been drawn: its size
+is not known until its first frame, and it is placed before that."""
+PLACEMENT_STEP = 48.0
+PLACEMENT_MARGIN = 18.0
+"""The spiral out from the middle looks this far apart, and a spot is free
+when the panel there would clear every other panel by this much."""
+
+
+def _occupied_boxes(ignoring: set[int | str] = frozenset()) -> list[tuple[float, float, float, float]]:
+    """The grid box of every module already in the rack, console aside."""
+    boxes = []
+    for other in RACK_NODES:
+        if other in ignoring or _is_pinned(other) or not dpg.does_item_exist(other):
+            continue
+        try:
+            x, y = (float(v) for v in dpg.get_item_pos(other))
+            width, height = (float(v) for v in dpg.get_item_rect_size(other))
+        except (KeyError, SystemError):
+            continue
+        if width <= 1.0 or height <= 1.0:
+            width, height = NEW_MODULE_ESTIMATE
+        boxes.append((x, y, x + width, y + height))
+    return boxes
+
+
+def _box_is_free(
+    x: float, y: float, width: float, height: float,
+    boxes: list[tuple[float, float, float, float]],
+) -> bool:
+    for left, top, right, bottom in boxes:
+        if (
+            x < right + PLACEMENT_MARGIN
+            and x + width > left - PLACEMENT_MARGIN
+            and y < bottom + PLACEMENT_MARGIN
+            and y + height > top - PLACEMENT_MARGIN
+        ):
+            return False
+    return True
+
+
+def _spiral_offsets(rings: int) -> list[tuple[int, int]]:
+    """Grid offsets in a square spiral out from the origin: (0,0), then the
+    eight around it, then the sixteen around those, and so on."""
+    offsets = [(0, 0)]
+    for ring in range(1, rings + 1):
+        ring_offsets = []
+        for column in range(-ring, ring + 1):
+            ring_offsets.append((column, -ring))
+            ring_offsets.append((column, ring))
+        for row in range(-ring + 1, ring):
+            ring_offsets.append((-ring, row))
+            ring_offsets.append((ring, row))
+        # Nearest first within the ring, so the spot chosen is the closest.
+        ring_offsets.sort(key=lambda o: o[0] * o[0] + o[1] * o[1])
+        offsets.extend(ring_offsets)
+    return offsets
+
+
+PENDING_PLACEMENTS: dict[int | str, int] = {}
+"""Modules placed before they were measured, and how many frames they have
+waited: each is placed again, exactly, once its size is known."""
+
+
+def _settle_pending_placements() -> None:
+    """Re-place each module that was placed on an estimate, now it measures.
+
+    A panel's size is known only after its first frame, and a module is put
+    down before that. So it is put down twice: once on an estimate, and once
+    more, a frame later, centred on its real size and clear of its
+    neighbours by its real size. Nobody has had time to touch it in between.
+    """
+    for node, waited in tuple(PENDING_PLACEMENTS.items()):
+        if not dpg.does_item_exist(node):
+            PENDING_PLACEMENTS.pop(node, None)
+            continue
+        try:
+            width, height = (float(v) for v in dpg.get_item_rect_size(node))
+        except (KeyError, SystemError):
+            PENDING_PLACEMENTS.pop(node, None)
+            continue
+        if width <= 1.0 or height <= 1.0:
+            if waited > 30:
+                PENDING_PLACEMENTS.pop(node, None)
+            else:
+                PENDING_PLACEMENTS[node] = waited + 1
+            continue
+        PENDING_PLACEMENTS.pop(node, None)
+        if not _place_at_view_centre(node, (width, height), ignoring={node}):
+            # Bigger than the view: the camera goes the shortest way to show
+            # as much of it as it can.
+            _reveal_node(node)
+
+
+def _view_is_measurable() -> bool:
+    if not dpg.does_item_exist(RACK):
+        return False
+    view_width, view_height = _rack_view_size()
+    return view_width >= MIN_REVEAL_VIEWPORT and view_height >= MIN_REVEAL_VIEWPORT
+
+
+def _place_at_view_centre(
+    node: int | str,
+    size: tuple[float, float] = NEW_MODULE_ESTIMATE,
+    *,
+    ignoring: set[int | str] = frozenset(),
+) -> bool:
+    """Put a new module in the middle of what the user is looking at.
+
+    The middle of the visible rack, above the console, in grid coordinates
+    -- less whatever the editor has panned by itself. If a module is already
+    there, the nearest free spot instead, looked for in a spiral outward, so a
+    run of additions fans out around the middle rather than piling up on it.
+    Returns whether the module is now placed in view. It is placed regardless
+    when the view can be measured -- overlapping, least of all, if the view
+    is full; centred and overhanging if it is bigger than the view -- and
+    not at all when the view cannot be measured yet.
+    """
+    if not dpg.does_item_exist(RACK):
+        return False
+    view_width, view_height = _rack_view_size()
+    if view_width < MIN_REVEAL_VIEWPORT or view_height < MIN_REVEAL_VIEWPORT:
+        return False
+    pan_x, pan_y = _editor_pan()
+    width, height = size
+    centre_x = view_width * 0.5 - pan_x - width * 0.5
+    centre_y = view_height * 0.5 - pan_y - height * 0.5
+    boxes = _occupied_boxes(ignoring | {node})
+
+    def in_view(x: float, y: float) -> bool:
+        return (
+            x + pan_x >= 0.0
+            and y + pan_y >= 0.0
+            and x + pan_x + width <= view_width
+            and y + pan_y + height <= view_height
+        )
+
+    def overlap(x: float, y: float) -> float:
+        area = 0.0
+        for left, top, right, bottom in boxes:
+            dx = min(x + width, right) - max(x, left)
+            dy = min(y + height, bottom) - max(y, top)
+            if dx > 0.0 and dy > 0.0:
+                area += dx * dy
+        return area
+
+    least: tuple[float, float, float] | None = None
+    for column, row in _spiral_offsets(12):
+        x = centre_x + column * PLACEMENT_STEP
+        y = centre_y + row * PLACEMENT_STEP
+        if not in_view(x, y):
+            continue
+        if _box_is_free(x, y, width, height, boxes):
+            dpg.set_item_pos(node, [x, y])
+            return True
+        covered = overlap(x, y)
+        if least is None or covered < least[0]:
+            least = (covered, x, y)
+    if least is not None:
+        # The view is full. Then the spot in it that covers the least, nearest
+        # the middle -- on top of something, but where the user is looking,
+        # rather than out of sight or with the whole rack carried to it.
+        dpg.set_item_pos(node, [least[1], least[2]])
+        return True
+    # Bigger than the view itself: the middle, and the caller may go and show it.
+    dpg.set_item_pos(node, [centre_x, centre_y])
+    return False
+
+
 def _mount_new_module(
     runtime: AppRuntime,
     module_id: str,
@@ -7798,9 +7968,15 @@ def _mount_new_module(
     if beside is not None and dpg.does_item_exist(beside):
         x, y = dpg.get_item_pos(beside)
         dpg.set_item_pos(node, [x + 36, y + 36])
+    elif _view_is_measurable():
+        # In the middle of the view, or the nearest free spot: nothing to
+        # reveal yet -- a reveal would carry the whole rack. Placed again,
+        # exactly, once measured; shown then if it had to go outside.
+        _place_at_view_centre(node)
+        PENDING_PLACEMENTS[node] = 0
     else:
         _place_dynamic_node(node, rail)
-    _reveal_node(node)
+        _reveal_node(node)
     _refresh_rack_outline(runtime)
     registration = _capture_node_registration(node, instance_id)
     _record_edit(
