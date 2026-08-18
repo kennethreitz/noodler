@@ -71,7 +71,7 @@ def test_gain_count_and_range_are_validated() -> None:
     with pytest.raises(ValidationError, match="exactly one value"):
         PolarizingMixerParameters(channels=3, gains=(1.0, 1.0))
 
-    with pytest.raises(ValidationError, match="between -1 and 1"):
+    with pytest.raises(ValidationError, match="between -1 and 1|less than or equal to 1|greater than or equal to -1"):
         PolarizingMixerParameters(channels=1, gains=(1.1,))
 
 

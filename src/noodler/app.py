@@ -7,6 +7,7 @@ from enum import StrEnum
 import math
 import sys
 import time
+import typing
 from pathlib import Path
 
 import dearpygui.dearpygui as dpg
@@ -111,8 +112,10 @@ CONSOLE_MARGIN = 14.0
 CONSOLE_GAP = 4.0
 """Between one strip and the next."""
 
-LEVEL_DIAL_SIZE = 34
+LEVEL_DIAL_SIZE = 32
 LEVEL_DIAL_INSET = 4.0
+STRIP_KNOB_SIZE = 20
+"""Pan and the sends on a strip: a little smaller than a module's knobs."""
 """A strip's level is a dial, and its meter is a ring drawn around that dial in
 the margin the inset leaves -- so the meter costs no space at all."""
 
@@ -123,7 +126,17 @@ CONSOLE_MASTER_LEVEL = CONSOLE_PREFIX + "master_level"
 CONSOLE_MASTER_METER = CONSOLE_PREFIX + "master_meter"
 CONSOLE_MASTER_READOUT = CONSOLE_PREFIX + "master_readout"
 CONSOLE_THEME = "noodler.theme.console"
-CONSOLE_CONTENT_THEME = "noodler.theme.console_content"
+CONSOLE_STRIP_THEME = "noodler.theme.console_strip"
+STRIP_JACK_INSET = 38.0
+RETURN_JACK_INSET = 30.0
+CONSOLE_RETURN_THEME = "noodler.theme.console_return"
+"""How far a strip's jack is pulled in from its edge, to sit at the top centre.
+
+Dear PyGui draws a pin on a node's left or right edge, and nowhere else. But
+imnodes lets a pin be offset from that edge, and pulled in by half a strip's
+width the input jack sits at the top of the strip, in the middle, where a
+cable expects to land -- as on a desk, where the input is at the top of the
+channel and not on its side."""
 CONSOLE_MUTE = CONSOLE_PREFIX + "mute_{channel}"
 CONSOLE_SOLO = CONSOLE_PREFIX + "solo_{channel}"
 CONSOLE_RETURN = CONSOLE_PREFIX + "return_{bus}"
@@ -1222,8 +1235,14 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
         INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
     INSTANCE_NODE_TAGS[MASTER_ID] = OUTPUT_NODE
     strips = [CONSOLE_STRIP.format(channel=c) for c in range(1, MASTER_CHANNELS + 1)]
-    strips += [CONSOLE_RETURN.format(bus=bus) for bus in SENDS]
-    PINNED_NODES[:] = [*strips, OUTPUT_NODE]
+    returns = [CONSOLE_RETURN.format(bus=bus) for bus in SENDS]
+    # Master first, returns last. A node editor draws every cable leaving an
+    # output to the right and arriving at an input from the left, so the
+    # master's sends leave the left end of the console heading toward the
+    # effects, and what the effects give back arrives at the right end from
+    # the left. Channels sit between, taking cables straight down from above.
+    PINNED_NODES[:] = [OUTPUT_NODE, *strips, *returns]
+    strips = strips + returns
     for strip in strips:
         if strip not in RACK_NODES:
             RACK_NODES.append(strip)
@@ -1305,6 +1324,36 @@ def _node_theme(tag: str, accent: tuple[int, int, int, int]) -> None:
                 dpg.mvNodeCol_TitleBarSelected,
                 accent,
                 category=dpg.mvThemeCat_Nodes,
+            )
+
+
+def _console_theme(tag: str, jack_inset: float) -> None:
+    with dpg.theme(tag=tag):
+        with dpg.theme_component(dpg.mvNode):
+            for node_color, color in (
+                (dpg.mvNodeCol_NodeBackground, (27, 27, 25, 252)),
+                (dpg.mvNodeCol_NodeBackgroundHovered, (31, 31, 29, 255)),
+                (dpg.mvNodeCol_NodeBackgroundSelected, (31, 31, 29, 255)),
+                (dpg.mvNodeCol_NodeOutline, (64, 60, 52, 255)),
+                (dpg.mvNodeCol_TitleBar, (46, 43, 38, 255)),
+                (dpg.mvNodeCol_TitleBarHovered, (54, 50, 44, 255)),
+                (dpg.mvNodeCol_TitleBarSelected, (46, 43, 38, 255)),
+            ):
+                dpg.add_theme_color(node_color, color, category=dpg.mvThemeCat_Nodes)
+            styles = [
+                (dpg.mvNodeStyleVar_NodeCornerRounding, 4),
+                (dpg.mvNodeStyleVar_NodeBorderThickness, 1.0),
+                (dpg.mvNodeStyleVar_PinCircleRadius, 6),
+                (dpg.mvNodeStyleVar_PinHoverRadius, 12),
+            ]
+            if jack_inset:
+                # Negative pulls a pin in from the node's edge -- the jack at
+                # the top centre of the strip, where a cable expects to land.
+                styles.append((dpg.mvNodeStyleVar_PinOffset, -jack_inset))
+            for node_style, value in styles:
+                dpg.add_theme_style(node_style, value, category=dpg.mvThemeCat_Nodes)
+            dpg.add_theme_style(
+                dpg.mvNodeStyleVar_NodePadding, 5, 4, category=dpg.mvThemeCat_Nodes
             )
 
 
@@ -1425,28 +1474,15 @@ def _configure_theme() -> None:
     for signal, colour in SIGNAL_COLORS.items():
         for step in range(ACTIVITY_STEPS + 1):
             _link_theme(_link_glow_theme(signal, step), _glow(colour, step))
-    with dpg.theme(tag=CONSOLE_THEME):
-        # The console is furniture, not a module: darker, squarer, quieter,
-        # with the one warm line of its title to say which strip is which.
-        with dpg.theme_component(dpg.mvNode):
-            for node_color, color in (
-                (dpg.mvNodeCol_NodeBackground, (27, 27, 25, 252)),
-                (dpg.mvNodeCol_NodeBackgroundHovered, (31, 31, 29, 255)),
-                (dpg.mvNodeCol_NodeBackgroundSelected, (31, 31, 29, 255)),
-                (dpg.mvNodeCol_NodeOutline, (64, 60, 52, 255)),
-                (dpg.mvNodeCol_TitleBar, (46, 43, 38, 255)),
-                (dpg.mvNodeCol_TitleBarHovered, (54, 50, 44, 255)),
-                (dpg.mvNodeCol_TitleBarSelected, (46, 43, 38, 255)),
-            ):
-                dpg.add_theme_color(node_color, color, category=dpg.mvThemeCat_Nodes)
-            for node_style, value in (
-                (dpg.mvNodeStyleVar_NodeCornerRounding, 4),
-                (dpg.mvNodeStyleVar_NodeBorderThickness, 1.0),
-            ):
-                dpg.add_theme_style(node_style, value, category=dpg.mvThemeCat_Nodes)
-            dpg.add_theme_style(
-                dpg.mvNodeStyleVar_NodePadding, 6, 4, category=dpg.mvThemeCat_Nodes
-            )
+    # The console is furniture, not a module: darker, squarer, quieter, with
+    # the one warm line of its title to say which strip is which. Strips and
+    # returns also pull their jack in from the edge to the top centre.
+    for tag, inset in (
+        (CONSOLE_THEME, 0.0),
+        (CONSOLE_STRIP_THEME, STRIP_JACK_INSET),
+        (CONSOLE_RETURN_THEME, RETURN_JACK_INSET),
+    ):
+        _console_theme(tag, inset)
     for tag, background, foreground in (
         (TOGGLE_OFF_THEME, (36, 36, 34, 255), MUTED_TEXT),
         (MUTE_ON_THEME, METER_HOT, (28, 26, 22, 255)),
@@ -4942,17 +4978,23 @@ def _knob_geometry(
     fraction = min(1.0, max(0.0, fraction))
     centre = (size * 0.5, size * 0.5)
     radius = size * 0.5 - 1.0 - binding.inset
-    angle = KNOB_SWEEP_START + fraction * (KNOB_SWEEP_END - KNOB_SWEEP_START)
-    steps = max(2, int(24 * fraction))
+    sweep = KNOB_SWEEP_END - KNOB_SWEEP_START
+    angle = KNOB_SWEEP_START + fraction * sweep
+    # A bipolar knob -- pan, a polarizing gain -- draws its arc from zero, so
+    # nothing is lit at rest and the arc says which way and how far. When the
+    # range is symmetric, zero is straight up.
+    if minimum < 0.0 < maximum and not binding.logarithmic:
+        rest = KNOB_SWEEP_START + (0.0 - minimum) / span * sweep
+    else:
+        rest = KNOB_SWEEP_START
+    start, end = (rest, angle) if angle >= rest else (angle, rest)
+    steps = max(2, int(24 * abs(angle - rest) / sweep))
     arc = [
         (
             centre[0] + radius * math.cos(theta),
             centre[1] + radius * math.sin(theta),
         )
-        for theta in (
-            KNOB_SWEEP_START + (angle - KNOB_SWEEP_START) * step / steps
-            for step in range(steps + 1)
-        )
+        for theta in (start + (end - start) * step / steps for step in range(steps + 1))
     ]
     return centre, radius, angle, arc
 
@@ -5056,13 +5098,37 @@ def _set_attribute(target: object, attribute: str) -> Callable[[float], None]:
     return lambda value: setattr(target, attribute, value)
 
 
+def _item_constraints(field_info: object) -> tuple[object, ...]:
+    """The constraints on the *items* of a tuple field, if its annotation has
+    them: ``tuple[Annotated[float, Field(ge=-1, le=1)], ...]`` says what one
+    gain may be, and the panel should believe it over guessing from a value."""
+    annotation = getattr(field_info, "annotation", None)
+    for argument in typing.get_args(annotation) or ():
+        if argument is Ellipsis:
+            continue
+        if typing.get_origin(argument) is typing.Annotated:
+            found: list[object] = []
+            for entry in getattr(argument, "__metadata__", ()):
+                # A Field(...) inside Annotated is a FieldInfo whose own
+                # metadata holds the Ge/Le constraints; anything else is one.
+                inner = getattr(entry, "metadata", None)
+                found.extend(inner if isinstance(inner, (list, tuple)) else [entry])
+            return tuple(found)
+    return ()
+
+
 def _dynamic_parameter_bounds(
     field_info: object,
     value: float,
+    *,
+    item: bool = False,
 ) -> tuple[float, float]:
     lower: float | None = None
     upper: float | None = None
-    for constraint in getattr(field_info, "metadata", ()):
+    constraints = tuple(getattr(field_info, "metadata", ()))
+    if item:
+        constraints = _item_constraints(field_info) or constraints
+    for constraint in constraints:
         for name in ("ge", "gt"):
             candidate = getattr(constraint, name, None)
             if candidate is not None:
@@ -5362,6 +5428,7 @@ def _add_dynamic_parameter_controls(
                     minimum, maximum = _dynamic_parameter_bounds(
                         field_info,
                         numeric,
+                        item=True,
                     )
                     _add_knob(
                         numeric,
@@ -6258,11 +6325,13 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
             label=f"Channel {channel}",
             attribute_type=dpg.mvNode_Attr_Input,
         ):
-            _add_port_text(
-                "IN", "audio", f"Channel {channel}, summed into the output bus."
-            )
+            # Nothing but room for the jack, which the theme pulls in to the
+            # top centre of the strip; the row's text would sit under it.
+            dpg.add_spacer(height=6)
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.levels[channel - 1]
+            # Stacked narrow -- dial and readout, then M S, then pan A B -- so
+            # eleven strips fit across the rack of a default-sized window.
             with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
                 _add_level_dial(
                     CONSOLE_LEVEL.format(channel=channel),
@@ -6272,31 +6341,32 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                         master, channel, value
                     ),
                 )
-                with dpg.group():
-                    dpg.add_text(
-                        _fader_readout(level),
-                        tag=CONSOLE_READOUT.format(channel=channel),
-                        color=MUTED_TEXT,
-                    )
-                    with dpg.group(horizontal=True, horizontal_spacing=3):
-                        mute = dpg.add_button(
-                            label="M",
-                            tag=CONSOLE_MUTE.format(channel=channel),
-                            small=True,
-                            callback=_toggle_mute,
-                            user_data=(master, channel),
-                        )
-                        solo = dpg.add_button(
-                            label="S",
-                            tag=CONSOLE_SOLO.format(channel=channel),
-                            small=True,
-                            callback=_toggle_solo,
-                            user_data=(master, channel),
-                        )
-                    _paint_mute_solo(master, channel)
-                    del mute, solo
-            dpg.bind_item_theme(dial_row, CONSOLE_CONTENT_THEME)
-            with dpg.group(horizontal=True, horizontal_spacing=5) as knob_row:
+                dpg.add_text(
+                    _fader_readout(level),
+                    tag=CONSOLE_READOUT.format(channel=channel),
+                    color=MUTED_TEXT,
+                )
+            with dpg.group(horizontal=True, horizontal_spacing=3):
+                # Centred under the dial: the knob row below is the strip's
+                # width, and M S together are about forty pixels of it.
+                dpg.add_spacer(width=max(0, (3 * STRIP_KNOB_SIZE + 8 - 41) // 2))
+                mute = dpg.add_button(
+                    label="M",
+                    tag=CONSOLE_MUTE.format(channel=channel),
+                    small=True,
+                    callback=_toggle_mute,
+                    user_data=(master, channel),
+                )
+                solo = dpg.add_button(
+                    label="S",
+                    tag=CONSOLE_SOLO.format(channel=channel),
+                    small=True,
+                    callback=_toggle_solo,
+                    user_data=(master, channel),
+                )
+                _paint_mute_solo(master, channel)
+                del mute, solo
+            with dpg.group(horizontal=True, horizontal_spacing=4) as knob_row:
                 _add_knob(
                     master.parameters.pans[channel - 1],
                     f"Ch {channel} pan",
@@ -6306,6 +6376,7 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                     lambda value, channel=channel: master.set_pan(channel, value),
                     tag=CONSOLE_PREFIX + f"pan_{channel}",
                     compact=True,
+                    size=STRIP_KNOB_SIZE,
                 )
                 for bus in SENDS:
                     _add_knob(
@@ -6319,6 +6390,7 @@ def _build_strip(channel: int, master: MasterMixer) -> None:
                         ),
                         tag=CONSOLE_PREFIX + f"send_{bus}_{channel}",
                         compact=True,
+                        size=STRIP_KNOB_SIZE,
                     )
 
 
@@ -6400,9 +6472,15 @@ def _build_return_strip(bus: str, master: MasterMixer) -> None:
                 label=f"Return {bus.upper()} {name}",
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
-                _add_port_text(
-                    name, "audio", f"The {'left' if name == 'L' else 'right'} of what came back from send {bus.upper()}."
-                )
+                # The jack sits in from the edge; L and R stack down the middle,
+                # so the letter goes to the right of where the pin lands.
+                with dpg.group(horizontal=True):
+                    dpg.add_spacer(width=int(RETURN_JACK_INSET) + 4)
+                    _add_port_text(
+                        name,
+                        "audio",
+                        f"The {'left' if name == 'L' else 'right'} of what came back from send {bus.upper()}.",
+                    )
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             level = master.parameters.return_levels[SENDS.index(bus)]
             with dpg.group(horizontal=True, horizontal_spacing=4) as dial_row:
@@ -6412,21 +6490,19 @@ def _build_return_strip(bus: str, master: MasterMixer) -> None:
                     f"Return {bus.upper()} level",
                     lambda value, bus=bus: _return_level_changed(master, bus, value),
                 )
-                with dpg.group():
-                    dpg.add_text(
-                        _fader_readout(level),
-                        tag=CONSOLE_RETURN_READOUT.format(bus=bus),
-                        color=MUTED_TEXT,
-                    )
-                    dpg.add_button(
-                        label="M",
-                        tag=CONSOLE_RETURN_MUTE.format(bus=bus),
-                        small=True,
-                        callback=_toggle_return_mute,
-                        user_data=(master, bus),
-                    )
-                    _paint_return_mute(master, bus)
-            dpg.bind_item_theme(dial_row, CONSOLE_CONTENT_THEME)
+                dpg.add_text(
+                    _fader_readout(level),
+                    tag=CONSOLE_RETURN_READOUT.format(bus=bus),
+                    color=MUTED_TEXT,
+                )
+            dpg.add_button(
+                label="M",
+                tag=CONSOLE_RETURN_MUTE.format(bus=bus),
+                small=True,
+                callback=_toggle_return_mute,
+                user_data=(master, bus),
+            )
+            _paint_return_mute(master, bus)
 
 
 def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
@@ -6468,14 +6544,20 @@ def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
                 dpg.add_text(
                     _fader_readout(level), tag=CONSOLE_MASTER_READOUT, color=MUTED_TEXT
                 )
-            dpg.bind_item_theme(dial_row, CONSOLE_CONTENT_THEME)
             # The peak-programme meter the tests read; the ring is what is seen.
             dpg.add_progress_bar(
                 tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
             )
     for node in PINNED_NODES:
-        if dpg.does_item_exist(node):
-            dpg.bind_item_theme(node, CONSOLE_THEME)
+        if not dpg.does_item_exist(node):
+            continue
+        if node == OUTPUT_NODE:
+            theme = CONSOLE_THEME
+        elif str(node).startswith(CONSOLE_PREFIX + "return_"):
+            theme = CONSOLE_RETURN_THEME
+        else:
+            theme = CONSOLE_STRIP_THEME
+        dpg.bind_item_theme(node, theme)
 
 
 def _console_titles(patch: PatchGraph) -> None:
@@ -6701,6 +6783,9 @@ def _rack_outline_unpatched_modules(
     for instance_id in runtime.patch.modules:
         if instance_id not in reachable and instance_id not in registered:
             grouped["AUDIO PATH"].append(instance_id)
+    # The console is furniture: it is never "unpatched", and never removable.
+    for heading in grouped:
+        grouped[heading] = [i for i in grouped[heading] if i != MASTER_ID]
     return grouped
 
 
@@ -6742,7 +6827,7 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
         default_open=True,
     )
     system_output = dpg.add_tree_node(
-        label="SYSTEM OUTPUT",
+        label="CONSOLE",
         parent=signal_flow,
         default_open=True,
     )
@@ -7313,12 +7398,9 @@ def _build_empty_rack_ui(
             dpg.add_text(patch_name.upper(), color=SCALE_ACCENT)
             dpg.add_text(rack_summary, tag=RACK_SUMMARY, color=TEXT)
             dpg.add_spacer(width=24)
-            dpg.add_text("CV", color=SIGNAL_COLORS["cv"])
-            dpg.add_text("AUDIO", color=SIGNAL_COLORS["audio"])
+            for signal in ("audio", "cv", "gate", "musical"):
+                dpg.add_text(signal.upper(), color=SIGNAL_COLORS[signal])
             _add_rack_controls(runtime)
-        with dpg.group(horizontal=True):
-            dpg.add_text("AUDIO RAIL", color=SIGNAL_COLORS["audio"])
-            dpg.add_text("BUILD LEFT TO RIGHT  →  SYSTEM OUT", color=TEXT)
         dpg.add_separator()
         with dpg.child_window(
             tag=RACK_WORKSPACE,
@@ -7866,16 +7948,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         gesture_monitor.start()
         CANVAS_INTERACTION.native_scroll = scroll_monitor.start()
         dpg.set_frame_callback(1, _refresh_frame, user_data=runtime)
-        # The rack is an instrument: it should be live when it opens. An empty
-        # rack is silent anyway, so this costs nothing until something is
-        # patched, and System Output still has Start and Stop.
-        try:
-            runtime.audio.start()
-        except Exception:
-            # System Output owns Start and Stop and shows the device state, so
-            # a device that will not open is reported there rather than from
-            # here, where there may not be an interface to report it to yet.
-            pass
+        # Audio does not start on its own. The button in the menu bar says
+        # PLAY when a patch opens, and pressing it is what opens the device
+        # and starts the clock -- so a patch never makes a sound before it
+        # is asked to, and the button always says what it will do next.
         dpg.start_dearpygui()
     finally:
         RACK_CURSOR.reset()

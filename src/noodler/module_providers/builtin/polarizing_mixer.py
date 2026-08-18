@@ -4,6 +4,8 @@ from collections.abc import Mapping
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from noodler.module_providers import (
@@ -25,7 +27,10 @@ class PolarizingMixerParameters(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     channels: int = Field(default=4, ge=1, le=MAX_CHANNELS)
-    gains: tuple[float, ...] = ()
+    gains: tuple[Annotated[float, Field(ge=-1.0, le=1.0)], ...] = ()
+    """One per channel, from full inversion through silence to full level: the
+    panel reads the range from here, which is how a polarizing mixer's knobs
+    know that zero is in the middle."""
 
     @model_validator(mode="after")
     def gains_match_channel_count(self) -> "PolarizingMixerParameters":

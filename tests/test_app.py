@@ -129,7 +129,7 @@ def test_default_rack_starts_quiet_with_only_the_master() -> None:
         assert dpg.does_item_exist(SAVE_AS_MENU_ITEM)
         assert dpg.get_value(RACK_OUTLINE_STATUS) == "1 PANEL  ·  0 CABLES"
         outline = _descendant_labels(RACK_OUTLINE_BODY)
-        assert {"SIGNAL FLOW", "SYSTEM OUTPUT", "NO SIGNAL CONNECTED"} <= (
+        assert {"SIGNAL FLOW", "CONSOLE", "NO SIGNAL CONNECTED"} <= (
             outline
         )
 

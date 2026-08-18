@@ -38,6 +38,12 @@ everything at once. Kalimba, marimba and upright bass are PyTheory voices in
 yo, and the room and the echo hang off the master's sends. It is saved at 108
 BPM, and the tempo travels with the document.
 
+`keherwa-kalimba` puts the tabla in front: PyTheory's keherwa (the eight-beat
+tabla cycle) carries the groove and the highlife kit lilts under it — six beats
+against eight, so they come round together only every six bars. Kalimba, sitar,
+a harmonium pumping on the beat and an upright bass, all in raga khamaj on the
+shruti grid, at 100 BPM.
+
 `hijaz-machine` is the earlier generative showcase (arabic hijaz, oscillator
 voices), and `somesound` is a two-module starter.
 
@@ -49,6 +55,7 @@ The set is generated, so it can be regenerated after a change to the modules:
 uv run python examples/build_tone_systems.py
 uv run python examples/build_pelog_bell_garden.py
 uv run python examples/build_highlife_kalimba.py
+uv run python examples/build_keherwa_kalimba.py
 ```
 
 Both scripts write over the documents here.

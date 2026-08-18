@@ -1,0 +1,827 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Keherwa Kalimba",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 2.0,
+        "beats_per_bar": 4,
+        "trigger_ms": 6.0
+      }
+    },
+    {
+      "instance_id": "tabla",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "keherwa",
+        "level": 0.7,
+        "swing": 0.0,
+        "follow_clock": true,
+        "rate_hz": 2.0
+      }
+    },
+    {
+      "instance_id": "kit",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "highlife",
+        "level": 0.34,
+        "swing": 0.1,
+        "follow_clock": true,
+        "rate_hz": 2.0
+      }
+    },
+    {
+      "instance_id": "key",
+      "module_type": "key",
+      "provider": "builtin",
+      "parameters": {
+        "system": "shruti",
+        "tonic": "Sa",
+        "octave": 3,
+        "scale_name": "khamaj",
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "harmony",
+      "module_type": "harmony_brain",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "C",
+        "mode": "major",
+        "style": "dream changes",
+        "length": 4,
+        "register_octave": 3,
+        "rate_hz": 0.5,
+        "gate_length": 0.9,
+        "reference_frequency_hz": 220.0,
+        "seed": 1947
+      }
+    },
+    {
+      "instance_id": "arp",
+      "module_type": "arpeggio_brain",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "up",
+        "octave_range": 2,
+        "rate_hz": 4.0,
+        "gate_length": 0.45,
+        "fallback_pitches": [
+          0.0,
+          0.3333333333333333,
+          0.5833333333333334,
+          1.0
+        ],
+        "reference_midi": 57.0,
+        "seed": 22
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "japanese",
+        "tonic": "A",
+        "octave": 4,
+        "scale_name": "yo",
+        "style": "motif and answer",
+        "phrase_length": 16,
+        "octave_range": 2,
+        "density": 0.42,
+        "step_bias": 0.78,
+        "rate_hz": 2.0,
+        "gate_length": 0.35,
+        "reference_frequency_hz": 220.0,
+        "seed": 1971
+      }
+    },
+    {
+      "instance_id": "kalimba_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "sitar_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "harmonium_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": 0.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "bass_pitch",
+      "module_type": "quantizer",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "transpose_octaves": -1.0,
+        "system": "western",
+        "tonic": "C",
+        "octave": 4,
+        "scale_name": "major"
+      }
+    },
+    {
+      "instance_id": "kalimba",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "kalimba",
+        "level": 0.42,
+        "release_ms": 420.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "sitar",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "sitar",
+        "level": 0.38,
+        "release_ms": 700.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "harmonium",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "harmonium",
+        "level": 0.26,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "bass",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "upright_bass",
+        "level": 0.5,
+        "release_ms": 520.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "reverb",
+      "provider": "builtin",
+      "parameters": {
+        "mix": 1.0,
+        "decay_seconds": 5.0,
+        "damping": 0.5,
+        "diffusion": 0.86,
+        "pre_delay_ms": 30.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.45,
+        "feedback": 0.4,
+        "mix": 1.0,
+        "damping": 0.55,
+        "drive": 1.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.85,
+          0.6,
+          0.7,
+          0.6,
+          0.62,
+          0.5,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          0.1,
+          -0.15,
+          0.0,
+          0.5,
+          -0.4,
+          0.25,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.25,
+          0.0,
+          0.0,
+          0.5,
+          0.4,
+          0.6,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.0,
+          0.0,
+          0.0,
+          0.35,
+          0.55,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.55,
+          0.45
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.5
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "harmony",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "eighth"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "sixteenth"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "sitar_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "harmonium_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "bass_pitch",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "kalimba_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kalimba_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "kalimba",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "kalimba",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "sitar_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "sitar_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "sitar",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "sitar",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "harmonium_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmonium_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "harmonium",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "beat"
+      },
+      "target": {
+        "module_id": "harmonium",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "bass"
+      },
+      "target": {
+        "module_id": "bass_pitch",
+        "port_id": "cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass_pitch",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "beat"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tabla",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kit",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "kalimba",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "sitar",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_5"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmonium",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_6"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_right"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.7
+  },
+  "transport": {
+    "bpm": 100.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.7,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "clock",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "tabla",
+        "position": {
+          "x": 40.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kit",
+        "position": {
+          "x": 40.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "key",
+        "position": {
+          "x": 40.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmony",
+        "position": {
+          "x": 400.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "arp",
+        "position": {
+          "x": 760.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 400.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kalimba_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "sitar_pitch",
+        "position": {
+          "x": 760.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmonium_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bass_pitch",
+        "position": {
+          "x": 1120.0,
+          "y": 1160.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "kalimba",
+        "position": {
+          "x": 1480.0,
+          "y": 860.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "sitar",
+        "position": {
+          "x": 1120.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmonium",
+        "position": {
+          "x": 1480.0,
+          "y": 560.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bass",
+        "position": {
+          "x": 1480.0,
+          "y": 1160.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1840.0,
+          "y": 300.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1840.0,
+          "y": 620.0
+        },
+        "collapsed": false
+      }
+    ]
+  }
+}

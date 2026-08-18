@@ -458,3 +458,37 @@ def test_saving_and_opening_feed_the_recent_list(tmp_path) -> None:
         assert labels == ["second", "first"]
     finally:
         dpg.destroy_context()
+
+
+def test_a_polarizing_gain_runs_from_minus_one_to_one_with_zero_up() -> None:
+    """The panel reads a tuple item's constraints, and a bipolar knob rests at zero."""
+    import math
+    from noodler.app import _knob_geometry, _knobs_in_node
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "polarizing_mixer"))
+        node = INSTANCE_NODE_TAGS["polarizing_mixer"]
+        knob = next(k for k in _knobs_in_node(node) if KNOB_INTERACTION.bindings[k].label == "1")
+        binding = KNOB_INTERACTION.bindings[knob]
+        assert (binding.minimum, binding.maximum) == (-1.0, 1.0)
+
+        _centre, _radius, angle, arc = _knob_geometry(knob, binding.size)
+        assert angle == pytest.approx(1.5 * math.pi), "zero is straight up"
+        assert len(arc) <= 3, "nothing is lit at rest"
+    finally:
+        dpg.destroy_context()
+
+
+def test_the_app_opens_with_play_showing_not_stop() -> None:
+    from noodler.app import TRANSPORT_BUTTON, _refresh_transport_button
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _refresh_transport_button(runtime)
+        assert not runtime.audio.is_running
+        assert "PLAY" in dpg.get_item_configuration(TRANSPORT_BUTTON)["label"]
+    finally:
+        dpg.destroy_context()

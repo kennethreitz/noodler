@@ -16,6 +16,7 @@ from noodler.app import (
     KNOB_SIZE_LARGE,
     KNOB_SIZE_MINIMUM,
     LEVEL_DIAL_SIZE,
+    STRIP_KNOB_SIZE,
     VCO_NODE,
     _control_position,
     _knob_position,
@@ -49,7 +50,7 @@ def test_the_requested_size_is_the_configured_size() -> None:
             assert configuration["width"] == binding.size
             assert configuration["height"] == binding.size
             sizes.add(binding.size)
-        assert sizes == {KNOB_SIZE, KNOB_SIZE_LARGE, LEVEL_DIAL_SIZE}
+        assert sizes == {KNOB_SIZE, KNOB_SIZE_LARGE, LEVEL_DIAL_SIZE, STRIP_KNOB_SIZE}
         assert max(sizes) < 40, "no knob is the size the widget forced"
     finally:
         dpg.destroy_context()

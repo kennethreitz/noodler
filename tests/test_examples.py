@@ -275,3 +275,28 @@ def test_the_highlife_example_keeps_time_with_the_transport() -> None:
         m for m in runtime.patch.modules.values() if getattr(m, "uses_transport", False)
     ]
     assert {m.manifest.id for m in clocked} == {"clock", "pytheory_beats"}
+
+
+def test_the_keherwa_example_layers_two_clocked_rhythms() -> None:
+    """Tabla on keherwa in front, the highlife kit under it, both on the clock."""
+    preset = read_patch_preset(Path("examples/keherwa-kalimba.noodler"))
+    runtime = build_runtime_from_preset(preset)
+    beats = {
+        instance_id: module
+        for instance_id, module in runtime.patch.modules.items()
+        if module.manifest.id == "pytheory_beats"
+    }
+    assert {m.parameters.pattern for m in beats.values()} == {"keherwa", "highlife"}
+    assert runtime.patch.modules["key"].parameters.system == "shruti"
+    assert preset.transport.bpm == 100.0
+
+    runtime.patch.prepare(48_000.0, 256)
+    transport = Transport(bpm=100.0)
+    blocks = []
+    for _ in range(int(12 * 48_000 / 256)):
+        runtime.patch.transport = transport.tick(256, 48_000.0)
+        blocks.append(runtime.patch.render_stereo(256, 48_000.0))
+    audio = np.concatenate(blocks)
+    assert float(np.max(np.abs(audio))) < 0.9
+    ratio = _strongest_period(audio) * 100.0 / 60.0
+    assert any(abs(ratio - simple) / simple < 0.04 for simple in (1 / 3, 0.5, 1.0, 2.0, 4.0)), ratio
