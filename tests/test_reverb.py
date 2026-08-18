@@ -114,3 +114,52 @@ def test_parameters_validate_assignment() -> None:
 
     with pytest.raises(ValidationError):
         parameters.decay_seconds = 31.0
+
+
+def test_the_block_path_is_the_same_reverb_as_the_sample_path() -> None:
+    """An optimisation that changes the sound is not an optimisation.
+
+    Every delay in the tank is longer than a block, so a block-sized render
+    gathers whole delay lines at once; a render longer than the shortest
+    allpass falls back to the sample-by-sample loop. Both must agree exactly.
+    """
+    rng = np.random.default_rng(11)
+    signal = rng.normal(0.0, 0.3, 4_096).astype(np.float32)
+    settings = dict(
+        mix=0.6, decay_seconds=6.0, damping=0.5, diffusion=0.8, pre_delay_ms=40.0
+    )
+
+    def render(block: int) -> np.ndarray:
+        verb = Reverb(ReverbParameters(**settings))
+        verb.prepare(48_000.0)
+        return np.concatenate(
+            [
+                verb.process(block, 48_000.0, {"audio": signal[index : index + block]})[
+                    "left"
+                ]
+                for index in range(0, len(signal), block)
+            ]
+        )
+
+    blocked = render(256)
+    sampled = render(512)
+
+    assert float(np.max(np.abs(blocked))) > 0.0
+    np.testing.assert_allclose(blocked, sampled, atol=1e-6)
+
+
+def test_a_frozen_tank_still_rings() -> None:
+    verb = Reverb(ReverbParameters(mix=1.0, decay_seconds=8.0, freeze=False))
+    verb.prepare(48_000.0)
+    rng = np.random.default_rng(3)
+    for _ in range(8):
+        verb.process(256, 48_000.0, {"audio": rng.normal(0, 0.3, 256).astype(np.float32)})
+
+    verb.parameters.freeze = True
+    silence = np.zeros(256, dtype=np.float32)
+    held = [
+        float(np.max(np.abs(verb.process(256, 48_000.0, {"audio": silence})["left"])))
+        for _ in range(6)
+    ]
+
+    assert min(held) > 0.0, "a frozen tank should keep ringing"

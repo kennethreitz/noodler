@@ -272,6 +272,26 @@ class Reverb:
         damping = 0.05 + 0.90 * self.parameters.damping
         diffusion = 0.25 + 0.55 * self.parameters.diffusion
 
+        shortest = min(
+            min(len(buffer) for buffer in channel)
+            for channel in (*self._comb_buffers, *self._allpass_buffers)
+        )
+        steady_freeze = bool(np.all(freeze_gate > 0.0)) or not bool(
+            np.any(freeze_gate > 0.0)
+        )
+        pre_delay_ready = pre_delay_samples == 0 or pre_delay_samples >= frame_count
+        if frame_count <= shortest and steady_freeze and pre_delay_ready:
+            late = self._render_tank(
+                frame_count,
+                np.asarray(dry, dtype=np.float64),
+                feedback,
+                pre_delay_samples,
+                damping,
+                diffusion,
+                bool(self.parameters.freeze or np.any(freeze_gate > 0.0)),
+            )
+            return self._blend(dry, late, mix_cv)
+
         for sample in range(frame_count):
             input_sample = dry_samples[sample]
             if pre_delay_samples:
@@ -320,6 +340,10 @@ class Reverb:
                     field = output
                 late[sample, channel] = field
 
+        return self._blend(dry, late, mix_cv)
+
+    def _blend(self, dry, late, mix_cv) -> dict[str, FloatBlock]:
+        """Fold the tank back in against the dry signal."""
         wet = np.tanh(late * 2.2)
         mix = np.clip(self.parameters.mix + mix_cv, 0.0, 1.0)
         dry_gain = np.cos(mix * np.pi * 0.5)
@@ -332,6 +356,77 @@ class Reverb:
             "left": np.asarray(left, dtype=np.float32),
             "right": np.asarray(right, dtype=np.float32),
         }
+
+    def _render_tank(
+        self,
+        frame_count: int,
+        dry: NDArray[np.float64],
+        feedback,
+        pre_delay_samples: int,
+        damping: float,
+        diffusion: float,
+        frozen: bool,
+    ) -> NDArray[np.float64]:
+        """Run the whole tank a block at a time.
+
+        Every delay in the network is longer than a block, so each read is
+        entirely behind this block's writes: nothing a comb or an allpass reads
+        was written by the same block. That makes all of it a gather, an
+        arithmetic pass and a scatter, and leaves only the damping one-pole
+        genuinely sequential — as a bare float loop, with no numpy in it.
+        """
+        offsets = np.arange(frame_count)
+        if pre_delay_samples:
+            size = len(self._pre_delay)
+            read = (self._pre_delay_index - pre_delay_samples + offsets) % size
+            tank = self._pre_delay[read].copy()
+            write = (self._pre_delay_index + offsets) % size
+            self._pre_delay[write] = dry
+            self._pre_delay_index = int((self._pre_delay_index + frame_count) % size)
+        else:
+            tank = dry.copy()
+
+        injection = np.zeros(frame_count) if frozen else tank * 0.24
+        late = np.empty((frame_count, 2), dtype=np.float64)
+        for channel in range(2):
+            comb_sum = np.zeros(frame_count, dtype=np.float64)
+            for lane, buffer in enumerate(self._comb_buffers[channel]):
+                size = len(buffer)
+                index = self._comb_indices[channel][lane]
+                positions = (index + offsets) % size
+                delayed = buffer[positions].copy()
+
+                if frozen:
+                    filtered = delayed
+                    self._damping_state[channel][lane] = float(delayed[-1])
+                    buffer[positions] = injection + filtered
+                else:
+                    state = float(self._damping_state[channel][lane])
+                    heard = delayed.tolist()
+                    filtered_values = [0.0] * frame_count
+                    for sample in range(frame_count):
+                        state = heard[sample] * (1.0 - damping) + state * damping
+                        filtered_values[sample] = state
+                    self._damping_state[channel][lane] = state
+                    filtered = np.asarray(filtered_values, dtype=np.float64)
+                    buffer[positions] = injection + filtered * feedback[channel][lane]
+
+                self._comb_indices[channel][lane] = int((index + frame_count) % size)
+                comb_sum += delayed
+
+            field = comb_sum / len(self._comb_buffers[channel])
+            for stage, buffer in enumerate(self._allpass_buffers[channel]):
+                size = len(buffer)
+                index = self._allpass_indices[channel][stage]
+                positions = (index + offsets) % size
+                delayed = buffer[positions].copy()
+                buffer[positions] = field + delayed * diffusion
+                self._allpass_indices[channel][stage] = int(
+                    (index + frame_count) % size
+                )
+                field = delayed - field
+            late[:, channel] = field
+        return late
 
     @staticmethod
     def _optional_block(
