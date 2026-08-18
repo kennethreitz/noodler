@@ -266,7 +266,7 @@ and for the two gestures that have nowhere else to be discovered.
 
 
 
-KNOB_COLUMN_CHARS = 9
+KNOB_COLUMN_CHARS = 8
 """Width of one control column, in characters of the rack's monospace font.
 
 Panels are laid out in a monospace face, so a fixed character count is a fixed
@@ -276,10 +276,13 @@ because a rack is read by scanning across it, and a panel that will not fit
 beside its neighbour is a panel nobody can see in context.
 """
 
-KNOB_SIZE = 38
+KNOB_SIZE_MINIMUM = 16
+"""Smallest a rotary control is allowed to be drawn."""
+
+KNOB_SIZE = 22
 """Diameter of a rotary control. Small enough to read a panel at a glance."""
 
-KNOB_SIZE_LARGE = 44
+KNOB_SIZE_LARGE = 26
 """For the one control on a panel that deserves the eye first."""
 
 UNIT_SUFFIXES = (
@@ -477,7 +480,7 @@ class CanvasInteraction:
 
 CANVAS_INTERACTION = CanvasInteraction()
 
-TIDY_TARGETS: dict[int | str, float] = {}
+TIDY_TARGETS: dict[int | str, tuple[float, float]] = {}
 """Where TIDY asked each module to go, until it gets there or is dragged."""
 
 RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
@@ -1838,7 +1841,7 @@ def _set_rack_zoom(
         if dpg.does_item_exist(knob):
             dpg.configure_item(
                 knob,
-                width=max(30, round(binding.size * new_zoom)),
+                width=max(KNOB_SIZE_MINIMUM, round(binding.size * new_zoom)),
             )
 
     CANVAS_INTERACTION.zoom = new_zoom
@@ -2258,22 +2261,30 @@ def _tidy_rack(
 
     TIDY_TARGETS.clear()
     gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
-    for lane in RACK_RAILS.values():
-        lane.sort(
-            key=lambda node: (
-                node_depth.get(node, 0),
-                float(dpg.get_item_pos(node)[0])
-                if dpg.does_item_exist(node)
-                else 0.0,
-            )
-        )
-        available = [node for node in lane if dpg.does_item_exist(node)]
-        if not available:
-            continue
-        cursor = min(float(dpg.get_item_pos(node)[0]) for node in available)
-        for node in available:
-            TIDY_TARGETS[node] = cursor
-            cursor += max(1.0, float(dpg.get_item_rect_size(node)[0])) + gap
+    ordered = sorted(
+        (node for node in RACK_NODES if dpg.does_item_exist(node)),
+        key=lambda node: (
+            node_depth.get(node, 0),
+            float(dpg.get_item_pos(node)[0]),
+        ),
+    )
+    if not ordered:
+        return
+    view_width = float(dpg.get_item_rect_size(RACK)[0]) or 1_200.0
+    origin_x = min(float(dpg.get_item_pos(node)[0]) for node in ordered)
+    origin_y = min(float(dpg.get_item_pos(node)[1]) for node in ordered)
+    cursor_x, cursor_y, row_height = origin_x, origin_y, 0.0
+    for node in ordered:
+        size = dpg.get_item_rect_size(node)
+        width = max(120.0, float(size[0]))
+        height = max(80.0, float(size[1]))
+        if cursor_x > origin_x and cursor_x + width > origin_x + view_width - gap:
+            cursor_x = origin_x
+            cursor_y += row_height + gap
+            row_height = 0.0
+        TIDY_TARGETS[node] = (cursor_x, cursor_y)
+        cursor_x += width + gap
+        row_height = max(row_height, height)
     _set_patch_status("TIDIED  ·  RAILS NOW FOLLOW THE SIGNAL")
 
 
@@ -2372,93 +2383,35 @@ def _node_that_moved() -> int | str | None:
 
 
 def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
-    """Spring modules onto semantic lanes and prevent horizontal overlap."""
-    if (
-        CANVAS_INTERACTION.panning
-        or not CANVAS_INTERACTION.rail_y
-    ):
+    """Carry modules to wherever TIDY asked them to go, and nowhere else.
+
+    The rails are gone. They snapped a module to a lane and shuffled its
+    neighbours aside, which meant a rack could be arranged but never trusted:
+    the layout kept having opinions after the hand had let go. A module now
+    stays exactly where it was put, and rearranging is something asked for.
+    """
+    if CANVAS_INTERACTION.panning or not TIDY_TARGETS:
         return
-    _reflow_rail_lanes()
     active_node = _dragged_rack_node() or _node_that_moved()
-    gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
-    for rail, nodes in RACK_RAILS.items():
-        available = tuple(node for node in nodes if dpg.does_item_exist(node))
-        if not available:
+    for node, (target_x, target_y) in tuple(TIDY_TARGETS.items()):
+        if not dpg.does_item_exist(node) or node == active_node:
+            TIDY_TARGETS.pop(node, None)
             continue
-        positions = tuple(float(dpg.get_item_pos(node)[0]) for node in available)
-        widths = tuple(
-            max(1.0, float(dpg.get_item_rect_size(node)[0]))
-            for node in available
-        )
-        active_index = (
-            available.index(active_node) if active_node in available else None
-        )
-        targets = _rail_x_targets(
-            positions,
-            widths,
-            active_index=active_index,
-            gap=gap,
-        )
-        if TIDY_TARGETS:
-            targets = tuple(
-                TIDY_TARGETS.get(node, target)
-                for node, target in zip(available, targets)
-            )
-        if active_index is not None:
-            # A drag decides position, so the rail's order follows the eye:
-            # keeping the list in visual order is what lets "make room" push
-            # the right neighbours out of the way.
-            order = sorted(range(len(available)), key=lambda i: positions[i])
-            if order != list(range(len(available))):
-                reordered = [available[index] for index in order]
-                lane = RACK_RAILS[rail]
-                if set(lane) == set(reordered):
-                    lane[:] = reordered
-                available = tuple(reordered)
-                positions = tuple(
-                    float(dpg.get_item_pos(node)[0]) for node in available
-                )
-                widths = tuple(
-                    max(1.0, float(dpg.get_item_rect_size(node)[0]))
-                    for node in available
-                )
-                active_index = available.index(active_node)
-                targets = _rail_x_targets(
-                    positions,
-                    widths,
-                    active_index=active_index,
-                    gap=gap,
-                )
-        target_y = CANVAS_INTERACTION.rail_y[rail]
-        for node, current_x, target_x in zip(available, positions, targets):
-            current_y = float(dpg.get_item_pos(node)[1])
-            spring_x, spring_y = _rail_springs(node, current_x, current_y)
-            if node == active_node:
-                # The pointer owns a dragged module; the spring only follows,
-                # and a tidy it was still travelling toward is abandoned.
-                TIDY_TARGETS.pop(node, None)
-                spring_x.snap(current_x)
-                spring_y.snap(current_y)
-                continue
-            # Dear PyGui stores node positions as integers, so the spring keeps
-            # the sub-pixel truth and the item is only its rendering. Re-syncing
-            # from the item every frame would accumulate truncation error and
-            # make settling depend on how many frames it took. A difference of
-            # more than a pixel means something else moved the module.
-            if abs(spring_x.value - current_x) > 1.0:
-                spring_x.snap(current_x)
-            if abs(spring_y.value - current_y) > 1.0:
-                spring_y.snap(current_y)
-            spring_x.retarget(target_x)
-            spring_y.retarget(target_y)
-            next_x = spring_x.advance(dt)
-            next_y = spring_y.advance(dt)
-            if round(next_x) != round(current_x) or round(next_y) != round(
-                current_y
-            ):
-                dpg.set_item_pos(node, [next_x, next_y])
-            if spring_x.settled:
-                TIDY_TARGETS.pop(node, None)
+        position = dpg.get_item_pos(node)
+        current_x, current_y = float(position[0]), float(position[1])
+        spring_x, spring_y = _rail_springs(node, current_x, current_y)
+        if abs(spring_x.value - current_x) > 1.0:
+            spring_x.snap(current_x)
+        if abs(spring_y.value - current_y) > 1.0:
+            spring_y.snap(current_y)
+        spring_x.retarget(target_x)
+        spring_y.retarget(target_y)
+        next_x = spring_x.advance(dt)
+        next_y = spring_y.advance(dt)
+        if round(next_x) != round(current_x) or round(next_y) != round(current_y):
+            dpg.set_item_pos(node, [next_x, next_y])
+        if spring_x.settled and spring_y.settled:
+            TIDY_TARGETS.pop(node, None)
 
 
 def _clear_rack_selection() -> None:
@@ -2674,6 +2627,42 @@ def _module_title_at(
     return None
 
 
+def _set_attribute_text_shown(attribute: int | str, shown: bool) -> None:
+    """Show or hide what is written beside a jack, leaving the jack itself."""
+    if not dpg.does_item_exist(attribute):
+        return
+    for child in dpg.get_item_children(attribute, 1) or ():
+        dpg.configure_item(child, show=shown)
+
+
+def _patched_attributes(node: int | str, patch: PatchGraph) -> set[int | str]:
+    """The jacks on one module that currently have a cable in them."""
+    instance_id = _module_id_for_node(node)
+    tags: set[str] = set()
+    if instance_id is None:
+        if node == OUTPUT_NODE:
+            for tap in patch.output_taps:
+                channel = tap.channel.value
+                tags.add(f"{OUTPUT_NODE}.{'mono' if channel == 'both' else channel}")
+    else:
+        for cable in patch.cables:
+            if cable.source.module_id == instance_id:
+                tags.add(f"{node}.{cable.source.port_id}")
+            if cable.target.module_id == instance_id:
+                tags.add(f"{node}.{cable.target.port_id}")
+        for tap in patch.output_taps:
+            if tap.source.module_id == instance_id:
+                tags.add(f"{node}.{tap.source.port_id}")
+    # Attributes are handled by item id, so resolve the tags to ids: comparing
+    # the two kinds silently matched nothing.
+    live: set[int | str] = set()
+    for tag in tags:
+        if dpg.does_item_exist(tag):
+            live.add(dpg.get_alias_id(tag))
+            live.add(tag)
+    return live
+
+
 def _set_module_collapsed(
     node: int | str,
     collapsed: bool,
@@ -2692,11 +2681,17 @@ def _set_module_collapsed(
         }
         label = str(dpg.get_item_configuration(node)["label"])
         state.labels[node] = label
+        patched = _patched_attributes(node, runtime.patch)
         for attribute in state.attributes[node]:
-            dpg.configure_item(attribute, show=False)
+            # A jack with a cable in it keeps its pin, so the cable stays
+            # plugged into the spine instead of vanishing with the panel. Its
+            # label is put away; the pin is the whole point.
+            if attribute in patched:
+                _set_attribute_text_shown(attribute, False)
+            else:
+                dpg.configure_item(attribute, show=False)
         dpg.configure_item(_spine_attribute_tag(node), show=True)
         dpg.configure_item(node, label="▸")
-        _sync_collapsed_link_visibility()
         _set_patch_status(f"FOLDED  {label}")
         return
 
@@ -2707,10 +2702,10 @@ def _set_module_collapsed(
     for attribute, show in visibility.items():
         if dpg.does_item_exist(attribute):
             dpg.configure_item(attribute, show=show)
+            _set_attribute_text_shown(attribute, True)
     dpg.configure_item(_spine_attribute_tag(node), show=False)
     dpg.configure_item(node, label=label)
     _refresh_patch_bays(runtime.patch)
-    _sync_collapsed_link_visibility()
     _set_patch_status(f"OPENED  {label}")
 
 
@@ -3619,7 +3614,7 @@ def _add_knob(
     tag: int | str = 0,
 ) -> int | str:
     """Add a compact rotary control with a separate live value readout."""
-    size = max(42, round(size * MODULE_KNOB_SCALE))
+    size = max(KNOB_SIZE_MINIMUM, round(size * MODULE_KNOB_SCALE))
     position = _control_position(value, minimum, maximum, logarithmic)
     knob_minimum, knob_maximum = ((0.0, 1.0) if logarithmic else (minimum, maximum))
     plain_formatter = formatter
@@ -5648,7 +5643,7 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
         if dpg.does_item_exist(knob):
             dpg.configure_item(
                 knob,
-                width=max(30, round(binding.size * zoom)),
+                width=max(KNOB_SIZE_MINIMUM, round(binding.size * zoom)),
             )
     dpg.configure_item(ZOOM_RESET_BUTTON, label=f"{zoom:.0%}")
 

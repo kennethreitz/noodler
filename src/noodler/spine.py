@@ -39,7 +39,9 @@ def render_spine_texture(
         fill=(245, 241, 229, 255),
         font=font,
     )
-    vertical = horizontal.rotate(90, expand=True)
+    # Clockwise, so the title reads top to bottom the way a book on a shelf
+    # does. Rotating the other way puts the spine upside down.
+    vertical = horizontal.rotate(-90, expand=True)
     pixels = tuple(channel / 255.0 for channel in vertical.tobytes())
     return SpineTexture(vertical.width, vertical.height, pixels)
 

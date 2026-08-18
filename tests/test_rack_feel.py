@@ -25,6 +25,7 @@ from noodler.app import (
     RACK,
     REVEAL_PATIENCE,
     RAIL_SPRINGS,
+    TIDY_TARGETS,
     SAVE_PATCH_DIALOG,
     VCO_NODE,
     _add_selected_module,
@@ -74,37 +75,7 @@ def _descendants(item: int | str) -> tuple[int | str, ...]:
     )
 
 
-def _displaced_rail_offset(frame_rate: float, seconds: float) -> float:
-    """Lift a module off its rail and report how far it has fallen back."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        node_x = float(dpg.get_item_pos(VCO_NODE)[0])
-        rail_y = CANVAS_INTERACTION.rail_y[AUDIO_RAIL]
-        dpg.set_item_pos(VCO_NODE, [node_x, rail_y + 220.0])
-        RAIL_SPRINGS.clear()
 
-        remaining = seconds
-        step = 1.0 / frame_rate
-        while remaining > 0.0:
-            _settle_rack_rails(min(step, remaining))
-            remaining -= step
-        return float(dpg.get_item_pos(VCO_NODE)[1]) - rail_y
-    finally:
-        dpg.destroy_context()
-
-
-def test_rail_settling_is_identical_at_60_and_240_hz() -> None:
-    """The rack must not animate twice as fast on a ProMotion panel."""
-    slow = _displaced_rail_offset(60.0, seconds=0.05)
-    fast = _displaced_rail_offset(240.0, seconds=0.05)
-    assert slow == pytest.approx(fast, abs=1.0)
-    assert 0.0 < fast < 220.0, "the module should be mid-flight, not parked"
-
-
-def test_a_settled_module_lands_exactly_on_its_rail() -> None:
-    """A spring arrives, so no snap threshold has to pop the last pixel."""
-    assert _displaced_rail_offset(120.0, seconds=1.0) == 0.0
 
 
 def test_zoom_springs_to_its_target_and_stops_there() -> None:
@@ -691,25 +662,6 @@ def test_a_background_drag_also_takes_the_pointer(monkeypatch) -> None:
 
 
 
-def test_tidy_orders_a_rail_by_the_way_signal_flows() -> None:
-    """The patch already knows left-to-right; the layout should just read it."""
-    dpg.create_context()
-    try:
-        runtime = build_ui(starter_patch=True)
-        lane = RACK_RAILS[AUDIO_RAIL]
-        lane[:] = list(reversed(lane))
-        assert lane[0] == OUTPUT_NODE, "deliberately backwards to start"
-
-        _tidy_rack("test", None, runtime)
-
-        order = [INSTANCE_NODE_TAGS.get(m) for m in ("vco", "mixer", "low_pass_gate", "reverb")]
-        positions = [RACK_RAILS[AUDIO_RAIL].index(node) for node in order]
-        assert positions == sorted(positions), "signal order, left to right"
-        assert RACK_RAILS[AUDIO_RAIL][-1] == OUTPUT_NODE, "the output ends the rail"
-        assert "TIDIED" in dpg.get_value(CONTROL_STATUS)
-    finally:
-        dpg.destroy_context()
-
 
 def test_module_depth_follows_the_cables() -> None:
     dpg.create_context()
@@ -736,31 +688,6 @@ def test_tidy_leaves_an_unpatched_rack_alone() -> None:
     finally:
         dpg.destroy_context()
 
-
-def test_dragging_a_module_sideways_reorders_its_rail(monkeypatch) -> None:
-    """A horizontal drag decides order, not a coordinate."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        lane = RACK_RAILS[AUDIO_RAIL]
-        first, second = lane[0], lane[1]
-
-        # Carry the first module past its neighbour.
-        beyond = float(dpg.get_item_pos(second)[0]) + 400.0
-        dpg.set_item_pos(first, [beyond, float(dpg.get_item_pos(first)[1])])
-        monkeypatch.setattr("noodler.app._dragged_rack_node", lambda: first)
-        monkeypatch.setattr(
-            dpg, "get_item_rect_size", lambda item: [220, 150]
-        )
-
-        _settle_rack_rails(1.0 / 60.0)
-
-        assert RACK_RAILS[AUDIO_RAIL].index(first) > RACK_RAILS[AUDIO_RAIL].index(
-            second
-        ), "the dragged module took the later slot"
-        assert set(RACK_RAILS[AUDIO_RAIL]) == set(lane), "nothing was lost"
-    finally:
-        dpg.destroy_context()
 
 
 def test_space_and_a_click_drag_pans_rather_than_selects(monkeypatch) -> None:
@@ -1051,43 +978,101 @@ def test_a_double_click_elsewhere_still_folds_a_module(monkeypatch) -> None:
         dpg.destroy_context()
 
 
-def test_a_dragged_module_is_found_by_where_it_moved(monkeypatch) -> None:
-    """Identifying a drag by hover or geometry has been wrong repeatedly.
 
-    Dear PyGui moves the dragged node itself, so the node that no longer
-    matches the spring driving it is the one under the pointer.
+def _tidied_offset(frame_rate: float, seconds: float) -> float:
+    """How far a tidied module still has to travel after some wall-clock time."""
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        _tidy_rack("test", None, runtime)
+        target = TIDY_TARGETS.get(VCO_NODE)
+        assert target is not None
+        remaining = seconds
+        step = 1.0 / frame_rate
+        while remaining > 0.0:
+            _settle_rack_rails(min(step, remaining))
+            remaining -= step
+        return float(dpg.get_item_pos(VCO_NODE)[0]) - target[0]
+    finally:
+        dpg.destroy_context()
+
+
+def test_tidying_settles_identically_at_60_and_240_hz() -> None:
+    """The rack must not rearrange twice as fast on a ProMotion panel."""
+    slow = _tidied_offset(60.0, seconds=0.05)
+    fast = _tidied_offset(240.0, seconds=0.05)
+    assert slow == pytest.approx(fast, abs=1.5)
+
+
+def test_a_tidied_module_lands_exactly_where_it_was_sent() -> None:
+    assert _tidied_offset(120.0, seconds=1.5) == pytest.approx(0.0, abs=0.5)
+
+
+def test_tidy_orders_the_rack_by_the_way_signal_flows() -> None:
+    """The patch already knows left-to-right; tidying just reads it."""
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+
+        _tidy_rack("test", None, runtime)
+
+        placed = {node: target for node, target in TIDY_TARGETS.items()}
+        order = [INSTANCE_NODE_TAGS[m] for m in ("vco", "mixer", "low_pass_gate", "reverb")]
+        positions = [placed[node] for node in order if node in placed]
+        assert positions == sorted(positions), "signal order, left to right"
+        assert "TIDIED" in dpg.get_value(CONTROL_STATUS)
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_module_left_alone_is_never_moved() -> None:
+    """The rails kept having opinions after the hand had let go."""
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        placed = tuple(dpg.get_item_pos(VCO_NODE))
+        dpg.set_item_pos(VCO_NODE, [placed[0] + 260.0, placed[1] + 130.0])
+        moved = tuple(dpg.get_item_pos(VCO_NODE))
+
+        for _ in range(600):
+            _settle_rack_rails(1 / 120)
+
+        assert tuple(dpg.get_item_pos(VCO_NODE)) == moved
+    finally:
+        dpg.destroy_context()
+
+
+def test_a_module_dragged_during_a_tidy_is_left_alone(monkeypatch) -> None:
+    """Tidying must let go the moment the user takes hold of something.
+
+    The dragged module is found by the panel that has left the spring driving
+    it, which is evidence rather than the guesswork that hover and geometry
+    turned out to be.
     """
     dpg.create_context()
     try:
-        runtime = build_ui()
-        _add_selected_module("test", None, (runtime, "classic_vco"))
-        _add_selected_module("test", None, (runtime, "reverb"))
-        node = INSTANCE_NODE_TAGS["classic_vco"]
-
-        for _ in range(200):
-            _settle_rack_rails(1 / 120)
+        runtime = build_ui(starter_patch=True)
+        _tidy_rack("test", None, runtime)
+        _settle_rack_rails(1 / 120)
 
         monkeypatch.setattr(
             dpg, "is_mouse_button_dragging", lambda button, threshold: True
         )
-        # Nothing reports itself hovered, as nodes have often failed to.
         monkeypatch.setattr(dpg, "get_item_state", lambda _item: {})
         monkeypatch.setattr(
             dpg, "get_mouse_pos", lambda *, local=False: (-5_000.0, -5_000.0)
         )
+        assert _node_that_moved() is None, "nothing has been picked up"
 
-        assert _node_that_moved() is None, "nothing has moved yet"
+        grabbed = tuple(dpg.get_item_pos(VCO_NODE))
+        dpg.set_item_pos(VCO_NODE, [grabbed[0] - 180.0, grabbed[1]])
+        assert _node_that_moved() == VCO_NODE
 
-        settled = tuple(dpg.get_item_pos(node))
-        dpg.set_item_pos(node, [settled[0] - 140.0, settled[1]])
-
-        assert _node_that_moved() == node
-
-        # And it is left where the pointer put it, including leftwards.
         for _ in range(120):
             _settle_rack_rails(1 / 120)
-        assert float(dpg.get_item_pos(node)[0]) == pytest.approx(
-            settled[0] - 140.0, abs=2.0
+        assert float(dpg.get_item_pos(VCO_NODE)[0]) == pytest.approx(
+            grabbed[0] - 180.0, abs=2.0
         )
+        assert VCO_NODE not in TIDY_TARGETS, "the tidy let go of it"
     finally:
         dpg.destroy_context()

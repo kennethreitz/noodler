@@ -734,14 +734,22 @@ def test_module_title_collapse_preserves_graph_and_attribute_visibility() -> Non
 
         assert MODULE_COLLAPSE.is_collapsed(VCO_NODE) is True
         assert dpg.get_item_configuration(VCO_NODE)["label"] == "▸"
-        assert all(
-            dpg.get_item_configuration(attribute)["show"] is False
-            for attribute in attributes
-        )
+        # A folded module keeps the jacks that have cables in them, so the
+        # cables stay plugged into the spine instead of vanishing with it.
+        patched = {
+            f"{VCO_NODE}.{end.port_id}"
+            for cable in runtime.patch.cables
+            for end in (cable.source, cable.target)
+            if end.module_id == "vco"
+        }
+        for attribute in attributes:
+            shown = dpg.get_item_configuration(attribute)["show"]
+            alias = dpg.get_item_alias(attribute) or attribute
+            assert shown is (alias in patched), alias
         assert dpg.get_item_configuration(
             f"{VCO_NODE}.spine.attribute"
         )["show"] is True
-        assert dpg.get_item_configuration(VCO_MIXER_LINK)["show"] is False
+        assert dpg.get_item_configuration(VCO_MIXER_LINK)["show"] is True
         assert dpg.get_item_configuration(WOGGLE_SCALE_LINK)["show"] is True
         assert len(runtime.patch.cables) == cable_count
 
