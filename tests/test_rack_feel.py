@@ -887,3 +887,54 @@ def test_dragging_a_module_sideways_reorders_its_rail(monkeypatch) -> None:
         assert set(RACK_RAILS[AUDIO_RAIL]) == set(lane), "nothing was lost"
     finally:
         dpg.destroy_context()
+
+
+def test_space_and_a_click_drag_pans_rather_than_selects(monkeypatch) -> None:
+    """Space plus a drag is the reach people already have; it must pan.
+
+    The press also has to be claimed, or the editor spends it on a box select —
+    and it has to work from over a module, not just from empty background.
+    """
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        pointer = [300.0, 240.0]
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: tuple(pointer)
+        )
+        monkeypatch.setattr(
+            dpg, "is_key_down", lambda key: key == dpg.mvKey_Spacebar
+        )
+        monkeypatch.setattr(dpg, "is_mouse_button_down", lambda _button: True)
+        monkeypatch.setattr("noodler.app._mouse_is_over_rack", lambda: True)
+        monkeypatch.setattr("noodler.app._keyboard_is_captured", lambda: False)
+        monkeypatch.setattr("noodler.app._module_close_at", lambda _position: None)
+        # The press lands on a module, not on empty canvas.
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: False
+        )
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background", lambda _position: False
+        )
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            "noodler.app._clear_rack_selection", lambda: cleared.append(1)
+        )
+        start = tuple(dpg.get_item_pos(VCO_NODE))
+
+        _settle_space_pan()
+        _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
+        assert CANVAS_INTERACTION.panning is True
+
+        for step in ((360.0, 280.0), (430.0, 310.0)):
+            pointer[0], pointer[1] = step
+            _settle_space_pan()
+            _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
+            _drag_knob("test", None, KNOB_INTERACTION)
+
+        moved = tuple(dpg.get_item_pos(VCO_NODE))
+        assert moved[0] - start[0] == pytest.approx(130.0)
+        assert moved[1] - start[1] == pytest.approx(70.0)
+        assert len(cleared) >= 3, "the editor keeps trying to select; keep clearing"
+    finally:
+        dpg.destroy_context()

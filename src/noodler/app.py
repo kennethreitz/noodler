@@ -2570,10 +2570,15 @@ def _settle_space_pan() -> None:
         mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
         interaction.last_mouse_x = float(mouse_x)
         interaction.last_mouse_y = float(mouse_y)
-        _set_patch_status("PANNING  ·  MOVE TO PLACE VIEW  ·  RELEASE SPACE")
+        _set_patch_status("PANNING  ·  MOVE OR DRAG TO PLACE VIEW")
         return
-    # A selection survives a pure space pan; only a stray button press, which
-    # the editor would answer with an invisible box select, has to clear it.
+    if interaction.panning:
+        # A button is down and the drag handler is already moving the rack.
+        # Keep clearing the selection the editor keeps trying to make.
+        _clear_rack_selection()
+        return
+    # A selection survives a pure space pan; only a button press, which the
+    # editor would answer with a box select, has to clear it.
     _pan_rack(
         clear_selection=dpg.is_mouse_button_down(dpg.mvMouseButton_Left)
     )
@@ -2626,9 +2631,11 @@ def _begin_knob_drag(
         _remove_module_node(close_node, runtime)
         return
     if dpg.is_key_down(dpg.mvKey_Spacebar) and _mouse_is_over_rack():
-        # Space already pans on movement alone; the button has nothing to add
-        # and would only hand the gesture to the editor's box selection.
-        CANVAS_INTERACTION.press_consumed = True
+        # Space and a drag is the reach people already have. Panning claims the
+        # press so the editor cannot spend it on a selection, and it works from
+        # over a module as well as from the background.
+        CANVAS_INTERACTION.arm_pan(mouse_position)
+        _begin_canvas_pan(mouse_position)
         return
     for knob, binding in reversed(tuple(interaction.bindings.items())):
         if dpg.does_item_exist(knob) and dpg.is_item_hovered(knob):
