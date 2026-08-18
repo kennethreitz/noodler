@@ -924,8 +924,43 @@ def _new_patch(_sender: int | str = 0, _app_data: object = None, _u: object = No
 
 def _new_patch_now() -> None:
     CURRENT_PATCH_PATH.clear()
-    PENDING_OPEN[:] = [PatchPreset(name="Untitled Patch", modules=())]
+    PENDING_OPEN[:] = [default_rack_preset()]
     _set_patch_status("NEW RACK")
+
+
+def default_rack_preset() -> PatchPreset:
+    """The rack a new document opens as: the console, a delay on send A and a
+    room on send B, both already returning.
+
+    A desk comes with its effects patched, so that turning a strip's A up is
+    all it takes to hear an echo, and B a room. Both effects run fully wet, as
+    an effect on a send should. Everything else is left to the patch.
+    """
+    provider = BuiltinProvider()
+    patch = PatchGraph()
+    master = ensure_master(patch)
+    echo = provider.create("echo_delay", {"time_seconds": 0.375, "feedback": 0.35, "mix": 1.0, "damping": 0.5})
+    room = provider.create("pytheory_reverb", {"space": "hall", "mix": 1.0, "decay_seconds": 2.5, "width": 0.9})
+    patch.add_module("delay", echo)
+    patch.add_module("reverb", room)
+    patch.connect(MASTER_ID, "send_a", "delay", "audio")
+    patch.connect("delay", "output", MASTER_ID, "return_a_left")
+    patch.connect(MASTER_ID, "send_b", "reverb", "audio")
+    patch.connect("reverb", "wet_left", MASTER_ID, "return_b_left")
+    patch.connect("reverb", "wet_right", MASTER_ID, "return_b_right")
+    master.set_return_level("a", 0.5)
+    master.set_return_level("b", 0.55)
+    view = RackViewPreset(
+        zoom=1.0,
+        rails={},
+        nodes=(
+            RackNodePreset(node_id="delay", position=Point(x=40.0, y=40.0)),
+            RackNodePreset(node_id="reverb", position=Point(x=420.0, y=40.0)),
+        ),
+    )
+    return capture_patch_preset(
+        name="Untitled Patch", patch=patch, master_gain=0.8, view=view
+    )
 
 
 def _example_documents() -> tuple[Path, ...]:
@@ -8109,7 +8144,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             min_width=900,
             min_height=600,
         )
-        runtime = build_ui(preset=preset)
+        runtime = build_ui(preset=preset if preset is not None else default_rack_preset())
         dpg.setup_dearpygui()
         dpg.set_primary_window(PRIMARY_WINDOW, True)
         dpg.show_viewport()

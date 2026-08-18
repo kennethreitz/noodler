@@ -44,7 +44,12 @@ plays any of the library's hundred rhythm presets — funk, teental, bossa nova,
 trap — through its own drum synthesis, locked to the rack's clock so beat one
 is beat one; and a **Clock** module turns that clock into triggers and a ramp,
 so anything with a clock input can be patched to the tempo in the menu bar.
-PyTheory is not a menu hidden behind
+**PyTheory Reverb** puts a signal in any of the library's rooms — Schroeder's
+algorithm, or an impulse response it synthesises for a hall, a plate, a
+spring, a cathedral, a cave, a canyon, a parking garage or the Taj Mahal —
+convolved in real time, a twelve-second room for a fifth of a millisecond a
+block. A new rack opens with a delay on send A and one of these rooms on send
+B, already returning. PyTheory is not a menu hidden behind
 the synthesizer; it is part of the synthesizer.
 
 **Audio and CV are cousins.** Noodler distinguishes signal meaning and warns
@@ -176,7 +181,7 @@ documents.
 
 ## Modules
 
-The built-in provider currently contains 26 modules, grouped around the way a
+The built-in provider currently contains 27 modules, grouped around the way a
 patch is made rather than around implementation details.
 
 | Shelf | Modules |
@@ -184,7 +189,7 @@ patch is made rather than around implementation details.
 | Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, Scale Generator, Function Utility, Wogglebug |
 | Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
-| Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb |
+| Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb, PyTheory Reverb |
 
 PyTheory brains prepare musical structures on the control path. Oscillators,
 filters, dynamics, utilities, and effects implement the block-processing

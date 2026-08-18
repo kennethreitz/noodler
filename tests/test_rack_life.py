@@ -182,11 +182,23 @@ def test_an_empty_rack_says_what_to_do_with_itself() -> None:
     try:
         build_ui()
         assert dpg.get_value(CONTROL_STATUS) == EMPTY_RACK_STATUS
-        _new_patch()
-        _consume_pending_open()
-        assert dpg.get_value(CONTROL_STATUS) == EMPTY_RACK_STATUS
     finally:
         dpg.destroy_context()
+
+
+def test_a_new_rack_comes_with_its_sends_patched() -> None:
+    from noodler.app import default_rack_preset
+
+    preset = default_rack_preset()
+    routes = {(c.source.module_id, c.source.port_id, c.target.module_id, c.target.port_id) for c in preset.cables}
+    assert ("master", "send_a", "delay", "audio") in routes
+    assert ("master", "send_b", "reverb", "audio") in routes
+    assert ("delay", "output", "master", "return_a_left") in routes
+    assert ("reverb", "wet_left", "master", "return_b_left") in routes
+    assert ("reverb", "wet_right", "master", "return_b_right") in routes
+    parameters = {m.instance_id: m.parameters for m in preset.modules}
+    assert parameters["delay"]["mix"] == 1.0 and parameters["reverb"]["mix"] == 1.0
+    assert parameters["reverb"]["space"] == "hall"
 
 
 def test_cables_glow_with_the_jack_that_feeds_them() -> None:

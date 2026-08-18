@@ -241,7 +241,7 @@ def test_an_older_document_without_a_tempo_still_opens() -> None:
     assert preset.transport.bpm == 120.0
 
 
-def test_file_new_is_an_empty_rack_that_has_forgotten_its_path(tmp_path) -> None:
+def test_file_new_is_the_default_rack_that_has_forgotten_its_path(tmp_path) -> None:
     dpg.create_context()
     try:
         runtime = build_ui()
@@ -252,7 +252,10 @@ def test_file_new_is_an_empty_rack_that_has_forgotten_its_path(tmp_path) -> None
         _new_patch()
         fresh = _consume_pending_open()
 
-        assert tuple(fresh.patch.modules) == ("master",)
+        # A new rack is the console with a delay on send A and a room on
+        # send B, already returning -- and nothing the last rack had.
+        assert tuple(fresh.patch.modules) == ("master", "delay", "reverb")
+        assert "classic_vco" not in fresh.patch.modules
         assert not CURRENT_PATCH_PATH, "Save must ask, not write over the old file"
         assert dpg.does_item_exist(NEW_PATCH_MENU_ITEM)
     finally:
