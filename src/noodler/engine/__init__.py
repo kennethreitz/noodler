@@ -13,6 +13,9 @@ from noodler.patch import PatchGraph
 SCOPE_POINTS = 480
 """Samples kept for display: a couple of hundred milliseconds of the output."""
 
+LIFECYCLE_TIMEOUT = 2.0
+"""Seconds to wait for the device lock before shutting down regardless."""
+
 SCOPE_STRIDE = 8
 """Only every eighth sample is kept. A trace is a shape, not a measurement."""
 
@@ -108,18 +111,28 @@ class SystemAudioEngine:
                 raise
 
     def stop(self) -> None:
-        """Stop and close the current output stream."""
-        with self._lifecycle_lock:
+        """Stop and close the current output stream.
+
+        The stream is taken under the lock, but stopped and closed outside it.
+        Closing waits for the callback thread to finish, and holding a lock
+        across that wait is how quitting mid-edit ended up hanging on a
+        keyboard interrupt instead of shutting down.
+        """
+        acquired = self._lifecycle_lock.acquire(timeout=LIFECYCLE_TIMEOUT)
+        try:
             stream = self._stream
             self._stream = None
             self._active_sample_rate = None
-            if stream is None:
-                return
-            try:
-                stream.stop()
-            finally:
-                stream.close()
-                self.last_peak = 0.0
+        finally:
+            if acquired:
+                self._lifecycle_lock.release()
+        if stream is None:
+            return
+        try:
+            stream.stop()
+        finally:
+            stream.close()
+            self.last_peak = 0.0
 
     close = stop
 

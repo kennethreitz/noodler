@@ -130,3 +130,57 @@ def test_master_gain_is_bounded_for_system_output() -> None:
 
     with pytest.raises(ValueError, match="between 0 and 1"):
         engine.master_gain = 1.1
+
+
+def test_stopping_does_not_hold_the_lock_while_the_device_closes() -> None:
+    """Quitting hung on a keyboard interrupt, waiting for this lock.
+
+    Closing waits for the callback thread to finish, so holding the lifecycle
+    lock across that wait can deadlock against anything else touching the
+    device. The stream is taken under the lock and closed outside it.
+    """
+    import threading
+
+    from noodler.engine import SystemAudioEngine
+    from noodler.patch import PatchGraph
+
+    held: list[bool] = []
+
+    class SlowStream:
+        samplerate = 48_000.0
+        active = True
+
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            held.append(engine._lifecycle_lock.locked())
+
+        def close(self) -> None:
+            pass
+
+    engine = SystemAudioEngine(
+        PatchGraph(), stream_factory=lambda **_kwargs: SlowStream()
+    )
+    engine.start()
+    engine.stop()
+
+    assert held == [False], "the lock was still held while the device closed"
+
+
+def test_stopping_gives_up_on_a_wedged_lock() -> None:
+    """A shutdown must finish even if something else never lets go."""
+    import threading
+
+    from noodler.engine import SystemAudioEngine
+    from noodler.patch import PatchGraph
+
+    engine = SystemAudioEngine(PatchGraph())
+    engine._lifecycle_lock.acquire()
+    try:
+        finished = threading.Event()
+        worker = threading.Thread(target=lambda: (engine.stop(), finished.set()))
+        worker.start()
+        assert finished.wait(timeout=6.0), "stop() never returned"
+    finally:
+        engine._lifecycle_lock.release()

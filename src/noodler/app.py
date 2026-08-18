@@ -3697,6 +3697,25 @@ def _set_dynamic_parameter(
     path: tuple[str | int, ...],
     value: object,
 ) -> None:
+    """Write a control's value through the model that validates it.
+
+    A model refusing a value is an answer, not a crash. Dragging a knob past a
+    declared bound used to raise a validation error all the way out and print a
+    traceback over the rack; it is reported on the status line instead.
+    """
+    try:
+        _write_dynamic_parameter(module, path, value)
+    except (ValueError, TypeError) as error:
+        _set_patch_status(
+            f"REFUSED: {str(error).splitlines()[0][:88]}", error=True
+        )
+
+
+def _write_dynamic_parameter(
+    module: object,
+    path: tuple[str | int, ...],
+    value: object,
+) -> None:
     parameters = getattr(module, "parameters")
     values = parameters.model_dump(mode="python")
     target: object = values
