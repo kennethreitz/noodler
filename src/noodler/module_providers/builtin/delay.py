@@ -100,52 +100,79 @@ class EchoDelay:
         feedback_cv = block("feedback_cv", inputs, frame_count)
         mix_cv = block("mix_cv", inputs, frame_count)
         freeze = block("freeze", inputs, frame_count)
-        wet = np.empty(frame_count, dtype=np.float64)
-        output = np.empty(frame_count, dtype=np.float64)
         write_index = self._write_index
         damping_state = self._damping_state
         buffer = self._buffer
-        for sample in range(frame_count):
-            seconds = float(
-                np.clip(
-                    self.parameters.time_seconds
-                    * 2.0 ** float(np.clip(time_cv[sample], -8.0, 8.0)),
-                    0.001,
-                    MAX_DELAY_SECONDS,
-                )
-            )
-            delay_samples = seconds * sample_rate
-            read_position = (write_index - delay_samples) % len(buffer)
-            read_0 = int(math.floor(read_position))
-            fraction = read_position - read_0
+        size = len(buffer)
+        # Everything the loop used to recompute per sample, computed once for
+        # the block. Four np.clip calls per sample cost far more than the
+        # arithmetic they were guarding.
+        seconds = np.clip(
+            self.parameters.time_seconds
+            * np.exp2(np.clip(time_cv, -8.0, 8.0)),
+            0.001,
+            MAX_DELAY_SECONDS,
+        )
+        delay_samples = seconds * sample_rate
+        frozen = np.logical_or(bool(self.parameters.freeze), freeze > 0.0)
+        feedback = np.where(
+            frozen,
+            0.999,
+            np.clip(self.parameters.feedback + feedback_cv, -0.98, 0.98),
+        )
+        injection = np.where(frozen, 0.0, np.asarray(audio, dtype=np.float64))
+        mix = np.clip(self.parameters.mix + mix_cv, 0.0, 1.0)
+        dry_gain = np.cos(mix * np.pi * 0.5)
+        wet_gain = np.sin(mix * np.pi * 0.5)
+        damping = 0.02 + 0.96 * self.parameters.damping
+        coefficient = 1.0 - damping
+        drive = self.parameters.drive
+
+        if float(np.min(delay_samples)) >= frame_count:
+            # The read is entirely behind this block's writes, so the whole
+            # delay line can be gathered at once. Only the one-pole damping
+            # stays sequential, and it is a bare float loop.
+            offsets = np.arange(frame_count, dtype=np.float64)
+            positions = (write_index + offsets - delay_samples) % size
+            lower = positions.astype(np.int64)
+            fraction = positions - lower
             delayed = (
-                float(buffer[read_0]) * (1.0 - fraction)
-                + float(buffer[(read_0 + 1) % len(buffer)]) * fraction
+                buffer[lower] * (1.0 - fraction)
+                + buffer[(lower + 1) % size] * fraction
             )
-            damping = 0.02 + 0.96 * self.parameters.damping
-            damping_state += (1.0 - damping) * (delayed - damping_state)
-            frozen = self.parameters.freeze or freeze[sample] > 0.0
-            feedback = (
-                0.999
-                if frozen
-                else float(
-                    np.clip(
-                        self.parameters.feedback + feedback_cv[sample],
-                        -0.98,
-                        0.98,
-                    )
+            damped = np.empty(frame_count, dtype=np.float64)
+            state = damping_state
+            for sample in range(frame_count):
+                state += coefficient * (delayed[sample] - state)
+                damped[sample] = state
+            damping_state = state
+            written = np.tanh((injection + damped * feedback) * drive)
+            indices = (write_index + np.arange(frame_count)) % size
+            buffer[indices] = written
+            write_index = int((write_index + frame_count) % size)
+            wet = delayed
+            output = np.asarray(audio, dtype=np.float64) * dry_gain + delayed * wet_gain
+        else:
+            wet = np.empty(frame_count, dtype=np.float64)
+            output = np.empty(frame_count, dtype=np.float64)
+            for sample in range(frame_count):
+                read_position = (write_index - delay_samples[sample]) % size
+                read_0 = int(math.floor(read_position))
+                fraction = read_position - read_0
+                delayed = (
+                    float(buffer[read_0]) * (1.0 - fraction)
+                    + float(buffer[(read_0 + 1) % size]) * fraction
                 )
-            )
-            injection = 0.0 if frozen else float(audio[sample])
-            buffer[write_index] = math.tanh(
-                (injection + damping_state * feedback) * self.parameters.drive
-            )
-            write_index = (write_index + 1) % len(buffer)
-            mix = float(np.clip(self.parameters.mix + mix_cv[sample], 0.0, 1.0))
-            dry_gain = math.cos(mix * math.pi * 0.5)
-            wet_gain = math.sin(mix * math.pi * 0.5)
-            wet[sample] = delayed
-            output[sample] = float(audio[sample]) * dry_gain + delayed * wet_gain
+                damping_state += coefficient * (delayed - damping_state)
+                buffer[write_index] = math.tanh(
+                    (injection[sample] + damping_state * feedback[sample]) * drive
+                )
+                write_index = (write_index + 1) % size
+                wet[sample] = delayed
+                output[sample] = (
+                    float(audio[sample]) * dry_gain[sample]
+                    + delayed * wet_gain[sample]
+                )
         self._write_index = write_index
         self._damping_state = damping_state
         return {

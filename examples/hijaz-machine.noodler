@@ -2,7 +2,7 @@
   "format": "noodler.patch",
   "format_version": 1,
   "application_version": "0.1.0",
-  "name": "Hijaz Machine",
+  "name": "hijaz-machine",
   "modules": [
     {
       "instance_id": "key",
@@ -435,117 +435,120 @@
   },
   "view": {
     "zoom": 0.8,
-    "rails": {},
+    "rails": {
+      "control": -344.0,
+      "audio": -134.0
+    },
     "nodes": [
+      {
+        "node_id": "system_output",
+        "position": {
+          "x": 527.0,
+          "y": 293.0
+        },
+        "collapsed": false
+      },
       {
         "node_id": "key",
         "position": {
-          "x": 40.0,
-          "y": 40.0
+          "x": -1327.0,
+          "y": -344.0
         },
         "collapsed": false
       },
       {
         "node_id": "woggle",
         "position": {
-          "x": 40.0,
-          "y": 300.0
+          "x": -1327.0,
+          "y": -84.0
         },
         "collapsed": false
       },
       {
         "node_id": "drift",
         "position": {
-          "x": 40.0,
-          "y": 620.0
+          "x": -1327.0,
+          "y": 236.0
         },
         "collapsed": false
       },
       {
         "node_id": "shape",
         "position": {
-          "x": 40.0,
-          "y": 900.0
+          "x": -1327.0,
+          "y": 516.0
         },
         "collapsed": false
       },
       {
         "node_id": "lead_pitch",
         "position": {
-          "x": 400.0,
-          "y": 40.0
+          "x": -967.0,
+          "y": -344.0
         },
         "collapsed": false
       },
       {
         "node_id": "pad_pitch",
         "position": {
-          "x": 400.0,
-          "y": 360.0
+          "x": -967.0,
+          "y": -24.0
         },
         "collapsed": false
       },
       {
         "node_id": "lead",
         "position": {
-          "x": 760.0,
-          "y": 40.0
-        },
-        "collapsed": false
-      },
-      {
-        "node_id": "pad",
-        "position": {
-          "x": 760.0,
-          "y": 400.0
+          "x": -607.0,
+          "y": -344.0
         },
         "collapsed": false
       },
       {
         "node_id": "bloom",
         "position": {
-          "x": 1120.0,
-          "y": 40.0
+          "x": -247.0,
+          "y": -344.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "pad",
+        "position": {
+          "x": -607.0,
+          "y": 16.0
         },
         "collapsed": false
       },
       {
         "node_id": "haze",
         "position": {
-          "x": 1120.0,
-          "y": 320.0
+          "x": -247.0,
+          "y": -64.0
         },
         "collapsed": false
       },
       {
         "node_id": "echo",
         "position": {
-          "x": 1460.0,
-          "y": 40.0
+          "x": 93.0,
+          "y": -344.0
         },
         "collapsed": false
       },
       {
         "node_id": "space",
         "position": {
-          "x": 1460.0,
-          "y": 320.0
+          "x": 93.0,
+          "y": -64.0
         },
         "collapsed": false
       },
       {
         "node_id": "out",
         "position": {
-          "x": 1820.0,
-          "y": 40.0
-        },
-        "collapsed": false
-      },
-      {
-        "node_id": "system_output",
-        "position": {
-          "x": 1820.0,
-          "y": 520.0
+          "x": 453.0,
+          "y": -344.0
         },
         "collapsed": false
       }

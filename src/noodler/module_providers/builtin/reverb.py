@@ -256,6 +256,14 @@ class Reverb:
             )
             for channel in self._comb_buffers
         )
+        # Reading a numpy scalar costs far more than the float arithmetic
+        # around it, and this loop reads several per sample per comb lane.
+        # Handing the loop plain Python lists is the whole optimisation.
+        feedback_lanes = tuple(
+            tuple(lane.tolist() for lane in channel) for channel in feedback
+        )
+        dry_samples = np.asarray(dry, dtype=np.float64).tolist()
+        freeze_samples = np.asarray(freeze_gate, dtype=np.float64).tolist()
         late = np.empty((frame_count, 2), dtype=np.float64)
         pre_delay_samples = min(
             len(self._pre_delay) - 1,
@@ -265,7 +273,7 @@ class Reverb:
         diffusion = 0.25 + 0.55 * self.parameters.diffusion
 
         for sample in range(frame_count):
-            input_sample = float(dry[sample])
+            input_sample = dry_samples[sample]
             if pre_delay_samples:
                 read_index = (
                     self._pre_delay_index - pre_delay_samples
@@ -278,7 +286,7 @@ class Reverb:
                 self._pre_delay_index + 1
             ) % len(self._pre_delay)
 
-            frozen = self.parameters.freeze or freeze_gate[sample] > 0.0
+            frozen = self.parameters.freeze or freeze_samples[sample] > 0.0
             injection = 0.0 if frozen else tank_input * 0.24
             for channel in range(2):
                 comb_sum = 0.0
@@ -294,7 +302,7 @@ class Reverb:
                             delayed * (1.0 - damping)
                             + self._damping_state[channel][lane] * damping
                         )
-                        gain = float(feedback[channel][lane][sample])
+                        gain = feedback_lanes[channel][lane][sample]
                     self._damping_state[channel][lane] = filtered
                     buffer[index] = injection + filtered * gain
                     self._comb_indices[channel][lane] = (index + 1) % len(buffer)
