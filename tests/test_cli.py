@@ -40,16 +40,24 @@ def test_example_patch_builds_an_executable_stereo_graph() -> None:
     runtime = build_runtime_from_preset(preset)
 
     # Asserted against the document rather than a snapshot of it, so editing
-    # the example does not mean editing the tests.
+    # the example does not mean editing the tests. The master is the exception:
+    # every rack has one whether or not the document mentioned it.
     assert tuple(runtime.patch.modules) == tuple(
         module.instance_id for module in preset.modules
-    )
+    ) + ("master",)
     assert "classic_vco" in runtime.patch.modules
     assert runtime.patch.modules["classic_vco"].parameters.frequency == (
         preset.modules[0].parameters["frequency"]
     )
-    assert len(runtime.patch.cables) == len(preset.cables)
-    assert len(runtime.patch.output_taps) == len(preset.output_taps)
+    # Each tap the document saved became a cable into a master channel, and
+    # the master's own stereo bus is what reaches the speakers instead.
+    assert len(runtime.patch.cables) == len(preset.cables) + len(
+        preset.output_taps
+    )
+    assert len(runtime.patch.output_taps) == 2
+    assert all(
+        tap.source.module_id == "master" for tap in runtime.patch.output_taps
+    )
     assert runtime.audio.master_gain == pytest.approx(
         preset.system_output.master_gain
     )
@@ -81,10 +89,8 @@ def test_example_patch_restores_panels_cables_and_view() -> None:
                 int(saved[instance_id].position.x),
                 int(saved[instance_id].position.y),
             ]
-        assert dpg.get_item_pos(OUTPUT_NODE) == [
-            int(saved["system_output"].position.x),
-            int(saved["system_output"].position.y),
-        ]
+        # The master is pinned rather than placed, so a saved position for it
+        # is not honoured -- there is nowhere else for it to be.
         assert len(dpg.get_item_children(RACK).get(0, ())) == len(
             preset.cables
         ) + len(preset.output_taps)
@@ -95,8 +101,11 @@ def test_example_patch_restores_panels_cables_and_view() -> None:
             for label in _tree_labels(RACK_OUTLINE_BODY)
             if label.startswith("SPACE REVERB  [reverb]")
         ]
+        # It reaches the speakers through the master now, so the outline says
+        # which channels rather than which side.
         assert reverb_branches == [
-            "SPACE REVERB  [reverb]  ·  left  →  left  ·  right  →  right"
+            "SPACE REVERB  [reverb]  ·  left  →  channel_1"
+            "  ·  right  →  channel_2"
         ]
         assert not RACK_HISTORY.can_undo
     finally:

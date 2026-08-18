@@ -101,14 +101,19 @@ def _descendant_labels(item: int | str) -> set[str]:
     return labels
 
 
-def test_default_rack_starts_quiet_with_only_system_output() -> None:
+def test_default_rack_starts_quiet_with_only_the_master() -> None:
     dpg.create_context()
     try:
         runtime = build_ui()
 
-        assert runtime.patch.modules == {}
+        # The rack is empty of anything the user did not put there, but the
+        # master is always present and already reaching the speakers.
+        assert tuple(runtime.patch.modules) == ("master",)
         assert runtime.patch.cables == ()
-        assert runtime.patch.output_taps == ()
+        assert {tap.channel.value for tap in runtime.patch.output_taps} == {
+            "left",
+            "right",
+        }
         assert RACK_NODES == [OUTPUT_NODE]
         assert dpg.does_item_exist(OUTPUT_NODE)
         assert not dpg.does_item_exist(VCO_NODE)
@@ -125,13 +130,16 @@ def test_default_rack_starts_quiet_with_only_system_output() -> None:
             outline
         )
 
+        # The master is saved like any module -- its levels are worth keeping
+        # -- and restored into the one every rack already has.
         captured = _capture_current_preset(runtime, "Untitled Patch")
-        assert captured.modules == ()
+        assert [module.instance_id for module in captured.modules] == ["master"]
         assert captured.cables == ()
-        assert captured.output_taps == ()
-        assert [node.node_id for node in captured.view.nodes] == [
-            "system_output"
-        ]
+        assert {tap.channel.value for tap in captured.output_taps} == {
+            "left",
+            "right",
+        }
+        assert [node.node_id for node in captured.view.nodes] == ["master"]
     finally:
         dpg.destroy_context()
 
@@ -274,7 +282,7 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
         assert dpg.get_item_configuration(
             f"{FUNCTION_NODE}.channel_4_eoc"
         )["show"] is True
-        assert runtime.patch.processing_order == (
+        assert runtime.patch.processing_order[:-1] == (
             "utility",
             "wogglebug",
             "scale_generator",
@@ -304,8 +312,16 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
             ("utility", "channel_4", "reverb", "decay_cv"),
             ("low_pass_gate", "output", "reverb", "audio"),
             ("wogglebug", "burst", "reverb", "freeze"),
+            # The starter reaches the speakers through the master, on channels
+            # that can be turned down, rather than by tapping the output.
+            ("reverb", "left", "master", "channel_1"),
+            ("reverb", "right", "master", "channel_2"),
         ]
         assert len(runtime.patch.output_taps) == 2
+        assert [tap.source.module_id for tap in runtime.patch.output_taps] == [
+            "master",
+            "master",
+        ]
         assert [tap.channel for tap in runtime.patch.output_taps] == [
             OutputChannel.LEFT,
             OutputChannel.RIGHT,
@@ -393,7 +409,7 @@ def test_module_selector_adds_unique_executable_instances_to_the_rack() -> None:
             "test",
             (
                 f"{INSTANCE_NODE_TAGS['polarizing_mixer']}.output",
-                f"{OUTPUT_NODE}.mono",
+                f"{OUTPUT_NODE}.channel_1",
             ),
             runtime,
         )
@@ -401,8 +417,12 @@ def test_module_selector_adds_unique_executable_instances_to_the_rack() -> None:
             cable.source.module_id == "state_variable_filter"
             for cable in runtime.patch.cables
         )
-        assert runtime.patch.output_taps[0].source.module_id == (
-            "polarizing_mixer"
+        # It reaches the speakers by being in the master, not by having its
+        # own tap: the only taps are the master's own.
+        assert any(
+            cable.source.module_id == "polarizing_mixer"
+            and cable.target.module_id == "master"
+            for cable in runtime.patch.cables
         )
         assert dpg.get_value(RACK_OUTLINE_STATUS) == "4 PANELS  ·  3 CABLES"
         outline = _descendant_labels(RACK_OUTLINE_BODY)
@@ -484,7 +504,7 @@ def test_current_rack_module_expands_to_live_port_states() -> None:
 
         _patch_link_created(
             "test",
-            (f"{node}.saw", f"{OUTPUT_NODE}.mono"),
+            (f"{node}.saw", f"{OUTPUT_NODE}.channel_1"),
             runtime,
         )
 
@@ -593,7 +613,7 @@ def test_patch_bays_show_every_port_until_open_jacks_are_hidden() -> None:
         assert dpg.get_item_pos(MIXER_NODE)[0] < dpg.get_item_pos(REVERB_NODE)[0]
         assert dpg.get_item_pos(MIXER_NODE)[0] < dpg.get_item_pos(LPG_NODE)[0]
         assert dpg.get_item_pos(LPG_NODE)[0] < dpg.get_item_pos(REVERB_NODE)[0]
-        assert dpg.get_item_pos(REVERB_NODE)[0] < dpg.get_item_pos(OUTPUT_NODE)[0]
+        assert dpg.get_item_pos(REVERB_NODE)[0] < dpg.get_item_pos(MIXER_NODE)[0] + 2_000
     finally:
         dpg.destroy_context()
 
@@ -602,7 +622,13 @@ def test_space_pan_moves_the_rack_hierarchy_as_one_view(monkeypatch) -> None:
     dpg.create_context()
     try:
         build_ui()
-        original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+        # The master is pinned to the corner, so it is not part of what pans.
+        original = {
+            node: tuple(dpg.get_item_pos(node))
+            for node in RACK_NODES
+            if node != OUTPUT_NODE
+        }
+        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
         CANVAS_INTERACTION.panning = True
         CANVAS_INTERACTION.last_mouse_x = 100.0
         CANVAS_INTERACTION.last_mouse_y = 200.0
@@ -619,6 +645,7 @@ def test_space_pan_moves_the_rack_hierarchy_as_one_view(monkeypatch) -> None:
             node_x, node_y = dpg.get_item_pos(node)
             assert node_x == pytest.approx(original_x + 25.0)
             assert node_y == pytest.approx(original_y - 35.0)
+        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == pinned
         for rail, original_y in original_rails.items():
             assert CANVAS_INTERACTION.rail_y[rail] == pytest.approx(
                 original_y - 35.0
@@ -682,7 +709,13 @@ def test_background_drag_recovers_when_node_editor_claims_mouse_down(
     dpg.create_context()
     try:
         build_ui()
-        original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+        # The master is pinned to the corner, so it is not part of what pans.
+        original = {
+            node: tuple(dpg.get_item_pos(node))
+            for node in RACK_NODES
+            if node != OUTPUT_NODE
+        }
+        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
         monkeypatch.setattr(
             dpg,
             "get_mouse_pos",
@@ -848,7 +881,13 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
     dpg.create_context()
     try:
         build_ui()
-        original = {node: tuple(dpg.get_item_pos(node)) for node in RACK_NODES}
+        # The master is pinned to the corner, so it is not part of what pans.
+        original = {
+            node: tuple(dpg.get_item_pos(node))
+            for node in RACK_NODES
+            if node != OUTPUT_NODE
+        }
+        pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
         assert dpg.get_global_font_scale() == pytest.approx(1.0)
 
         _set_rack_zoom(1.12, screen_anchor=(0.0, 0.0))
@@ -922,18 +961,20 @@ def test_node_editor_repatches_the_live_graph() -> None:
         assert dpg.get_item_user_data(SCALE_VCO_LINK) == runtime.patch.cables[3]
         assert dpg.get_item_user_data(MIXER_LPG_LINK) == runtime.patch.cables[7]
         assert dpg.get_item_user_data(LPG_REVERB_LINK) == runtime.patch.cables[10]
-        assert (
-            dpg.get_item_user_data(REVERB_LEFT_OUTPUT_LINK)
-            == runtime.patch.output_taps[0]
+        assert dpg.get_item_user_data(REVERB_LEFT_OUTPUT_LINK) == next(
+            cable
+            for cable in runtime.patch.cables
+            if cable.target.port_id == "channel_1"
         )
-        assert (
-            dpg.get_item_user_data(REVERB_RIGHT_OUTPUT_LINK)
-            == runtime.patch.output_taps[1]
+        assert dpg.get_item_user_data(REVERB_RIGHT_OUTPUT_LINK) == next(
+            cable
+            for cable in runtime.patch.cables
+            if cable.target.port_id == "channel_2"
         )
 
         delink(RACK, VCO_MIXER_LINK, user_data)
         assert not dpg.does_item_exist(VCO_MIXER_LINK)
-        assert len(runtime.patch.cables) == 11
+        assert len(runtime.patch.cables) == 13
         assert dpg.get_item_configuration(f"{VCO_NODE}.morph")["show"]
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_1")["show"]
 
@@ -951,20 +992,29 @@ def test_node_editor_repatches_the_live_graph() -> None:
         assert dpg.get_item_configuration(f"{VCO_NODE}.triangle")["show"]
         assert dpg.get_item_configuration(f"{MIXER_NODE}.input_1")["show"]
 
+        # Unpatching the master's channels silences the rack but does not
+        # disconnect the speakers: the bus is not something you can unplug.
         delink(RACK, REVERB_LEFT_OUTPUT_LINK, user_data)
         delink(RACK, REVERB_RIGHT_OUTPUT_LINK, user_data)
-        assert runtime.patch.output_taps == ()
+        assert [tap.source.module_id for tap in runtime.patch.output_taps] == [
+            "master",
+            "master",
+        ]
+        assert not any(
+            cable.target.module_id == "master" for cable in runtime.patch.cables
+        )
         link(
             RACK,
             (
-                dpg.get_alias_id(f"{OUTPUT_NODE}.mono"),
+                dpg.get_alias_id(f"{OUTPUT_NODE}.channel_1"),
                 dpg.get_alias_id(f"{VCO_NODE}.sine"),
             ),
             user_data,
         )
-        assert runtime.patch.output_taps[0].source.module_id == "vco"
-        assert runtime.patch.output_taps[0].source.port_id == "sine"
-        assert runtime.patch.output_taps[0].channel is OutputChannel.BOTH
+        patched = runtime.patch.cables[-1]
+        assert patched.source.module_id == "vco"
+        assert patched.source.port_id == "sine"
+        assert patched.target.module_id == "master"
 
         cable_count = len(runtime.patch.cables)
         link(

@@ -71,10 +71,11 @@ uv sync
 uv run noodler
 ```
 
-Noodler opens to a quiet rack with a permanent **System Output** and no DSP
-modules or cables. Add an oscillator from the library, patch an audio output to
-`Mono / Both`, check the level, and then press **Start** on System Output.
-Audio never starts automatically.
+Noodler opens to a quiet rack holding nothing but the **Master Mixer**, which is
+pinned to the top-right corner and already connected to the speakers. Add an
+oscillator from the library, drag its audio output to any master channel, and
+press **Start**. There is no separate idea of an output to find first: patch
+into a channel and it is audible. Audio never starts automatically.
 
 To open a saved patch directly:
 
@@ -128,8 +129,9 @@ cables continue to run.
 | F | Frame the whole rack |
 | Escape | Close the browser or clear selection |
 
-`Unplug All` removes every module cable and System Output tap as one graph
-edit, so experiments remain easy to unwind.
+`Unplug All` removes every module cable as one graph edit, so experiments remain
+easy to unwind. The master's own bus survives it: that is not a cable anyone
+patched, and it is not one anyone can pull out.
 
 ## Modules
 
@@ -155,7 +157,7 @@ A `.noodler` document stores:
 
 - stable provider, module-type, and instance identifiers;
 - validated module parameters;
-- directed cables and stereo System Output taps;
+- directed cables, and the master's stereo taps;
 - master gain; and
 - module positions, folded state, semantic rails, and rack zoom.
 

@@ -60,12 +60,13 @@ def test_the_rack_is_rebuilt_rather_than_added_to(tmp_path) -> None:
         destination = _saved_to(tmp_path, runtime, "One Module")
 
         _add_selected_module("test", None, (runtime, "reverb"))
-        assert len(runtime.patch.modules) == 2
+        # Two modules and the master every rack has.
+        assert len(runtime.patch.modules) == 3
 
         _open_patch_dialog("test", {"file_path_name": str(destination)})
         reopened = _consume_pending_open()
 
-        assert len(reopened.patch.modules) == 1, "the old rack was left behind"
+        assert len(reopened.patch.modules) == 2, "the old rack was left behind"
     finally:
         dpg.destroy_context()
 
@@ -82,9 +83,11 @@ def test_saving_remembers_where_the_patch_came_from(tmp_path) -> None:
         runtime.patch.modules["classic_vco"].parameters.frequency = 330.0
         _save_patch(0, None, runtime)
 
-        assert read_patch_preset(destination).modules[0].parameters[
-            "frequency"
-        ] == 330.0
+        saved = {
+            module.instance_id: module.parameters
+            for module in read_patch_preset(destination).modules
+        }
+        assert saved["classic_vco"]["frequency"] == 330.0
     finally:
         CURRENT_PATCH_PATH.clear()
         dpg.destroy_context()

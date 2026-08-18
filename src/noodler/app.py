@@ -23,6 +23,8 @@ from .module_providers.builtin import (
     FunctionUtilityParameters,
     LowPassGate,
     LowPassGateParameters,
+    MASTER_CHANNELS,
+    MasterMixer,
     PolarizingMixer,
     PolarizingMixerParameters,
     Reverb,
@@ -89,6 +91,13 @@ VCO_NODE = "noodler.complex_vco"
 MIXER_NODE = "noodler.polarizing_mixer"
 FUNCTION_NODE = "noodler.function_utility"
 OUTPUT_NODE = "noodler.system_output"
+MASTER_ID = "master"
+"""The instance every rack has. It is a module like any other -- real channels,
+real levels, real DSP -- and the only things special about it are that it is
+always present and that its bus reaches the speakers without being asked."""
+
+MASTER_MARGIN = 18.0
+"""How far the pinned master sits from the top-right corner of the canvas."""
 WOGGLE_NODE = "noodler.wogglebug"
 SCALE_NODE = "noodler.scale_generator"
 LPG_NODE = "noodler.low_pass_gate"
@@ -114,7 +123,7 @@ BASE_INSTANCE_NODE_TAGS = {
 }
 RACK_NODES = list(BASE_RACK_NODES)
 INSTANCE_NODE_TAGS = dict(BASE_INSTANCE_NODE_TAGS)
-VIEW_NODE_TAGS = {**INSTANCE_NODE_TAGS, "system_output": OUTPUT_NODE}
+VIEW_NODE_TAGS = {**INSTANCE_NODE_TAGS}
 CONTROL_RAIL = "control"
 AUDIO_RAIL = "audio"
 RACK_RAILS = {
@@ -805,15 +814,70 @@ class ModuleCollapseInteraction:
 MODULE_COLLAPSE = ModuleCollapseInteraction()
 
 
+def ensure_master(patch: PatchGraph) -> MasterMixer:
+    """Give a patch its master mixer, and wire that mixer to the speakers.
+
+    Every rack has one, so nothing has to be dragged to an output before it can
+    be heard -- patch into a channel and it is audible. It is an ordinary module
+    in an ordinary graph; the interface is what makes it permanent.
+    """
+    existing = patch.modules.get(MASTER_ID)
+    if not isinstance(existing, MasterMixer):
+        existing = MasterMixer()
+        patch.add_module(MASTER_ID, existing)
+    taps = {
+        (tap.source.module_id, tap.source.port_id, tap.channel)
+        for tap in patch.output_taps
+    }
+    for port_id, channel in (("left", OutputChannel.LEFT), ("right", OutputChannel.RIGHT)):
+        if (MASTER_ID, port_id, channel) not in taps:
+            patch.connect_output(MASTER_ID, port_id, channel=channel)
+    return existing
+
+
+def adopt_output_taps(patch: PatchGraph) -> None:
+    """Move anything wired straight to the speakers into the master mixer.
+
+    Patches saved before the master existed tapped the system output directly.
+    Those taps still describe what the patch sounds like, so they become
+    channels rather than being dropped: it plays the same and is now mixable.
+    Where a tap was placed -- left, right, both -- becomes where the channel is
+    panned, which is the same statement in the vocabulary that replaced it.
+    """
+    strays = [
+        tap for tap in patch.output_taps if tap.source.module_id != MASTER_ID
+    ]
+    if not strays:
+        return
+    master = ensure_master(patch)
+    placement = {
+        OutputChannel.LEFT: -1.0,
+        OutputChannel.RIGHT: 1.0,
+        OutputChannel.BOTH: 0.0,
+    }
+    for channel, tap in enumerate(strays[:MASTER_CHANNELS], start=1):
+        patch.disconnect_output(tap)
+        patch.connect(
+            tap.source.module_id,
+            tap.source.port_id,
+            MASTER_ID,
+            f"channel_{channel}",
+        )
+        master.set_level(channel, tap.gain)
+        master.set_pan(channel, placement[tap.channel])
+    for tap in strays[MASTER_CHANNELS:]:
+        patch.disconnect_output(tap)
+
+
 def _reset_rack_registry(*, starter_patch: bool) -> None:
     """Return mutable node registries to the requested initial rack."""
     RACK_NODES[:] = BASE_RACK_NODES if starter_patch else (OUTPUT_NODE,)
     INSTANCE_NODE_TAGS.clear()
     if starter_patch:
         INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
+    INSTANCE_NODE_TAGS[MASTER_ID] = OUTPUT_NODE
     VIEW_NODE_TAGS.clear()
     VIEW_NODE_TAGS.update(INSTANCE_NODE_TAGS)
-    VIEW_NODE_TAGS["system_output"] = OUTPUT_NODE
     RACK_RAILS[CONTROL_RAIL][:] = (
         [FUNCTION_NODE, WOGGLE_NODE, SCALE_NODE] if starter_patch else []
     )
@@ -1058,22 +1122,6 @@ def _resolve_jack(attribute: int | str, runtime: AppRuntime) -> ResolvedJack:
     """Resolve a Dear PyGui attribute item to a graph endpoint."""
     alias = dpg.get_item_alias(attribute)
     tag = alias or (attribute if isinstance(attribute, str) else "")
-    system_outputs = {
-        f"{OUTPUT_NODE}.mono": (OutputChannel.BOTH, "System Mono"),
-        f"{OUTPUT_NODE}.left": (OutputChannel.LEFT, "System Left"),
-        f"{OUTPUT_NODE}.right": (OutputChannel.RIGHT, "System Right"),
-    }
-    if tag in system_outputs:
-        channel, name = system_outputs[tag]
-        return ResolvedJack(
-            attribute=attribute,
-            endpoint=None,
-            direction=PortDirection.INPUT,
-            signal="audio",
-            name=name,
-            output_channel=channel,
-        )
-
     for module_id, node_tag in INSTANCE_NODE_TAGS.items():
         prefix = f"{node_tag}."
         if not str(tag).startswith(prefix):
@@ -1228,14 +1276,6 @@ def _restore_node_registration(registration: NodeRegistration) -> None:
             lane.insert(min(registration.rail_index, len(lane)), node)
 
 
-def _output_channel_attribute(channel: OutputChannel) -> str:
-    return {
-        OutputChannel.BOTH: f"{OUTPUT_NODE}.mono",
-        OutputChannel.LEFT: f"{OUTPUT_NODE}.left",
-        OutputChannel.RIGHT: f"{OUTPUT_NODE}.right",
-    }[channel]
-
-
 def _endpoint_attribute(endpoint: Endpoint) -> str | None:
     node = INSTANCE_NODE_TAGS.get(endpoint.module_id)
     return None if node is None else f"{node}.{endpoint.port_id}"
@@ -1305,7 +1345,8 @@ def _restore_route(runtime: AppRuntime, route: Cable | OutputTap) -> None:
                 channel=route.channel,
             ),
         )
-        target_attribute = _output_channel_attribute(route.channel)
+        # A tap has no jack to draw to: the master's bus is not a cable.
+        target_attribute = None
     source_attribute = _endpoint_attribute(route.source)
     if (
         source_attribute is not None
@@ -1697,6 +1738,7 @@ def _refresh_frame(
     _settle_recenter(dt)
     _settle_rack_zoom(dt)
     _settle_rack_rails(dt)
+    _settle_master_pin()
     _refresh_clock(dt)
     _refresh_ui(runtime, dt)
     _refresh_module_close_buttons()
@@ -2143,10 +2185,14 @@ def _reset_rack_zoom(
 
 
 def _rack_content_bounds() -> tuple[float, float, float, float] | None:
-    """Return the editor-local box containing every mounted module."""
+    """Return the editor-local box containing every mounted module.
+
+    Not the master: it is pinned to the corner, so including it would mean the
+    camera framed a box that is partly nailed to the window and partly not.
+    """
     boxes = []
     for node in RACK_NODES:
-        if not dpg.does_item_exist(node):
+        if node == OUTPUT_NODE or not dpg.does_item_exist(node):
             continue
         node_x, node_y = (float(value) for value in dpg.get_item_pos(node))
         width, height = (
@@ -2237,13 +2283,33 @@ def _rack_content_is_measured() -> bool:
     """
     measured = False
     for node in RACK_NODES:
-        if not dpg.does_item_exist(node):
+        if node == OUTPUT_NODE or not dpg.does_item_exist(node):
             continue
         width, height = dpg.get_item_rect_size(node)
         if float(width) <= 1.0 or float(height) <= 1.0:
             return False
         measured = True
     return measured
+
+
+def _settle_master_pin() -> None:
+    """Hold the master mixer against the top-right corner of the canvas.
+
+    Where everything goes should not be somewhere you can lose. The rack pans
+    and zooms underneath it; the master stays where it was, in the corner
+    nearest the transport, so there is always somewhere to drag a cable to.
+    """
+    if not (dpg.does_item_exist(OUTPUT_NODE) and dpg.does_item_exist(RACK)):
+        return
+    view_width = float(dpg.get_item_rect_size(RACK)[0])
+    width = float(dpg.get_item_rect_size(OUTPUT_NODE)[0])
+    if view_width < MIN_REVEAL_VIEWPORT or width <= 1.0:
+        return
+    wanted = [view_width - width - MASTER_MARGIN, MASTER_MARGIN]
+    if [round(value) for value in dpg.get_item_pos(OUTPUT_NODE)] != [
+        round(value) for value in wanted
+    ]:
+        dpg.set_item_pos(OUTPUT_NODE, wanted)
 
 
 def _reveal_rack_once() -> None:
@@ -2591,7 +2657,6 @@ def _module_spine_labels(runtime: AppRuntime) -> dict[int | str, str]:
         node: runtime.patch.modules[instance_id].manifest.name.upper()
         for instance_id, node in INSTANCE_NODE_TAGS.items()
     }
-    labels[OUTPUT_NODE] = "SYSTEM OUT"
     return labels
 
 
@@ -2797,12 +2862,7 @@ def _patched_attributes(node: int | str, patch: PatchGraph) -> set[int | str]:
     """The jacks on one module that currently have a cable in them."""
     instance_id = _module_id_for_node(node)
     tags: set[str] = set()
-    if instance_id is None:
-        if node == OUTPUT_NODE:
-            for tap in patch.output_taps:
-                channel = tap.channel.value
-                tags.add(f"{OUTPUT_NODE}.{'mono' if channel == 'both' else channel}")
-    else:
+    if instance_id is not None:
         for cable in patch.cables:
             if cable.source.module_id == instance_id:
                 tags.add(f"{node}.{cable.source.port_id}")
@@ -3099,7 +3159,8 @@ def _translate_rack(delta_x: float, delta_y: float) -> None:
     if not delta_x and not delta_y:
         return
     for node in RACK_NODES:
-        if not dpg.does_item_exist(node):
+        # The master is pinned to the corner, so the camera does not carry it.
+        if node == OUTPUT_NODE or not dpg.does_item_exist(node):
             continue
         node_x, node_y = dpg.get_item_pos(node)
         dpg.set_item_pos(node, [node_x + delta_x, node_y + delta_y])
@@ -3529,7 +3590,7 @@ def _remove_module_node(
     correct restore is the panel that was already there.
     """
     if node == OUTPUT_NODE:
-        _set_patch_status("SYSTEM OUT CANNOT BE REMOVED", error=True)
+        _set_patch_status("THE MASTER MIXER CANNOT BE REMOVED", error=True)
         return False
     instance_id = _module_id_for_node(node)
     if instance_id is None:
@@ -4983,19 +5044,37 @@ def _build_reverb_node(reverb: Reverb, patch: PatchGraph) -> None:
                 )
 
 
-def _build_output_node(engine: SystemAudioEngine) -> None:
-    with dpg.node(tag=OUTPUT_NODE, label="SYSTEM OUT"):
-        for port_id, name, description in (
-            ("mono", "MONO / BOTH", "Route one source equally to left and right."),
-            ("left", "LEFT", "Route this source to the left system channel."),
-            ("right", "RIGHT", "Route this source to the right system channel."),
-        ):
+def _build_output_node(engine: SystemAudioEngine, master: MasterMixer) -> None:
+    """Build the master mixer: the one panel every rack has.
+
+    It replaces the old system output, which was a node with three jacks and no
+    mixer behind them -- everything that reached the speakers had to be balanced
+    somewhere else first. These are real channels with real levels, and the
+    stereo bus behind them is already connected, so the question is only how
+    loud each thing is rather than how it gets out.
+    """
+    with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
+        for index in range(1, MASTER_CHANNELS + 1):
             with dpg.node_attribute(
-                tag=f"{OUTPUT_NODE}.{port_id}",
-                label=name.title(),
+                tag=f"{OUTPUT_NODE}.channel_{index}",
+                label=f"Channel {index}",
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
-                _add_port_text(name, "audio", description)
+                with dpg.group(horizontal=True):
+                    _add_port_text(
+                        f"CH {index}",
+                        "audio",
+                        f"Channel {index}, summed into the output bus.",
+                    )
+                    _add_knob(
+                        master.parameters.levels[index - 1],
+                        f"Ch {index}",
+                        0.0,
+                        1.0,
+                        lambda value: f"{value:.2f}",
+                        lambda value, channel=index: master.set_level(channel, value),
+                        tag=f"{OUTPUT_NODE}.control.level_{index}",
+                    )
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
             _add_knob(
                 engine.master_gain,
@@ -5233,10 +5312,21 @@ def _rack_outline_unpatched_modules(
     return grouped
 
 
+def _stray_taps(patch: PatchGraph) -> int:
+    """Count output taps the user made, which is none of the master's own.
+
+    The master's bus is connected because every rack's is; counting it would
+    report two cables in a rack with nothing in it.
+    """
+    return sum(1 for tap in patch.output_taps if tap.source.module_id != MASTER_ID)
+
+
 def _rack_summary_text(runtime: AppRuntime) -> str:
     """Describe the rack in the words the header should be using right now."""
-    modules = len(runtime.patch.modules)
-    connections = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+    modules = sum(
+        1 for instance_id in runtime.patch.modules if instance_id != MASTER_ID
+    )
+    connections = len(runtime.patch.cables) + _stray_taps(runtime.patch)
     if not modules:
         return "EMPTY RACK  ·  ADD A MODULE TO BEGIN"
     panels = "1 MODULE" if modules == 1 else f"{modules} MODULES"
@@ -5264,22 +5354,30 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
         parent=signal_flow,
         default_open=True,
     )
-    if runtime.patch.output_taps:
-        taps_by_module: dict[str, list[OutputTap]] = {}
-        for tap in runtime.patch.output_taps:
-            taps_by_module.setdefault(tap.source.module_id, []).append(tap)
-        for instance_id, taps in taps_by_module.items():
-            destinations = "  ·  ".join(
+    # What reaches the speakers is what is in the master, so the outline shows
+    # the modules feeding it rather than the master feeding itself.
+    feeding: dict[str, list[str]] = {}
+    for cable in runtime.patch.cables:
+        if cable.target.module_id != MASTER_ID:
+            continue
+        feeding.setdefault(cable.source.module_id, []).append(
+            f"{cable.source.port_id}  →  {cable.target.port_id}"
+        )
+    for tap in runtime.patch.output_taps:
+        if tap.source.module_id != MASTER_ID:
+            feeding.setdefault(tap.source.module_id, []).append(
                 f"{tap.source.port_id}  →  {tap.channel.value}"
-                for tap in taps
             )
+    if feeding:
+        for instance_id, destinations in feeding.items():
             _add_rack_outline_signal_branch(
                 system_output,
                 runtime,
                 instance_id,
-                destinations,
+                "  ·  ".join(destinations),
                 reachable,
             )
+        reachable.add(MASTER_ID)
     else:
         dpg.add_text(
             "NO SIGNAL CONNECTED",
@@ -5312,8 +5410,8 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
                 _add_rack_outline_remove_button(row, runtime, instance_id)
                 _add_rack_outline_ports(branch, runtime, instance_id)
 
-    panels = len(runtime.patch.modules) + 1
-    connections = len(runtime.patch.cables) + len(runtime.patch.output_taps)
+    panels = len(runtime.patch.modules)
+    connections = len(runtime.patch.cables) + _stray_taps(runtime.patch)
     panel_noun = "PANEL" if panels == 1 else "PANELS"
     cable_noun = "CABLE" if connections == 1 else "CABLES"
     dpg.set_value(
@@ -5600,6 +5698,8 @@ def build_runtime_from_preset(preset: PatchPreset) -> AppRuntime:
             gain=tap.gain,
             channel=tap.channel,
         )
+    adopt_output_taps(patch)
+    ensure_master(patch)
 
     return AppRuntime(
         patch=patch,
@@ -5625,6 +5725,7 @@ def build_runtime(
     """Create an empty rack or the optional generative starter instrument."""
     patch = PatchGraph()
     if not starter_patch:
+        ensure_master(patch)
         return AppRuntime(
             patch=patch,
             audio=SystemAudioEngine(patch, master_gain=0.8),
@@ -5734,8 +5835,13 @@ def build_runtime(
     patch.connect("utility", "channel_4", "reverb", "decay_cv")
     patch.connect("low_pass_gate", "output", "reverb", "audio")
     patch.connect("wogglebug", "burst", "reverb", "freeze")
-    patch.connect_output("reverb", "left", channel=OutputChannel.LEFT)
-    patch.connect_output("reverb", "right", channel=OutputChannel.RIGHT)
+    # The starter reaches the speakers the way anything else does: through the
+    # master, on channels that can be turned down.
+    master = ensure_master(patch)
+    patch.connect("reverb", "left", MASTER_ID, "channel_1")
+    patch.connect("reverb", "right", MASTER_ID, "channel_2")
+    master.set_pan(1, -1.0)
+    master.set_pan(2, 1.0)
     return AppRuntime(
         vco=vco,
         mixer=mixer,
@@ -5792,7 +5898,7 @@ def _build_empty_rack_ui(
                     minimap=True,
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
                 ):
-                    _build_output_node(runtime.audio)
+                    _build_output_node(runtime.audio, ensure_master(runtime.patch))
                     _add_module_spines(runtime)
         dpg.add_separator()
         with dpg.group(horizontal=True):
@@ -5871,13 +5977,6 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
                 [saved_node.position.x, saved_node.position.y],
             )
 
-    output_view = saved_nodes.get("system_output")
-    if output_view is not None:
-        dpg.set_item_pos(
-            OUTPUT_NODE,
-            [output_view.position.x, output_view.position.y],
-        )
-
     zoom = min(
         MAX_RACK_ZOOM,
         max(MIN_RACK_ZOOM, float(preset.view.zoom)),
@@ -5905,16 +6004,6 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
                 cable,
                 _endpoint_signal(runtime.patch, cable.source),
             )
-    for tap in runtime.patch.output_taps:
-        source = _endpoint_attribute(tap.source)
-        if source is not None:
-            _add_visual_link(
-                source,
-                _output_channel_attribute(tap.channel),
-                tap,
-                _endpoint_signal(runtime.patch, tap.source),
-            )
-
     for node_id, saved_node in saved_nodes.items():
         node = VIEW_NODE_TAGS.get(node_id)
         if node is not None and saved_node.collapsed:
@@ -6022,7 +6111,7 @@ def build_ui(
             )
             _build_low_pass_gate_node(runtime.low_pass_gate, runtime.patch)
             _build_reverb_node(runtime.reverb, runtime.patch)
-            _build_output_node(runtime.audio)
+            _build_output_node(runtime.audio, ensure_master(runtime.patch))
             _add_module_spines(runtime)
             _add_visual_link(
                 f"{FUNCTION_NODE}.channel_1",
@@ -6184,15 +6273,15 @@ def build_ui(
             )
             _add_visual_link(
                 f"{REVERB_NODE}.left",
-                f"{OUTPUT_NODE}.left",
-                runtime.patch.output_taps[0],
+                f"{OUTPUT_NODE}.channel_1",
+                _default_cable(runtime.patch, "reverb", "left", MASTER_ID, "channel_1"),
                 "audio",
                 tag=REVERB_LEFT_OUTPUT_LINK,
             )
             _add_visual_link(
                 f"{REVERB_NODE}.right",
-                f"{OUTPUT_NODE}.right",
-                runtime.patch.output_taps[1],
+                f"{OUTPUT_NODE}.channel_2",
+                _default_cable(runtime.patch, "reverb", "right", MASTER_ID, "channel_2"),
                 "audio",
                 tag=REVERB_RIGHT_OUTPUT_LINK,
             )

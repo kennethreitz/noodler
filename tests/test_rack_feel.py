@@ -845,6 +845,18 @@ def test_a_module_drag_cannot_turn_into_a_pan_partway(monkeypatch) -> None:
         dpg.destroy_context()
 
 
+def _add_one_module(runtime, module_id: str = "classic_vco") -> str:
+    """Put one ordinary module in the rack and return its node."""
+    _add_selected_module("test", None, (runtime, module_id))
+    return INSTANCE_NODE_TAGS[
+        next(
+            instance_id
+            for instance_id in runtime.patch.modules
+            if instance_id != "master"
+        )
+    ]
+
+
 def test_the_rack_is_centred_only_once_it_can_be_measured(monkeypatch) -> None:
     """A panel has no size until it has been drawn once.
 
@@ -854,8 +866,11 @@ def test_the_rack_is_centred_only_once_it_can_be_measured(monkeypatch) -> None:
     """
     dpg.create_context()
     try:
-        build_ui()
-        placed = tuple(dpg.get_item_pos(OUTPUT_NODE))
+        runtime = build_ui()
+        # The master is pinned, so centring has to be judged on a module the
+        # camera actually carries.
+        node = _add_one_module(runtime)
+        placed = tuple(dpg.get_item_pos(node))
 
         # The editor is laid out; the panel has not been drawn yet.
         monkeypatch.setattr(
@@ -865,7 +880,7 @@ def test_the_rack_is_centred_only_once_it_can_be_measured(monkeypatch) -> None:
         )
         _reveal_rack_once()
         assert CANVAS_INTERACTION.pending_reveal is True
-        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == placed, "moved too early"
+        assert tuple(dpg.get_item_pos(node)) == placed, "moved too early"
 
         # Now it has a real size.
         monkeypatch.setattr(
@@ -875,14 +890,14 @@ def test_the_rack_is_centred_only_once_it_can_be_measured(monkeypatch) -> None:
         )
         _reveal_rack_once()
 
-        x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
+        x, y = (float(value) for value in dpg.get_item_pos(node))
         assert x + 116.0 == pytest.approx(475.0, abs=1.0)
         assert y + 150.0 == pytest.approx(350.0, abs=1.0)
         assert CANVAS_INTERACTION.pending_reveal is False
 
         # And it never moves the rack again.
         _reveal_rack_once()
-        assert float(dpg.get_item_pos(OUTPUT_NODE)[0]) == pytest.approx(x)
+        assert float(dpg.get_item_pos(node)[0]) == pytest.approx(x)
     finally:
         dpg.destroy_context()
 
@@ -915,8 +930,9 @@ def test_a_barely_laid_out_viewport_is_not_believed(monkeypatch) -> None:
     """
     dpg.create_context()
     try:
-        build_ui()
-        placed = tuple(dpg.get_item_pos(OUTPUT_NODE))
+        runtime = build_ui()
+        node = _add_one_module(runtime)
+        placed = tuple(dpg.get_item_pos(node))
         monkeypatch.setattr(
             dpg,
             "get_item_rect_size",
@@ -926,7 +942,7 @@ def test_a_barely_laid_out_viewport_is_not_believed(monkeypatch) -> None:
         for _ in range(20):
             _reveal_rack_once()
 
-        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == placed
+        assert tuple(dpg.get_item_pos(node)) == placed
         assert CANVAS_INTERACTION.pending_reveal is True, "still waiting"
 
         monkeypatch.setattr(
@@ -936,7 +952,7 @@ def test_a_barely_laid_out_viewport_is_not_believed(monkeypatch) -> None:
         )
         _reveal_rack_once()
 
-        x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
+        x, y = (float(value) for value in dpg.get_item_pos(node))
         assert x + 116.0 == pytest.approx(475.0, abs=1.0)
         assert y + 150.0 == pytest.approx(350.0, abs=1.0)
     finally:
