@@ -207,7 +207,7 @@ def test_the_clock_menu_comes_after_view_and_edit() -> None:
             for child in dpg.get_item_children(RACK_MENU_BAR, 1)
             if dpg.get_item_type(child).endswith("mvMenu")
         ]
-        assert menus == ["View", "Edit", "Clock"]
+        assert menus == ["File", "View", "Edit", "Clock"]
     finally:
         dpg.destroy_context()
 

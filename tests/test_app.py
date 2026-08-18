@@ -35,7 +35,9 @@ from noodler.app import (
     SCALE_SYSTEM_CONTROL,
     SCALE_LPG_LINK,
     SCALE_VCO_LINK,
-    SAVE_PATCH_BUTTON,
+    OPEN_PATCH_MENU_ITEM,
+    SAVE_AS_MENU_ITEM,
+    SAVE_PATCH_MENU_ITEM,
     SAVE_PATCH_DIALOG,
     UTILITY_REVERB_LINK,
     UTILITY_VCO_LINK,
@@ -111,9 +113,12 @@ def test_default_rack_starts_quiet_with_only_system_output() -> None:
         assert dpg.does_item_exist(OUTPUT_NODE)
         assert not dpg.does_item_exist(VCO_NODE)
         assert not dpg.does_item_exist(WOGGLE_NODE)
-        assert dpg.get_item_configuration(ADD_MODULE_BUTTON)["label"] == (
-            "+  ADD MODULE"
-        )
+        # Adding a module is the library pane's job, and saving is the File
+        # menu's; neither needs a permanent seat on the toolbar.
+        assert not dpg.does_item_exist(ADD_MODULE_BUTTON)
+        assert dpg.does_item_exist(OPEN_PATCH_MENU_ITEM)
+        assert dpg.does_item_exist(SAVE_PATCH_MENU_ITEM)
+        assert dpg.does_item_exist(SAVE_AS_MENU_ITEM)
         assert dpg.get_value(RACK_OUTLINE_STATUS) == "1 PANEL  ·  0 CABLES"
         outline = _descendant_labels(RACK_OUTLINE_BODY)
         assert {"SIGNAL FLOW", "SYSTEM OUTPUT", "NO SIGNAL CONNECTED"} <= (
@@ -144,11 +149,20 @@ def test_patch_status_is_a_footer_below_the_rack(starter_patch: bool) -> None:
         if rack_parent not in {RACK_WORKSPACE, workspace}:
             rack_parent = dpg.get_item_parent(rack_parent)
         assert rack_parent in {RACK_WORKSPACE, workspace}
-        assert dpg.get_item_parent(CONTROL_STATUS) in {
+        # The footer now carries a trace beside the words, so the status sits
+        # in a row of its own; that row is what belongs to the window.
+        status_parent = dpg.get_item_parent(CONTROL_STATUS)
+        if status_parent not in {PRIMARY_WINDOW, dpg.get_alias_id(PRIMARY_WINDOW)}:
+            status_parent = dpg.get_item_parent(status_parent)
+        assert status_parent in {
             PRIMARY_WINDOW,
             dpg.get_alias_id(PRIMARY_WINDOW),
         }
-        assert window_items.index(workspace) < window_items.index(status)
+        # Ordering is checked on the footer row, which is what the window holds.
+        footer = dpg.get_item_parent(CONTROL_STATUS)
+        if footer in {PRIMARY_WINDOW, dpg.get_alias_id(PRIMARY_WINDOW)}:
+            footer = status
+        assert window_items.index(workspace) < window_items.index(footer)
     finally:
         dpg.destroy_context()
 
@@ -309,7 +323,7 @@ def test_module_selector_exposes_every_builtin_module() -> None:
     try:
         build_ui()
 
-        assert dpg.does_item_exist(ADD_MODULE_BUTTON)
+        assert dpg.does_item_exist(MODULE_SELECTOR)
         assert dpg.does_item_exist(MODULE_SELECTOR)
         assert dpg.does_item_exist(MODULE_SELECTOR_SEARCH)
         assert dpg.get_item_type(MODULE_SELECTOR).endswith("mvChildWindow")
@@ -786,7 +800,7 @@ def test_save_patch_dialog_writes_current_graph_controls_and_rack_view(
         )
 
         saved = read_patch_preset(tmp_path / "Moon Garden.noodler")
-        assert dpg.does_item_exist(SAVE_PATCH_BUTTON)
+        assert dpg.does_item_exist(SAVE_PATCH_MENU_ITEM)
         assert dpg.does_item_exist(SAVE_PATCH_DIALOG)
         assert saved.name == "Moon Garden"
         assert saved.cables == runtime.patch.cables

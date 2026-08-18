@@ -61,6 +61,7 @@ from .patch import (
     PatchGraph,
 )
 from .preset import (
+    read_patch_preset,
     PatchPreset,
     Point,
     RackNodePreset,
@@ -132,6 +133,10 @@ RACK_OUTLINE_HEIGHT = 220
 LIBRARY_HEADER_ROOM = 36
 TIDY_RACK_BUTTON = "noodler.tidy_rack"
 SAVE_PATCH_DIALOG = "noodler.save_patch_dialog"
+OPEN_PATCH_DIALOG = "noodler.open_patch_dialog"
+OPEN_PATCH_MENU_ITEM = "noodler.menu.open"
+SAVE_PATCH_MENU_ITEM = "noodler.menu.save"
+SAVE_AS_MENU_ITEM = "noodler.menu.save_as"
 ADD_MODULE_BUTTON = "noodler.add_module"
 MODULE_SELECTOR = "noodler.module_selector"
 MODULE_SELECTOR_SEARCH = "noodler.module_selector.search"
@@ -171,6 +176,10 @@ ZOOM_RESET_BUTTON = "noodler.zoom_reset"
 ZOOM_IN_BUTTON = "noodler.zoom_in"
 OUTPUT_METER = "noodler.output_meter"
 OUTPUT_SCOPE = "noodler.output_scope"
+BAR_SCOPE = "noodler.bar_scope"
+BAR_SCOPE_TRACE = "noodler.bar_scope.trace"
+BAR_SCOPE_WIDTH = 220
+BAR_SCOPE_HEIGHT = 22
 OUTPUT_SCOPE_TRACE = "noodler.output_scope.trace"
 SCOPE_WIDTH = 172
 SCOPE_HEIGHT = 54
@@ -487,6 +496,103 @@ RAIL_SPRINGS: dict[int | str, tuple[Spring, Spring]] = {}
 """One critically damped spring pair per rack node, in rack coordinates."""
 
 METER_BALLISTICS = MeterBallistics()
+
+CURRENT_PATCH_PATH: list[Path] = []
+"""Where this patch was last saved or opened from, if anywhere."""
+
+PENDING_OPEN: list[PatchPreset] = []
+"""A document waiting to replace the rack at the start of the next frame."""
+
+
+def _remember_patch_path(path: Path) -> None:
+    CURRENT_PATCH_PATH[:] = [path]
+
+
+def _save_patch_to(runtime: AppRuntime, destination: Path) -> None:
+    """Write the instrument to a path, and remember where that was."""
+    name = destination.stem or "Untitled Patch"
+    written = write_patch_preset(_capture_current_preset(runtime, name), destination)
+    _remember_patch_path(written)
+    _set_patch_status(f"SAVED  ·  {written.name}")
+
+
+def _save_patch(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    runtime: AppRuntime | None = None,
+) -> None:
+    """Save over the file this patch came from, or ask where to put it."""
+    if runtime is None:
+        return
+    if not CURRENT_PATCH_PATH:
+        _show_save_patch_dialog(0, None, runtime)
+        return
+    try:
+        _save_patch_to(runtime, CURRENT_PATCH_PATH[0])
+    except (OSError, TypeError, ValueError) as error:
+        _set_patch_status(f"SAVE ERROR: {error}", error=True)
+
+
+def _show_open_patch_dialog(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    _user_data: object = None,
+) -> None:
+    if dpg.does_item_exist(OPEN_PATCH_DIALOG):
+        dpg.show_item(OPEN_PATCH_DIALOG)
+
+
+def _open_patch_dialog(
+    _sender: int | str,
+    app_data: object,
+    _runtime: object = None,
+) -> None:
+    """Read a document, and queue it to replace the rack next frame.
+
+    The rack is rebuilt from the frame callback rather than from here: taking
+    the window apart while Dear PyGui is in the middle of dispatching to it is
+    how a file dialog turns into a crash.
+    """
+    try:
+        if not isinstance(app_data, dict):
+            raise ValueError("the file dialog did not return a document")
+        selected = app_data.get("file_path_name")
+        if not isinstance(selected, str) or not selected:
+            raise ValueError("choose a patch to open")
+        preset = read_patch_preset(selected)
+        _remember_patch_path(Path(selected))
+        PENDING_OPEN[:] = [preset]
+        _set_patch_status(f"OPENING  ·  {preset.name}")
+    except (OSError, TypeError, ValueError) as error:
+        _set_patch_status(f"COULD NOT OPEN: {error}", error=True)
+
+
+def _consume_pending_open() -> AppRuntime | None:
+    """Replace the rack with a document that was chosen last frame."""
+    if not PENDING_OPEN:
+        return None
+    preset = PENDING_OPEN.pop()
+    previous = ACTIVE_RUNTIME[0] if ACTIVE_RUNTIME else None
+    if previous is not None:
+        previous.audio.close()
+    for item in (
+        PRIMARY_WINDOW,
+        INPUT_HANDLERS,
+        SPINE_TEXTURE_REGISTRY,
+        MODULE_CLOSE_LAYER,
+        SAVE_PATCH_DIALOG,
+        OPEN_PATCH_DIALOG,
+    ):
+        if dpg.does_item_exist(item):
+            dpg.delete_item(item)
+    runtime = build_ui(preset=preset)
+    dpg.set_primary_window(PRIMARY_WINDOW, True)
+    _set_patch_status(f"OPENED  ·  {preset.name}")
+    return runtime
+
+
+ACTIVE_RUNTIME: list[AppRuntime] = []
+"""The rack the frame callback is currently driving."""
 
 TRANSPORT = Transport()
 """The rack's tempo, shared by every module that repeats."""
@@ -1473,26 +1579,50 @@ def _decibels(level: float) -> str:
     return "-∞" if level <= 0.00001 else f"{20.0 * math.log10(level):.0f}"
 
 
-def _refresh_scope(runtime: AppRuntime) -> None:
-    """Draw what was just played, so a patch can be watched as well as heard."""
-    if not dpg.does_item_exist(OUTPUT_SCOPE_TRACE):
+def _add_bar_scope() -> None:
+    """A trace of the output along the bottom bar, where it is always in view."""
+    if dpg.does_item_exist(BAR_SCOPE):
         return
-    trace = runtime.audio.scope_trace()
-    if trace.size < SCOPE_POINTS_DRAWN:
+    with dpg.drawlist(width=BAR_SCOPE_WIDTH, height=BAR_SCOPE_HEIGHT, tag=BAR_SCOPE):
+        dpg.draw_line(
+            (0, BAR_SCOPE_HEIGHT * 0.5),
+            (BAR_SCOPE_WIDTH, BAR_SCOPE_HEIGHT * 0.5),
+            color=(58, 56, 50, 255),
+        )
+        dpg.draw_polyline(
+            [(index, BAR_SCOPE_HEIGHT * 0.5) for index in range(BAR_SCOPE_WIDTH)],
+            color=SIGNAL_COLORS["audio"],
+            thickness=1.0,
+            tag=BAR_SCOPE_TRACE,
+        )
+
+
+def _draw_trace(
+    trace,
+    item: int | str,
+    width: int,
+    height: float,
+) -> None:
+    """Fit a captured trace to one drawlist."""
+    if not dpg.does_item_exist(item) or trace.size < width:
         return
-    step = trace.size // SCOPE_POINTS_DRAWN
-    middle = SCOPE_HEIGHT * 0.5
-    reach = SCOPE_HEIGHT * 0.46
+    step = trace.size // width
+    middle = height * 0.5
+    reach = height * 0.46
     dpg.configure_item(
-        OUTPUT_SCOPE_TRACE,
+        item,
         points=[
-            (
-                float(index),
-                middle - float(trace[index * step]) * reach,
-            )
-            for index in range(SCOPE_POINTS_DRAWN)
+            (float(index), middle - float(trace[index * step]) * reach)
+            for index in range(width)
         ],
     )
+
+
+def _refresh_scope(runtime: AppRuntime) -> None:
+    """Draw what was just played, so a patch can be watched as well as heard."""
+    trace = runtime.audio.scope_trace()
+    _draw_trace(trace, OUTPUT_SCOPE_TRACE, SCOPE_POINTS_DRAWN, SCOPE_HEIGHT)
+    _draw_trace(trace, BAR_SCOPE_TRACE, BAR_SCOPE_WIDTH, BAR_SCOPE_HEIGHT)
 
 
 def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
@@ -1529,6 +1659,15 @@ def _refresh_frame(
     # One clamped timestep drives every animation, so the rack feels the same
     # on a 60 Hz monitor as on a 120 Hz panel, and a frame hitch resumes
     # motion rather than teleporting it.
+    replacement = _consume_pending_open()
+    if replacement is not None:
+        ACTIVE_RUNTIME[:] = [replacement]
+        dpg.set_frame_callback(
+            dpg.get_frame_count() + 1, _refresh_frame, user_data=replacement
+        )
+        return
+    if ACTIVE_RUNTIME:
+        runtime = ACTIVE_RUNTIME[0]
     dt = clamp_timestep(dpg.get_delta_time())
     _release_stale_key_latches()
     _consume_scroll()
@@ -2811,20 +2950,7 @@ def _add_rack_controls(runtime: AppRuntime) -> None:
     )
     with dpg.tooltip(UNPLUG_ALL_BUTTON):
         dpg.add_text("Disconnect every cable from the live patch.  ·  ⌘Z undoes it.")
-    dpg.add_button(
-        label="+  ADD MODULE",
-        tag=ADD_MODULE_BUTTON,
-        callback=_show_module_selector,
-    )
-    with dpg.tooltip(ADD_MODULE_BUTTON):
-        dpg.add_text("Browse all built-in instruments and utilities.  ·  ⌘K")
-    dpg.add_button(
-        label="SAVE PATCH",
-        tag=SAVE_PATCH_BUTTON,
-        callback=_show_save_patch_dialog,
-    )
-    with dpg.tooltip(SAVE_PATCH_BUTTON):
-        dpg.add_text("Save modules, cables, controls, and rack view.")
+
 
 
 KEY_LATCH: set[int] = set()
@@ -3009,6 +3135,28 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
     worth a key rather than permanent space beside the controls used constantly.
     """
     with dpg.menu_bar(tag=RACK_MENU_BAR):
+        with dpg.menu(label="File"):
+            dpg.add_menu_item(
+                label="Open…",
+                tag=OPEN_PATCH_MENU_ITEM,
+                shortcut="⌘O",
+                callback=_show_open_patch_dialog,
+            )
+            dpg.add_separator()
+            dpg.add_menu_item(
+                label="Save",
+                tag=SAVE_PATCH_MENU_ITEM,
+                shortcut="⌘S",
+                callback=_save_patch,
+                user_data=runtime,
+            )
+            dpg.add_menu_item(
+                label="Save As…",
+                tag=SAVE_AS_MENU_ITEM,
+                shortcut="⌘⇧S",
+                callback=_show_save_patch_dialog,
+                user_data=runtime,
+            )
         with dpg.menu(label="View"):
             dpg.add_menu_item(
                 label="Frame All",
@@ -5581,11 +5729,13 @@ def _build_empty_rack_ui(
                     _build_output_node(runtime.audio)
                     _add_module_spines(runtime)
         dpg.add_separator()
-        dpg.add_text(
-            DEFAULT_CONTROL_STATUS,
-            tag=CONTROL_STATUS,
-            color=MUTED_TEXT,
-        )
+        with dpg.group(horizontal=True):
+            dpg.add_text(
+                DEFAULT_CONTROL_STATUS,
+                tag=CONTROL_STATUS,
+                color=MUTED_TEXT,
+            )
+            _add_bar_scope()
         dpg.bind_item_theme(OUTPUT_NODE, OUTPUT_THEME)
         dpg.set_item_pos(OUTPUT_NODE, [900, 250])
         CANVAS_INTERACTION.rail_y.update(
@@ -5607,8 +5757,21 @@ def _build_empty_rack_ui(
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
+    with dpg.file_dialog(
+        tag=OPEN_PATCH_DIALOG,
+        label="Open Noodler Patch",
+        show=False,
+        modal=True,
+        width=720,
+        height=460,
+        callback=_open_patch_dialog,
+        user_data=runtime,
+    ):
+        dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".*")
     _configure_rack_theme()
     _configure_knob_handlers(runtime)
+    ACTIVE_RUNTIME[:] = [runtime]
     return runtime
 
 
@@ -5969,11 +6132,13 @@ def build_ui(
             )
             _refresh_patch_bays(runtime.patch)
         dpg.add_separator()
-        dpg.add_text(
-            DEFAULT_CONTROL_STATUS,
-            tag=CONTROL_STATUS,
-            color=MUTED_TEXT,
-        )
+        with dpg.group(horizontal=True):
+            dpg.add_text(
+                DEFAULT_CONTROL_STATUS,
+                tag=CONTROL_STATUS,
+                color=MUTED_TEXT,
+            )
+            _add_bar_scope()
         dpg.bind_item_theme(FUNCTION_NODE, UTILITY_THEME)
         dpg.bind_item_theme(VCO_NODE, VCO_THEME)
         dpg.bind_item_theme(MIXER_NODE, MIXER_THEME)
@@ -6009,8 +6174,21 @@ def build_ui(
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
+    with dpg.file_dialog(
+        tag=OPEN_PATCH_DIALOG,
+        label="Open Noodler Patch",
+        show=False,
+        modal=True,
+        width=720,
+        height=460,
+        callback=_open_patch_dialog,
+        user_data=runtime,
+    ):
+        dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".*")
     _configure_rack_theme()
     _configure_knob_handlers(runtime)
+    ACTIVE_RUNTIME[:] = [runtime]
     return runtime
 
 
