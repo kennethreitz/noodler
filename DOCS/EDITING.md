@@ -18,6 +18,7 @@ instrument was telling the user to press a key that did nothing.
 | Delete / Backspace | unpatch selected cables, remove selected modules |
 | ⌘Z / ⌘⇧Z | undo, redo |
 | space (tap) | play / stop; held while dragging, it still pans |
+| scroll over a knob | turn it (shift for finer); one edit per scroll-turn |
 | ⌘↩ | play / stop |
 | ⌘K | open the module browser |
 | F | frame the whole rack |
@@ -75,7 +76,9 @@ kind of edit.
 
 The window title carries the patch name and a dot while there are edits since
 the last save; the dot is a comparison of history revisions, not a flag anyone
-has to remember to set.
+has to remember to set. Quit, New and Open ask before losing that work — save,
+don't save, or cancel — and only when there is something to lose. File → Open
+Recent remembers the last eight documents opened or saved, in `~/.noodler`.
 
 ### Removing a module keeps its panel
 

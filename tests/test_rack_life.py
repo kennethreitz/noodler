@@ -358,3 +358,103 @@ def test_one_bad_frame_does_not_stop_the_heartbeat(monkeypatch) -> None:
     finally:
         LAST_FRAME_ERROR[0] = ""
         dpg.destroy_context()
+
+
+def test_scrolling_over_a_knob_turns_it_and_not_the_rack(monkeypatch) -> None:
+    from noodler.app import CANVAS_INTERACTION, _consume_scroll, _close_scroll_turn
+
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        knob = f"{VCO_NODE}.control.frequency"
+        binding = KNOB_INTERACTION.bindings[knob]
+        monkeypatch.setattr("noodler.app._hovered_knob", lambda: (knob, binding))
+        placed = tuple(dpg.get_item_pos(VCO_NODE))
+        before = runtime.vco.parameters.frequency
+
+        for _ in range(5):
+            CANVAS_INTERACTION.pending_scroll_y = 48.0
+            _consume_scroll()
+
+        assert runtime.vco.parameters.frequency > before, "up is more"
+        assert tuple(dpg.get_item_pos(VCO_NODE)) == placed, "the rack did not move"
+        _close_scroll_turn(force=True)
+        assert RACK_HISTORY.done[-1].description == "TURN FREQUENCY"
+        assert len(RACK_HISTORY.done) == 1, "five wheel clicks are one edit"
+    finally:
+        dpg.destroy_context()
+
+
+def test_scrolling_elsewhere_still_pans() -> None:
+    from noodler.app import CANVAS_INTERACTION, _consume_scroll
+
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=True)
+        placed = tuple(dpg.get_item_pos(VCO_NODE))
+        CANVAS_INTERACTION.pending_scroll_y = 48.0
+        _consume_scroll()
+        assert tuple(dpg.get_item_pos(VCO_NODE)) != placed
+    finally:
+        dpg.destroy_context()
+
+
+def test_quit_new_and_open_ask_before_losing_unsaved_work() -> None:
+    from noodler.app import (
+        PENDING_OPEN,
+        UNSAVED_DIALOG,
+        _exit_noodler,
+        _new_patch,
+        _unsaved_cancel,
+        _unsaved_discard,
+    )
+    import noodler.app as app
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _new_patch()
+        assert PENDING_OPEN, "nothing unsaved: New just happens"
+        PENDING_OPEN.clear()
+
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        _new_patch()
+        assert not PENDING_OPEN, "unsaved: New waits for an answer"
+        assert dpg.is_item_shown(UNSAVED_DIALOG)
+        _unsaved_cancel()
+        assert not PENDING_OPEN and not dpg.is_item_shown(UNSAVED_DIALOG)
+
+        _new_patch()
+        _unsaved_discard()
+        assert PENDING_OPEN, "don't save: it happens"
+        PENDING_OPEN.clear()
+
+        stopped = []
+        app.dpg.stop_dearpygui = lambda: stopped.append(1)
+        try:
+            _exit_noodler()
+            assert stopped, "just discarded, so nothing is unsaved: quit just quits"
+        finally:
+            del app.dpg.stop_dearpygui
+    finally:
+        dpg.destroy_context()
+
+
+def test_saving_and_opening_feed_the_recent_list(tmp_path) -> None:
+    from noodler.app import RECENT_MENU, _recent_documents, _save_patch_to
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        _save_patch_to(runtime, tmp_path / "first.noodler")
+        _save_patch_to(runtime, tmp_path / "second.noodler")
+
+        assert [p.name for p in _recent_documents()] == ["second.noodler", "first.noodler"]
+        labels = [
+            dpg.get_item_configuration(item)["label"]
+            for item in dpg.get_item_children(RECENT_MENU, slot=1)
+        ]
+        assert labels == ["second", "first"]
+    finally:
+        dpg.destroy_context()

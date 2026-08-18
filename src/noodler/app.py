@@ -596,8 +596,78 @@ SAVED_REVISION: list[int] = [0]
 """The history revision at the last save; anything else is unsaved work."""
 
 
+RECENT_FILE = Path.home() / ".noodler" / "recent.json"
+RECENT_LIMIT = 8
+RECENT_MENU = "noodler.menu.recent"
+
+
+def _recent_documents() -> list[Path]:
+    """The last few patches opened or saved, most recent first, that still exist."""
+    try:
+        import json
+
+        listed = json.loads(RECENT_FILE.read_text())
+    except (OSError, ValueError):
+        return []
+    found: list[Path] = []
+    for entry in listed if isinstance(listed, list) else []:
+        try:
+            path = Path(str(entry))
+        except (TypeError, ValueError):
+            continue
+        if path.is_file() and path not in found:
+            found.append(path)
+    return found[:RECENT_LIMIT]
+
+
+def _remember_recent(path: Path) -> None:
+    """Put a document at the top of the recent list, on disk."""
+    try:
+        import json
+
+        recent = [path.resolve()] + [p for p in _recent_documents() if p != path.resolve()]
+        RECENT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        RECENT_FILE.write_text(json.dumps([str(p) for p in recent[:RECENT_LIMIT]], indent=2))
+    except OSError:
+        return
+    _refresh_recent_menu()
+
+
+def _refresh_recent_menu() -> None:
+    """Rebuild the Open Recent submenu from the list on disk."""
+    if not dpg.does_item_exist(RECENT_MENU):
+        return
+    dpg.delete_item(RECENT_MENU, children_only=True)
+    recent = _recent_documents()
+    if not recent:
+        dpg.add_menu_item(label="(nothing yet)", parent=RECENT_MENU, enabled=False)
+        return
+    for document in recent:
+        dpg.add_menu_item(
+            label=document.stem,
+            parent=RECENT_MENU,
+            callback=_open_recent,
+            user_data=document,
+        )
+
+
+def _open_recent(_sender: int | str, _app_data: object, document: Path) -> None:
+    def open_it() -> None:
+        try:
+            preset = read_patch_preset(document)
+        except (OSError, TypeError, ValueError) as error:
+            _set_patch_status(f"COULD NOT OPEN: {error}", error=True)
+            return
+        _remember_patch_path(document)
+        PENDING_OPEN[:] = [preset]
+        _set_patch_status(f"OPENING  ·  {preset.name}")
+
+    _guard_unsaved(open_it, "Open another patch")
+
+
 def _remember_patch_path(path: Path) -> None:
     CURRENT_PATCH_PATH[:] = [path]
+    _remember_recent(path)
 
 
 def _mark_saved(name: str | None = None) -> None:
@@ -659,6 +729,98 @@ def _save_patch(
         _set_patch_status(f"SAVE ERROR: {error}", error=True)
 
 
+UNSAVED_DIALOG = "noodler.dialog.unsaved"
+UNSAVED_DIALOG_TEXT = "noodler.dialog.unsaved.text"
+PENDING_ACTION: list[Callable[[], None]] = []
+"""What was about to happen when the unsaved-changes question interrupted it."""
+
+
+def _guard_unsaved(action: Callable[[], None], verb: str) -> None:
+    """Do something that would lose unsaved work -- after asking, if it would.
+
+    Quit, New and Open all throw the rack away. With nothing unsaved they just
+    happen; otherwise a small question stands in the way: save, don't save, or
+    cancel. Save with a known path writes and carries on; without one it opens
+    the save dialog and leaves the action for afterwards.
+    """
+    if not _has_unsaved_changes():
+        action()
+        return
+    PENDING_ACTION[:] = [action]
+    if not dpg.does_item_exist(UNSAVED_DIALOG):
+        with dpg.window(
+            tag=UNSAVED_DIALOG,
+            label="Unsaved changes",
+            modal=True,
+            no_resize=True,
+            no_collapse=True,
+            no_move=False,
+            width=420,
+            height=130,
+            show=False,
+        ):
+            dpg.add_text("", tag=UNSAVED_DIALOG_TEXT, wrap=390)
+            dpg.add_spacer(height=6)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Save", width=110, callback=_unsaved_save)
+                dpg.add_button(label="Don't Save", width=110, callback=_unsaved_discard)
+                dpg.add_button(label="Cancel", width=110, callback=_unsaved_cancel)
+    dpg.set_value(
+        UNSAVED_DIALOG_TEXT,
+        f"{PATCH_NAME[0]} has changes that are not saved. {verb} anyway?",
+    )
+    try:
+        width = dpg.get_viewport_client_width()
+        height = dpg.get_viewport_client_height()
+        dpg.configure_item(
+            UNSAVED_DIALOG, pos=[max(0, width // 2 - 210), max(0, height // 2 - 80)]
+        )
+    except Exception:
+        pass  # no viewport in a test: the window opens where it opens
+    dpg.show_item(UNSAVED_DIALOG)
+
+
+def _unsaved_cancel(*_args: object) -> None:
+    PENDING_ACTION.clear()
+    if dpg.does_item_exist(UNSAVED_DIALOG):
+        dpg.hide_item(UNSAVED_DIALOG)
+    _set_patch_status("KEPT WORKING")
+
+
+def _unsaved_discard(*_args: object) -> None:
+    if dpg.does_item_exist(UNSAVED_DIALOG):
+        dpg.hide_item(UNSAVED_DIALOG)
+    action = PENDING_ACTION.pop() if PENDING_ACTION else None
+    PENDING_ACTION.clear()
+    # The work is being let go of on purpose: it is not unsaved any more.
+    _mark_saved()
+    if action is not None:
+        action()
+
+
+def _unsaved_save(*_args: object) -> None:
+    if dpg.does_item_exist(UNSAVED_DIALOG):
+        dpg.hide_item(UNSAVED_DIALOG)
+    runtime = ACTIVE_RUNTIME[0] if ACTIVE_RUNTIME else None
+    if runtime is None:
+        return
+    if not CURRENT_PATCH_PATH:
+        PENDING_ACTION.clear()
+        _set_patch_status("SAVE IT FIRST  ·  THEN TRY AGAIN")
+        _show_save_patch_dialog(0, None, runtime)
+        return
+    try:
+        _save_patch_to(runtime, CURRENT_PATCH_PATH[0])
+    except (OSError, TypeError, ValueError) as error:
+        PENDING_ACTION.clear()
+        _set_patch_status(f"SAVE ERROR: {error}", error=True)
+        return
+    action = PENDING_ACTION.pop() if PENDING_ACTION else None
+    PENDING_ACTION.clear()
+    if action is not None:
+        action()
+
+
 def _exit_noodler(
     _sender: int | str = 0,
     _app_data: object = None,
@@ -667,6 +829,10 @@ def _exit_noodler(
     """Leave. The audio device is closed on the way out by main's finally."""
     if _keyboard_is_captured():
         return
+    _guard_unsaved(_leave, "Quit")
+
+
+def _leave() -> None:
     _set_patch_status("CLOSING")
     dpg.stop_dearpygui()
 
@@ -676,8 +842,11 @@ def _show_open_patch_dialog(
     _app_data: object = None,
     _user_data: object = None,
 ) -> None:
-    if dpg.does_item_exist(OPEN_PATCH_DIALOG):
-        dpg.show_item(OPEN_PATCH_DIALOG)
+    def show() -> None:
+        if dpg.does_item_exist(OPEN_PATCH_DIALOG):
+            dpg.show_item(OPEN_PATCH_DIALOG)
+
+    _guard_unsaved(show, "Open another patch")
 
 
 def _open_patch_dialog(
@@ -712,6 +881,10 @@ def _new_patch(_sender: int | str = 0, _app_data: object = None, _u: object = No
     reason: taking the window apart mid-dispatch is how a menu turns into a
     crash. Save no longer knows a path, so it will ask.
     """
+    _guard_unsaved(_new_patch_now, "Start a new rack")
+
+
+def _new_patch_now() -> None:
     CURRENT_PATCH_PATH.clear()
     PENDING_OPEN[:] = [PatchPreset(name="Untitled Patch", modules=())]
     _set_patch_status("NEW RACK")
@@ -727,6 +900,10 @@ def _example_documents() -> tuple[Path, ...]:
 
 def _open_example(_sender: int | str, _app_data: object, document: Path) -> None:
     """Open one of the shipped examples, without a dialog."""
+    _guard_unsaved(lambda: _open_example_now(document), "Open the example")
+
+
+def _open_example_now(document: Path) -> None:
     try:
         preset = read_patch_preset(document)
     except (OSError, TypeError, ValueError) as error:
@@ -2628,21 +2805,73 @@ def _capture_macos_scroll(delta_x: float, delta_y: float) -> None:
         interaction.pending_scroll_y += float(delta_y)
 
 
+SCROLL_SWEEP_PIXELS = 1_600.0
+"""How far the wheel travels to take a knob from one end to the other. A click
+of a mouse wheel is 48 of these, so about three per cent a click; a trackpad
+gives fractions of it and turns the knob smoothly."""
+SCROLL_TURN: dict[str, object] = {"knob": None, "start": 0.0, "at": 0.0}
+SCROLL_TURN_SETTLE = 0.6
+"""A pause this long ends a scroll-turn, and the whole of it becomes one edit."""
+
+
+def _turn_knob_by_scroll(knob: int | str, delta_y: float) -> None:
+    """Scrolling over a knob turns it. Up is more; shift is finer."""
+    binding = KNOB_INTERACTION.bindings.get(knob)
+    if binding is None:
+        return
+    minimum, maximum = _knob_bounds(binding)
+    span = maximum - minimum
+    fine = dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift)
+    step = delta_y / SCROLL_SWEEP_PIXELS * span * (0.2 if fine else 1.0)
+    now = time.monotonic()
+    if SCROLL_TURN["knob"] != knob:
+        _close_scroll_turn()
+        SCROLL_TURN.update(knob=knob, start=_knob_position(knob), at=now)
+    SCROLL_TURN["at"] = now
+    position = min(maximum, max(minimum, _knob_position(knob) + step))
+    _move_knob(knob, position)
+    if dpg.does_item_exist(CONTROL_STATUS):
+        value = _control_value(position, binding)
+        dpg.set_value(
+            CONTROL_STATUS,
+            f"{binding.label.upper()}  {binding.formatter(value)}  ·  "
+            + ("FINE" if fine else "SCROLL  ·  SHIFT = FINE"),
+        )
+
+
+def _close_scroll_turn(force: bool = False) -> None:
+    """Record a finished scroll-turn as one edit."""
+    knob = SCROLL_TURN["knob"]
+    if knob is None:
+        return
+    if not force and time.monotonic() - float(SCROLL_TURN["at"]) < SCROLL_TURN_SETTLE:
+        return
+    SCROLL_TURN["knob"] = None
+    _record_knob_turn(knob, float(SCROLL_TURN["start"]), _knob_position(knob))
+
+
 def _consume_scroll() -> None:
     """Apply one frame of scrolling to the rack.
 
-    Scrolling moves the rack. It is not a second way to zoom: zooming is what
-    pinching does, and what the − / + controls do, and a gesture that means two
-    things means neither reliably.
+    Scrolling moves the rack -- unless it is over a knob, in which case it
+    turns the knob. It is not a second way to zoom: zooming is what pinching
+    does, and what the − / + controls do, and a gesture that means two things
+    means neither reliably.
     """
     interaction = CANVAS_INTERACTION
     delta_x = interaction.pending_scroll_x
     delta_y = interaction.pending_scroll_y
     interaction.pending_scroll_x = 0.0
     interaction.pending_scroll_y = 0.0
-    if delta_x or delta_y:
-        interaction.stop_glide()
-        _translate_rack(delta_x, delta_y)
+    _close_scroll_turn()
+    if not (delta_x or delta_y):
+        return
+    hovered = _hovered_knob()
+    if hovered is not None and delta_y:
+        _turn_knob_by_scroll(hovered[0], delta_y)
+        return
+    interaction.stop_glide()
+    _translate_rack(delta_x, delta_y)
 
 
 def _consume_macos_magnification() -> None:
@@ -3945,6 +4174,9 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 shortcut="⌘O",
                 callback=_show_open_patch_dialog,
             )
+            with dpg.menu(label="Open Recent", tag=RECENT_MENU):
+                pass
+            _refresh_recent_menu()
             examples = _example_documents()
             if examples:
                 with dpg.menu(label="Open Example", tag=EXAMPLES_MENU):
