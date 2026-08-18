@@ -14,6 +14,8 @@ from noodler.app import (
     RACK_RAILS,
     VCO_NODE,
     _delete_rack_selection,
+    _press_once,
+    _release_stale_key_latches,
     _remove_module_node,
     _undo_or_redo_rack_edit,
     _unplug_all,
@@ -220,5 +222,54 @@ def test_an_empty_history_says_so(monkeypatch) -> None:
         _undo_or_redo_rack_edit("test", None, runtime)
 
         assert "NOTHING TO UNDO" in dpg.get_value(CONTROL_STATUS)
+    finally:
+        dpg.destroy_context()
+
+
+def test_holding_undo_does_not_unwind_the_whole_history(monkeypatch) -> None:
+    """A key repeat should not cost the user every edit they made."""
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        _remove_module_node(VCO_NODE, runtime)
+        _unplug_all("test", None, runtime)
+        assert len(RACK_HISTORY.done) == 2
+
+        # Command down, Shift up: an undo chord, repeating while held.
+        monkeypatch.setattr(
+            dpg, "is_key_down", lambda key: key != dpg.mvKey_ModShift
+        )
+        held = _press_once(dpg.mvKey_Z, _undo_or_redo_rack_edit)
+        for _ in range(12):
+            held("test", None, runtime)
+            _release_stale_key_latches()
+
+        assert len(RACK_HISTORY.done) == 1, "one press, one undo"
+        assert "vco" not in runtime.patch.modules, "the earlier edit stands"
+    finally:
+        dpg.destroy_context()
+
+
+def test_releasing_the_key_arms_the_next_press(monkeypatch) -> None:
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        _remove_module_node(VCO_NODE, runtime)
+        _unplug_all("test", None, runtime)
+        held = _press_once(dpg.mvKey_Z, _undo_or_redo_rack_edit)
+
+        def _press_and_release() -> None:
+            monkeypatch.setattr(
+                dpg, "is_key_down", lambda key: key != dpg.mvKey_ModShift
+            )
+            held("test", None, runtime)
+            monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+            _release_stale_key_latches()
+
+        _press_and_release()
+        _press_and_release()
+
+        assert not RACK_HISTORY.can_undo
+        assert "vco" in runtime.patch.modules, "both edits came back"
     finally:
         dpg.destroy_context()

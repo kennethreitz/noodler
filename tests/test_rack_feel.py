@@ -18,6 +18,7 @@ from noodler.app import (
     OUTPUT_METER,
     OUTPUT_NODE,
     RACK_NODES,
+    REVERB_NODE,
     RACK_OUTLINE_BODY,
     RACK_RAILS,
     RACK,
@@ -591,5 +592,45 @@ def test_the_knob_hint_gets_out_of_the_way_while_turning(monkeypatch) -> None:
 
         _end_knob_drag("test", None, KNOB_INTERACTION)
         assert dpg.get_item_configuration(tooltip)["show"] is True
+    finally:
+        dpg.destroy_context()
+
+
+def test_closing_a_module_does_not_slide_into_a_pan(monkeypatch) -> None:
+    """The mouse-down callback repeats, so a spent press must stay spent."""
+    dpg.create_context()
+    try:
+        runtime = build_ui(starter_patch=True)
+        pointer = [300.0, 240.0]
+        monkeypatch.setattr(
+            dpg, "get_mouse_pos", lambda *, local=False: tuple(pointer)
+        )
+        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
+        monkeypatch.setattr(
+            "noodler.app._mouse_is_over_rack_background", lambda: True
+        )
+        monkeypatch.setattr(
+            "noodler.app._point_is_over_rack_background", lambda _position: True
+        )
+        monkeypatch.setattr(
+            "noodler.app._module_close_at",
+            lambda _position: VCO_NODE if dpg.does_item_exist(VCO_NODE) else None,
+        )
+        start = tuple(dpg.get_item_pos(REVERB_NODE))
+
+        _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
+        assert "vco" not in runtime.patch.modules
+
+        # The finger is still down and drifting; the rack must not follow.
+        for step in ((360.0, 280.0), (420.0, 300.0)):
+            pointer[0], pointer[1] = step
+            _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
+            _drag_knob("test", None, KNOB_INTERACTION)
+
+        assert CANVAS_INTERACTION.panning is False
+        assert tuple(dpg.get_item_pos(REVERB_NODE)) == start
+
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert CANVAS_INTERACTION.press_consumed is False
     finally:
         dpg.destroy_context()

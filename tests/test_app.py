@@ -25,6 +25,7 @@ from noodler.app import (
     RACK_OUTLINE_BODY,
     RACK_OUTLINE_STATUS,
     RACK_RAILS,
+    RACK_WORKSPACE,
     REVERB_LEFT_OUTPUT_LINK,
     REVERB_NODE,
     REVERB_RIGHT_OUTPUT_LINK,
@@ -126,6 +127,28 @@ def test_default_rack_starts_quiet_with_only_system_output() -> None:
         assert [node.node_id for node in captured.view.nodes] == [
             "system_output"
         ]
+    finally:
+        dpg.destroy_context()
+
+
+@pytest.mark.parametrize("starter_patch", [False, True])
+def test_patch_status_is_a_footer_below_the_rack(starter_patch: bool) -> None:
+    dpg.create_context()
+    try:
+        build_ui(starter_patch=starter_patch)
+
+        window_items = dpg.get_item_children(PRIMARY_WINDOW).get(1, ())
+        workspace = dpg.get_alias_id(RACK_WORKSPACE)
+        status = dpg.get_alias_id(CONTROL_STATUS)
+        rack_parent = dpg.get_item_parent(RACK)
+        if rack_parent not in {RACK_WORKSPACE, workspace}:
+            rack_parent = dpg.get_item_parent(rack_parent)
+        assert rack_parent in {RACK_WORKSPACE, workspace}
+        assert dpg.get_item_parent(CONTROL_STATUS) in {
+            PRIMARY_WINDOW,
+            dpg.get_alias_id(PRIMARY_WINDOW),
+        }
+        assert window_items.index(workspace) < window_items.index(status)
     finally:
         dpg.destroy_context()
 

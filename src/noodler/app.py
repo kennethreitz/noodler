@@ -341,6 +341,8 @@ class CanvasInteraction:
     glide_y: Glide = field(default_factory=Glide)
     pan_velocity_x: float = 0.0
     pan_velocity_y: float = 0.0
+    press_consumed: bool = False
+    """A press already answered by a one-shot control, held until release."""
     recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
     recenter_y: Spring = field(default_factory=lambda: pixel_spring(0.0))
     translate_residue_x: float = 0.0
@@ -367,6 +369,7 @@ class CanvasInteraction:
         self.glide_y.stop()
         self.pan_velocity_x = 0.0
         self.pan_velocity_y = 0.0
+        self.press_consumed = False
         self.recenter_x.snap(0.0)
         self.recenter_y.snap(0.0)
         self.translate_residue_x = 0.0
@@ -1261,6 +1264,7 @@ def _refresh_frame(
     # on a 60 Hz monitor as on a 120 Hz panel, and a frame hitch resumes
     # motion rather than teleporting it.
     dt = clamp_timestep(dpg.get_delta_time())
+    _release_stale_key_latches()
     _consume_macos_magnification()
     _glide_rack(dt)
     _settle_recenter(dt)
@@ -2253,6 +2257,43 @@ def _add_rack_controls(runtime: AppRuntime) -> None:
         dpg.add_text("Save modules, cables, controls, and rack view.")
 
 
+KEY_LATCH: set[int] = set()
+"""Keys whose current press has already been acted on."""
+
+
+def _press_once(
+    key: int,
+    callback: Callable[[int | str, object, AppRuntime], None],
+) -> Callable[[int | str, object, AppRuntime], None]:
+    """Make a bound key act once per physical press.
+
+    Dear PyGui's key-press callback follows the platform's key repeat, so a held
+    Delete would walk through the rack a module at a time and a held ⌘Z would
+    unwind the whole history in about a second. Destructive keys should answer
+    to presses, not to how long a finger rests on them.
+    """
+
+    def handle(sender: int | str, app_data: object, user_data: AppRuntime) -> None:
+        if key in KEY_LATCH:
+            return
+        KEY_LATCH.add(key)
+        callback(sender, app_data, user_data)
+
+    return handle
+
+
+def _release_stale_key_latches() -> None:
+    """Let go of any latched key that is no longer down.
+
+    Reconciling against the real key state each frame means a press whose
+    release never arrives — a lost focus, a window switch — cannot leave a
+    shortcut stuck.
+    """
+    for key in tuple(KEY_LATCH):
+        if not dpg.is_key_down(key):
+            KEY_LATCH.discard(key)
+
+
 def _show_knob_hints(visible: bool) -> None:
     """Show or hide the rotary hint tooltips as one group.
 
@@ -2388,16 +2429,18 @@ def _begin_knob_drag(
         interaction = interaction_data
     if interaction.active_knob is not None:
         return
-    if CANVAS_INTERACTION.panning:
+    if CANVAS_INTERACTION.panning or CANVAS_INTERACTION.press_consumed:
         # Dear PyGui repeats the mouse-down callback for every frame the button
         # is held. Beginning the pan again would move its origin to the current
-        # pointer each frame, leaving the drag with nothing to travel.
+        # pointer each frame, leaving the drag with nothing to travel, and a
+        # press already spent on a one-shot control must not become a drag.
         return
     # Any press on the rack catches a gliding canvas, the way a finger does.
     CANVAS_INTERACTION.stop_glide()
     mouse_position = tuple(dpg.get_mouse_pos(local=False))
     close_node = _module_close_at(mouse_position)
     if runtime is not None and close_node is not None:
+        CANVAS_INTERACTION.press_consumed = True
         _remove_module_node(close_node, runtime)
         return
     if dpg.is_key_down(dpg.mvKey_Spacebar) and _mouse_is_over_rack():
@@ -2444,6 +2487,10 @@ def _drag_knob(
     knob = interaction.active_knob
     if knob is None:
         canvas = CANVAS_INTERACTION
+        if canvas.press_consumed:
+            # The drag handler can promote a press into a pan on its own, so it
+            # has to respect a press already spent on a one-shot control.
+            return
         mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
         if canvas.pan_candidate:
             origin = (canvas.press_x, canvas.press_y)
@@ -2487,6 +2534,7 @@ def _end_knob_drag(
     interaction: KnobInteraction,
 ) -> None:
     _show_box_selector(False)
+    CANVAS_INTERACTION.press_consumed = False
     if CANVAS_INTERACTION.panning:
         _clear_rack_selection()
         _release_pan_momentum()
@@ -2775,32 +2823,19 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
         )
         dpg.add_mouse_wheel_handler(callback=_zoom_rack)
         # The rack has always advertised these keys; now they are wired.
-        for delete_key in (dpg.mvKey_Delete, dpg.mvKey_Back):
+        for key, action in (
+            (dpg.mvKey_Delete, _delete_rack_selection),
+            (dpg.mvKey_Back, _delete_rack_selection),
+            (dpg.mvKey_Escape, _dismiss_rack_focus),
+            (dpg.mvKey_K, _open_module_selector_shortcut),
+            (dpg.mvKey_F, _frame_rack),
+            (dpg.mvKey_Z, _undo_or_redo_rack_edit),
+        ):
             dpg.add_key_press_handler(
-                delete_key,
-                callback=_delete_rack_selection,
+                key,
+                callback=_press_once(key, action),
                 user_data=runtime,
             )
-        dpg.add_key_press_handler(
-            dpg.mvKey_Escape,
-            callback=_dismiss_rack_focus,
-            user_data=runtime,
-        )
-        dpg.add_key_press_handler(
-            dpg.mvKey_K,
-            callback=_open_module_selector_shortcut,
-            user_data=runtime,
-        )
-        dpg.add_key_press_handler(
-            dpg.mvKey_F,
-            callback=_frame_rack,
-            user_data=runtime,
-        )
-        dpg.add_key_press_handler(
-            dpg.mvKey_Z,
-            callback=_undo_or_redo_rack_edit,
-            user_data=runtime,
-        )
 
 
 def _add_knob(
@@ -4815,6 +4850,7 @@ def build_ui(
     RAIL_SPRINGS.clear()
     METER_BALLISTICS.reset()
     RACK_HISTORY.clear()
+    KEY_LATCH.clear()
     _configure_font()
     _configure_theme()
     runtime = (
