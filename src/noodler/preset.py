@@ -43,6 +43,21 @@ class RackNodePreset(BaseModel):
     collapsed: bool = False
 
 
+class GroupPreset(BaseModel):
+    """A group of modules -- and of groups -- as saved with the document.
+
+    Logical only: a name over some modules that go around together. Members
+    are module instance ids; groups are the ids of groups nested inside.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    group_id: str = Field(pattern=r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
+    name: str = Field(default="GROUP", max_length=60)
+    members: tuple[str, ...] = ()
+    groups: tuple[str, ...] = ()
+
+
 class RackViewPreset(BaseModel):
     """Camera and semantic-rail state saved with a patch."""
 
@@ -51,12 +66,16 @@ class RackViewPreset(BaseModel):
     zoom: float = Field(default=1.0, ge=0.25, le=4.0)
     rails: dict[str, float] = Field(default_factory=dict)
     nodes: tuple[RackNodePreset, ...] = ()
+    groups: tuple[GroupPreset, ...] = ()
 
     @model_validator(mode="after")
     def node_ids_are_unique(self) -> "RackViewPreset":
         ids = [node.node_id for node in self.nodes]
         if len(ids) != len(set(ids)):
             raise ValueError("rack view contains duplicate node ids")
+        group_ids = [group.group_id for group in self.groups]
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("rack view contains duplicate group ids")
         return self
 
 
@@ -187,6 +206,7 @@ __all__ = [
     "PatchPreset",
     "Point",
     "RackNodePreset",
+    "GroupPreset",
     "RackViewPreset",
     "SystemOutputPreset",
     "TransportPreset",

@@ -15,7 +15,6 @@ from noodler.app import (
     KNOB_INTERACTION,
     METER_BALLISTICS,
     MIXER_LPG_LINK,
-    MODULE_CLOSE_LAYER,
     MODULE_COLLAPSE,
     MODULE_SELECTOR,
     OUTPUT_METER,
@@ -43,7 +42,6 @@ from noodler.app import (
     _frame_rack,
     _glide_rack,
     _module_close_at,
-    _module_close_bounds,
     _rack_content_bounds,
     _queue_rack_zoom,
     _refresh_ui,
@@ -217,70 +215,23 @@ def test_the_console_cannot_be_deleted() -> None:
         dpg.destroy_context()
 
 
-def test_title_close_target_removes_a_module(monkeypatch) -> None:
+def test_there_is_no_close_target_on_a_module_nor_in_the_outline() -> None:
+    """Removal is the context menu's, the Edit menu's and the Delete key's."""
     dpg.create_context()
     try:
         runtime = build_ui()
         _add_selected_module("test", None, (runtime, "classic_vco"))
         node = INSTANCE_NODE_TAGS["classic_vco"]
-        monkeypatch.setattr("noodler.app._module_close_at", lambda _point: node)
-
-        _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
-
-        assert "classic_vco" not in runtime.patch.modules
-        assert dpg.does_item_exist(node)
-        assert not dpg.is_item_shown(node)
-        assert dpg.does_item_exist(MODULE_CLOSE_LAYER)
-    finally:
-        dpg.destroy_context()
-
-
-def test_title_close_is_at_the_right_edge_and_skips_system_output(
-    monkeypatch,
-) -> None:
-    dpg.create_context()
-    try:
-        runtime = build_ui()
-        _add_selected_module("test", None, (runtime, "classic_vco"))
-        node = INSTANCE_NODE_TAGS["classic_vco"]
-        monkeypatch.setattr(dpg, "get_item_rect_min", lambda _item: (10.0, 20.0))
-        monkeypatch.setattr(dpg, "get_item_rect_max", lambda _item: (210.0, 320.0))
-
-        bounds = _module_close_bounds(node)
-
-        assert bounds is not None
-        assert bounds[2] == pytest.approx(205.0)
-        assert _module_close_at((200.0, 30.0)) == node
-        assert _module_close_bounds(OUTPUT_NODE) is None
-    finally:
-        dpg.destroy_context()
-
-
-def test_current_rack_tree_can_remove_an_unpatched_module() -> None:
-    dpg.create_context()
-    try:
-        runtime = build_ui()
-        _add_selected_module("test", None, (runtime, "classic_vco"))
-        node = INSTANCE_NODE_TAGS["classic_vco"]
-        remove_button = next(
-            item
-            for item in _descendants(RACK_OUTLINE_BODY)
-            if dpg.get_item_type(item).endswith("mvButton")
+        assert _module_close_at((200.0, 30.0)) is None
+        assert not any(
+            dpg.get_item_type(item).endswith("mvButton")
             and dpg.get_item_configuration(item)["label"] == "×"
-            and dpg.get_item_configuration(item)["user_data"][1]
-            == "classic_vco"
+            for item in _descendants(RACK_OUTLINE_BODY)
         )
-        configuration = dpg.get_item_configuration(remove_button)
-
-        configuration["callback"](
-            remove_button,
-            None,
-            configuration["user_data"],
-        )
-
-        assert "classic_vco" not in runtime.patch.modules
-        assert dpg.does_item_exist(node)
-        assert not dpg.is_item_shown(node)
+        # The press handler asks and is told no: nothing is removed by a press.
+        _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
+        assert "classic_vco" in runtime.patch.modules
+        assert dpg.is_item_shown(node)
     finally:
         dpg.destroy_context()
 

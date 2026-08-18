@@ -33,9 +33,9 @@ backward from System Output through every upstream module. Modules that have
 not reached an output appear separately under `Unpatched`, divided into
 control/modulation and audio-path lanes. This tree is rebuilt from the real
 `PatchGraph` after every add, remove, patch, unpatch, or unplug-all operation.
-Each module entry includes a small removal button backed by the same graph-safe
-operation as the close target on the module's rack title. System Output is the
-one permanent entry and cannot be removed. Expanding a module entry lists every
+A module is removed from its right-click menu, the Edit menu or the Delete
+key; the tree names it and goes to it, and does not remove it. System Output
+is the one permanent entry and cannot be removed. Expanding a module entry lists every
 input and output, its signal type, and whether that port is patched or open.
 
 The searchable module catalog sits beneath that rack outline. It is derived

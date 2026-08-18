@@ -149,9 +149,18 @@ library lands in the middle of the view — or, if something is already there,
 at the nearest free spot that still fits in view, so a run of additions fans
 out around the middle rather than piling up on it.
 
+Modules can be **grouped**: select some and press ⌘G, and from then on
+dragging any one of them carries the others — a name over some modules, the
+way a board on Muse holds cards, logical only: nothing is boxed in, no signal
+changes, positions and cables are untouched. Groups nest — group over a grouped
+module and its whole group comes in, a board on a board — and each is drawn as
+a soft line round its modules with its name at the top left; drag the name to
+move the group whole, Option-drag a member to move it alone, ⌘⇧G to ungroup.
+Groups are saved with the document.
+
 Every declared jack is visible by default. Modules can be dragged, removed
-with the close target in their title, or collapsed by double-clicking the title
-bar. A collapsed module keeps its title and connected jacks visible while its
+from their right-click menu (or the Delete key), or collapsed by double-clicking
+the title bar. A collapsed module keeps its title and connected jacks visible while its
 open jacks and controls get out of the way. Its DSP and cables continue to run.
 
 The rack also shows what it is doing. Output jacks and cables brighten with
@@ -167,9 +176,12 @@ its level dial. Playback going dark is visible before it needs to be diagnosed.
 | Space tap or Command-Return | Play / stop audio and the transport |
 | Pinch or − / 100% / + | Smooth, pointer-anchored zoom |
 | Shift + background drag | Box-select modules |
+| Command-G / Command-Shift-G | Group the selection / ungroup it |
+| Drag a grouped module | The whole group comes along; Option-drag moves it alone |
+| Drag a group's name | Move the group, nested groups and all |
 | Module title drag | Move a module along the rack |
 | Module title double-click | Collapse or open the module |
-| Module right-click | Collapse, duplicate, reset, unplug, or remove it |
+| Module right-click | Collapse, duplicate, reset, unplug, group, or remove it |
 | Knob drag up/down | Adjust a value; movement accelerates with speed |
 | Scroll over a knob | Turn it without moving the rack |
 | Shift + knob drag or scroll | Fine adjustment |

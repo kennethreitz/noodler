@@ -110,10 +110,16 @@ Open modules favor horizontal control density over tall inspector-like stacks.
 Rotary controls are slightly smaller, generated numeric parameters pack three
 across, redundant faceplate descriptions live in tooltips, and tighter node
 padding preserves the instrument character without wasting vertical space.
-Every removable module also carries a close target at the right edge of its
-colored title. The same removal action appears beside the module in the live
-rack tree; both paths delete the executable module and every connected cable
-or output tap. System Output remains permanent and has no close target.
+A module is removed from its right-click menu, the Edit menu, or the Delete
+key -- there is no close target on the title, and none beside the module in
+the rack tree; both were a thing to hit by accident. Every path deletes the
+executable module and every connected cable or output tap.
+
+Groups (``noodler.groups``) are a name over some modules and, nested, over
+other groups: logical only. The model knows who is in what -- ``companions``
+is everything in a module's innermost group -- and the application carries a
+dragged module's companions along by the same delta each frame, draws each
+group as a soft line with its name, and saves them in the document's view.
 
 Double-clicking a module's colored title bar folds every control and jack down
 to a narrow, colored book spine with a rotated title. This is visual state

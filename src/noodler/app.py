@@ -70,7 +70,9 @@ from .patch import (
     PatchError,
     PatchGraph,
 )
+from .groups import GroupBook, GroupError, ModuleGroup
 from .preset import (
+    GroupPreset,
     PatchPreset,
     Point,
     RackNodePreset,
@@ -297,7 +299,6 @@ SCOPE_HEIGHT = 54
 SCOPE_POINTS_DRAWN = 172
 """One point per pixel: any more is detail the trace cannot show."""
 INPUT_HANDLERS = "noodler.input_handlers"
-MODULE_CLOSE_LAYER = "noodler.module_close_layer"
 VCO_MIXER_LINK = "noodler.link.vco_mixer"
 UTILITY_VCO_LINK = "noodler.link.utility_vco"
 WOGGLE_VCO_LINK = "noodler.link.woggle_vco"
@@ -1084,11 +1085,11 @@ def _consume_pending_open() -> AppRuntime | None:
     for item in (
         PRIMARY_WINDOW,
         INPUT_HANDLERS,
-        MODULE_CLOSE_LAYER,
         CONSOLE_CABLES,
         OUTLINE_LAYER,
         SELECTION_LAYER,
         CONSOLE_TOGGLE_LAYER,
+        GROUP_LAYER,
         SAVE_PATCH_DIALOG,
         OPEN_PATCH_DIALOG,
         EXPORT_DIALOG,
@@ -2339,6 +2340,15 @@ def _capture_current_preset(runtime: AppRuntime, name: str) -> PatchPreset:
         zoom=CANVAS_INTERACTION.zoom,
         rails=dict(CANVAS_INTERACTION.rail_y),
         nodes=nodes,
+        groups=tuple(
+            GroupPreset(
+                group_id=group.group_id,
+                name=group.name,
+                members=tuple(group.members),
+                groups=tuple(group.groups),
+            )
+            for group in RACK_GROUPS
+        ),
     )
     return capture_patch_preset(
         name=name,
@@ -2769,6 +2779,355 @@ def _console_cable_near(position: tuple[float, float]) -> int | str | None:
     return best
 
 
+RACK_GROUPS = GroupBook()
+"""The rack's groups: modules that go around together. See noodler.groups."""
+GROUP_LAYER = "noodler.group_layer"
+GROUP_COLOR = (135, 119, 211)
+"""A group is drawn in the rack's violet: a soft line round its modules and its
+name at the top left, no more -- it is a name over them, not a box."""
+GROUP_PAD = 12.0
+GROUP_NEST_PAD = 14.0
+"""A group's line stands this far off its modules, and a group round a group
+this much further out again, so the nesting reads."""
+GROUP_LAST_POSITIONS: dict[int | str, tuple[float, float]] = {}
+"""Where every grouped module was last frame, so a drag shows as a delta."""
+GROUP_LABEL_BOXES: dict[str, tuple[float, float, float, float]] = {}
+"""Where each group's name was drawn, for the press that takes hold of it."""
+GROUP_DRAG: list = []
+"""A group being dragged by its name: [group_id, last mouse x, last mouse y]."""
+
+
+def _selected_instance_ids() -> list[str]:
+    """The modules selected in the rack, as instance ids, in selection order."""
+    if not dpg.does_item_exist(RACK):
+        return []
+    ids: list[str] = []
+    for item in dpg.get_selected_nodes(RACK):
+        node = _node_tag_for_item(item)
+        if node is None or _is_pinned(node):
+            continue
+        instance_id = _module_id_for_node(node)
+        if instance_id is not None and instance_id not in ids:
+            ids.append(instance_id)
+    return ids
+
+
+def _group_selection(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    runtime: AppRuntime | None = None,
+    *,
+    including: int | str | None = None,
+) -> None:
+    """Group the selected modules -- and the one right-clicked, if any.
+
+    Logical only, and undoable: the modules keep their places and their
+    cables; from now on a drag on one carries the others. Grouping over a
+    module already in a group brings that whole group in, nested, the way a
+    board goes on a board.
+    """
+    if _keyboard_is_captured():
+        return
+    selection = _selected_instance_ids()
+    if including is not None:
+        extra = _module_id_for_node(including)
+        if extra is not None and extra not in selection:
+            selection.append(extra)
+    try:
+        group_id = RACK_GROUPS.make(selection)
+    except GroupError as error:
+        _set_patch_status(f"CAN'T GROUP  ·  {str(error).upper()}", error=True)
+        return
+    group = RACK_GROUPS.get(group_id)
+    snapshot = ModuleGroup(group.group_id, group.name, list(group.members), list(group.groups))
+    count = len(RACK_GROUPS.modules_in(group_id))
+    _record_edit(
+        f"GROUP {count} MODULES",
+        undo=lambda: RACK_GROUPS.dissolve(snapshot.group_id),
+        redo=lambda: _restore_group(snapshot),
+    )
+    _refresh_rack_outline_if_present(runtime)
+    _set_patch_status(f"{group.name}  ·  {count} MODULES MOVE TOGETHER  ·  ⌘⇧G UNGROUPS")
+
+
+def _restore_group(snapshot: ModuleGroup) -> None:
+    RACK_GROUPS.groups[snapshot.group_id] = ModuleGroup(
+        snapshot.group_id, snapshot.name, list(snapshot.members), list(snapshot.groups)
+    )
+
+
+def _ungroup_selection(
+    _sender: int | str = 0,
+    _app_data: object = None,
+    runtime: AppRuntime | None = None,
+    *,
+    including: int | str | None = None,
+) -> None:
+    """Dissolve the innermost group of every selected module.
+
+    What was in each goes to whatever that group was in -- an inner group
+    dissolved leaves its modules on the outer board; an outer one dissolved
+    leaves its inner groups standing on their own.
+    """
+    if _keyboard_is_captured():
+        return
+    selection = _selected_instance_ids()
+    if including is not None:
+        extra = _module_id_for_node(including)
+        if extra is not None and extra not in selection:
+            selection.append(extra)
+    group_ids: list[str] = []
+    for instance_id in selection:
+        group_id = RACK_GROUPS.group_of(instance_id)
+        if group_id is not None and group_id not in group_ids:
+            group_ids.append(group_id)
+    if not group_ids:
+        _set_patch_status("NOTHING TO UNGROUP  ·  SELECT A GROUPED MODULE FIRST")
+        return
+    snapshots = []
+    for group_id in group_ids:
+        group = RACK_GROUPS.get(group_id)
+        if group is None:
+            continue
+        parent = RACK_GROUPS.parent_of(group_id)
+        snapshots.append((ModuleGroup(group.group_id, group.name, list(group.members), list(group.groups)), parent))
+        RACK_GROUPS.dissolve(group_id)
+
+    def undo() -> None:
+        for snapshot, parent in snapshots:
+            _restore_group(snapshot)
+            parent_group = RACK_GROUPS.get(parent) if parent else None
+            if parent_group is not None:
+                for member in snapshot.members:
+                    if member in parent_group.members:
+                        parent_group.members.remove(member)
+                for child in snapshot.groups:
+                    if child in parent_group.groups:
+                        parent_group.groups.remove(child)
+                if snapshot.group_id not in parent_group.groups:
+                    parent_group.groups.append(snapshot.group_id)
+
+    def redo() -> None:
+        for snapshot, _parent in snapshots:
+            RACK_GROUPS.dissolve(snapshot.group_id)
+
+    _record_edit(f"UNGROUP {len(snapshots)}", undo=undo, redo=redo)
+    _refresh_rack_outline_if_present(runtime)
+    _set_patch_status(f"UNGROUPED  ·  {len(snapshots)} {'GROUP' if len(snapshots) == 1 else 'GROUPS'}")
+
+
+def _release_from_group(node: int | str, runtime: AppRuntime | None = None) -> None:
+    """Take one module out of its group, leaving the group standing."""
+    instance_id = _module_id_for_node(node)
+    if instance_id is None:
+        return
+    group_id = RACK_GROUPS.group_of(instance_id)
+    if group_id is None:
+        _set_patch_status("NOT IN A GROUP")
+        return
+    group = RACK_GROUPS.get(group_id)
+    snapshot = ModuleGroup(group.group_id, group.name, list(group.members), list(group.groups))
+    RACK_GROUPS.release(instance_id)
+
+    def undo() -> None:
+        _restore_group(snapshot)
+
+    def redo() -> None:
+        RACK_GROUPS.release(instance_id)
+
+    _record_edit(f"TAKE {instance_id.upper()} OUT OF {snapshot.name}", undo=undo, redo=redo)
+    _refresh_rack_outline_if_present(runtime)
+    _set_patch_status(f"{instance_id.upper()} OUT OF {snapshot.name}")
+
+
+def _refresh_rack_outline_if_present(runtime: AppRuntime | None) -> None:
+    if runtime is not None and dpg.does_item_exist(RACK_OUTLINE_BODY):
+        _refresh_rack_outline(runtime)
+
+
+def _group_shortcut(_sender: int | str, _app_data: object, runtime: AppRuntime) -> None:
+    """Command-G groups the selection; with Shift, ungroups it."""
+    if _keyboard_is_captured():
+        return
+    if not (dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl)):
+        return
+    if dpg.is_key_down(dpg.mvKey_ModShift):
+        _ungroup_selection(0, None, runtime)
+    else:
+        _group_selection(0, None, runtime)
+
+
+def _grouped_nodes() -> dict[str, int | str]:
+    """instance id -> node, for every module in any group."""
+    nodes: dict[str, int | str] = {}
+    for group in RACK_GROUPS:
+        for instance_id in group.members:
+            node = INSTANCE_NODE_TAGS.get(instance_id)
+            if node is not None and dpg.does_item_exist(node):
+                nodes[instance_id] = node
+    return nodes
+
+
+def _move_alone_held() -> bool:
+    """Option held: a grouped module dragged moves on its own."""
+    return dpg.is_key_down(dpg.mvKey_LAlt) or dpg.is_key_down(dpg.mvKey_RAlt) or dpg.is_key_down(dpg.mvKey_ModAlt)
+
+
+def _follow_groups() -> None:
+    """Carry a dragged module's group along with it.
+
+    Dear PyGui moves the dragged module itself; the module's companions --
+    everything in its innermost group, at any depth -- are moved here by the
+    same amount, each frame, unless the editor already moved them (they were
+    selected too) or Option is held, which drags one module alone. Pans and
+    tidies move everything or nothing by themselves, and are left alone: the
+    positions are just re-read.
+    """
+    nodes = _grouped_nodes()
+    if not nodes:
+        GROUP_LAST_POSITIONS.clear()
+        return
+    current: dict[int | str, tuple[float, float]] = {}
+    for node in nodes.values():
+        try:
+            x, y = dpg.get_item_pos(node)
+        except (KeyError, SystemError):
+            continue
+        current[node] = (float(x), float(y))
+    # Evidence, not inference: the grouped modules that moved this frame while
+    # the button is down were moved by the editor -- the one under the pointer,
+    # and any that were selected with it. Their companions get the same delta.
+    moved = {
+        node: (position[0] - GROUP_LAST_POSITIONS[node][0], position[1] - GROUP_LAST_POSITIONS[node][1])
+        for node, position in current.items()
+        if node in GROUP_LAST_POSITIONS and position != GROUP_LAST_POSITIONS[node]
+    }
+    interaction = CANVAS_INTERACTION
+    carrying = (
+        bool(moved)
+        and dpg.is_mouse_button_down(dpg.mvMouseButton_Left)
+        and not GROUP_DRAG
+        and not interaction.panning
+        and not TIDY_TARGETS
+        and not _move_alone_held()
+        and interaction.recenter_x.settled
+        and interaction.recenter_y.settled
+        and interaction.zoom_spring.settled
+        and math.isclose(interaction.zoom, interaction.zoom_target, abs_tol=1e-6)
+    )
+    if carrying:
+        node_ids = {node: instance_id for instance_id, node in nodes.items()}
+        shifted: set[int | str] = set()
+        for node, (delta_x, delta_y) in moved.items():
+            instance_id = node_ids.get(node)
+            if instance_id is None:
+                continue
+            for companion in RACK_GROUPS.companions(instance_id):
+                mate = nodes.get(companion)
+                if mate is None or mate in moved or mate in shifted or mate not in current:
+                    continue
+                x, y = current[mate]
+                dpg.set_item_pos(mate, [x + delta_x, y + delta_y])
+                current[mate] = (x + delta_x, y + delta_y)
+                shifted.add(mate)
+    GROUP_LAST_POSITIONS.clear()
+    GROUP_LAST_POSITIONS.update(current)
+
+
+def _drag_group() -> None:
+    """A group taken by its name: every module in it moves with the pointer."""
+    if not GROUP_DRAG:
+        return
+    group_id, last_x, last_y = GROUP_DRAG
+    mouse_x, mouse_y = (float(v) for v in dpg.get_mouse_pos(local=False))
+    delta_x, delta_y = mouse_x - last_x, mouse_y - last_y
+    if not delta_x and not delta_y:
+        return
+    GROUP_DRAG[1] = mouse_x
+    GROUP_DRAG[2] = mouse_y
+    for instance_id in RACK_GROUPS.modules_in(group_id):
+        node = INSTANCE_NODE_TAGS.get(instance_id)
+        if node is None or not dpg.does_item_exist(node):
+            continue
+        x, y = dpg.get_item_pos(node)
+        dpg.set_item_pos(node, [float(x) + delta_x, float(y) + delta_y])
+
+
+def _group_label_at(screen_position: tuple[float, float]) -> str | None:
+    x, y = screen_position
+    for group_id, (left, top, right, bottom) in GROUP_LABEL_BOXES.items():
+        if left <= x <= right and top <= y <= bottom:
+            return group_id
+    return None
+
+
+def _group_depth(group_id: str) -> int:
+    """How many groups are inside this one at most, in a line: 0 for a group of modules only."""
+    group = RACK_GROUPS.get(group_id)
+    if group is None or not group.groups:
+        return 0
+    return 1 + max(_group_depth(child) for child in group.groups)
+
+
+def _refresh_group_outlines() -> None:
+    """Draw every group: a soft line round its modules and its name.
+
+    On a layer over the rack, clipped to the editor. Nested groups stand
+    further out the more they hold, so a board on a board reads as one.
+    """
+    if not dpg.does_item_exist(GROUP_LAYER):
+        dpg.add_viewport_drawlist(tag=GROUP_LAYER, front=True)
+    dpg.delete_item(GROUP_LAYER, children_only=True)
+    GROUP_LABEL_BOXES.clear()
+    if not len(RACK_GROUPS):
+        return
+    rect = _rack_screen_rect()
+    if rect is None:
+        return
+    left, top, right, bottom = rect
+    hovered = _group_label_at(tuple(float(v) for v in dpg.get_mouse_pos(local=False))) if not GROUP_DRAG else GROUP_DRAG[0]
+    for group in RACK_GROUPS:
+        boxes = []
+        for instance_id in RACK_GROUPS.modules_in(group.group_id):
+            node = INSTANCE_NODE_TAGS.get(instance_id)
+            if node is None or not dpg.does_item_exist(node):
+                continue
+            try:
+                x0, y0 = (float(v) for v in dpg.get_item_rect_min(node))
+                x1, y1 = (float(v) for v in dpg.get_item_rect_max(node))
+            except (KeyError, SystemError):
+                continue
+            if x1 > x0 and y1 > y0:
+                boxes.append((x0 - 6.0, y0 - 3.0, x1 + 6.0, y1 + 4.0))
+        if not boxes:
+            continue
+        pad = GROUP_PAD + GROUP_NEST_PAD * _group_depth(group.group_id)
+        gx0 = min(b[0] for b in boxes) - pad
+        gy0 = min(b[1] for b in boxes) - pad - 14.0
+        gx1 = max(b[2] for b in boxes) + pad
+        gy1 = max(b[3] for b in boxes) + pad
+        if gx1 < left or gx0 > right or gy1 < top or gy0 > bottom:
+            continue
+        lit = hovered == group.group_id
+        line = (*GROUP_COLOR, 200 if lit else 110)
+        dpg.draw_rectangle(
+            (max(left, gx0), max(top, gy0)), (min(right, gx1), min(bottom, gy1)),
+            color=line, thickness=1.5 if lit else 1.0, rounding=10.0, parent=GROUP_LAYER,
+        )
+        label_x, label_y = gx0 + 10.0, gy0 + 3.0
+        label_w = len(group.name) * 7.0 + 8.0
+        if label_x + label_w <= right and label_y + 16.0 <= bottom and label_x >= left and label_y >= top:
+            dpg.draw_rectangle(
+                (label_x - 4.0, label_y - 1.0), (label_x + label_w - 4.0, label_y + 15.0),
+                fill=(*GROUP_COLOR, 60 if lit else 34), color=(0, 0, 0, 0), rounding=4.0, parent=GROUP_LAYER,
+            )
+            dpg.draw_text(
+                (label_x, label_y), group.name, size=12,
+                color=(*GROUP_COLOR, 255 if lit else 210), parent=GROUP_LAYER,
+            )
+            GROUP_LABEL_BOXES[group.group_id] = (label_x - 4.0, label_y - 1.0, label_x + label_w - 4.0, label_y + 15.0)
+
+
 SELECTION_LAYER = "noodler.selection_layer"
 SELECTION_COLOR = (211, 145, 57)
 """Amber, the marquee's colour: a selected module wears the same."""
@@ -3035,15 +3394,16 @@ def _refresh_frame(
         _refresh_ui(runtime, dt)
         _refresh_transport_button(runtime)
         _refresh_jack_activity(runtime)
+        _follow_groups()
         _refresh_console_cables(runtime)
         _refresh_console_toggles()
+        _refresh_group_outlines()
         _refresh_selection()
         _show_export_messages()
         _refresh_outline_parameters()
         _refresh_outline_links()
         _refresh_knob_hover()
         _refresh_window_title_if_changed()
-        _refresh_module_close_buttons()
     except Exception as exc:  # noqa: BLE001 - the heartbeat must not stop
         # One bad frame must not take the interface with it: everything that
         # moves -- scroll-to-pan, glide, the springs, the meters -- runs from
@@ -4141,6 +4501,19 @@ def _add_module_context_menu(node: int | str, runtime: AppRuntime) -> None:
         )
         dpg.add_separator()
         dpg.add_menu_item(
+            label="Group with selection",
+            callback=lambda: _group_selection(0, None, runtime, including=node),
+        )
+        dpg.add_menu_item(
+            label="Take out of its group",
+            callback=lambda: _release_from_group(node, runtime),
+        )
+        dpg.add_menu_item(
+            label="Ungroup",
+            callback=lambda: _ungroup_selection(0, None, runtime, including=node),
+        )
+        dpg.add_separator()
+        dpg.add_menu_item(
             label="Remove",
             callback=lambda: _remove_module_node(node, runtime),
         )
@@ -4216,92 +4589,17 @@ def _module_title_height() -> float:
     return max(24.0, min(44.0, 32.0 * CANVAS_INTERACTION.zoom))
 
 
-def _module_close_bounds(
-    node: int | str,
-) -> tuple[float, float, float, float] | None:
-    """Return the screen-space close target at a module title's right edge."""
-    if (
-        _is_pinned(node)
-        or MODULE_COLLAPSE.is_collapsed(node)
-        or not dpg.does_item_exist(node)
-    ):
-        return None
-    try:
-        minimum_x, minimum_y = dpg.get_item_rect_min(node)
-        maximum_x, maximum_y = dpg.get_item_rect_max(node)
-    except (KeyError, SystemError):
-        return None
-    title_height = min(maximum_y - minimum_y, _module_title_height())
-    size = max(14.0, min(20.0, title_height - 8.0))
-    right = maximum_x - 5.0
-    left = right - size
-    top = minimum_y + max(3.0, (title_height - size) * 0.5)
-    bottom = top + size
-    rack = _rack_screen_rect()
-    if rack is not None:
-        rack_left, rack_top, rack_right, rack_bottom = rack
-        if (
-            left < rack_left
-            or top < rack_top
-            or right > rack_right
-            or bottom > rack_bottom
-        ):
-            return None
-    return (left, top, right, bottom)
-
-
 def _module_close_at(
-    screen_position: tuple[float, float],
+    _screen_position: tuple[float, float],
 ) -> int | str | None:
-    mouse_x, mouse_y = screen_position
-    for node in reversed(RACK_NODES):
-        bounds = _module_close_bounds(node)
-        if bounds is None:
-            continue
-        left, top, right, bottom = bounds
-        if left <= mouse_x <= right and top <= mouse_y <= bottom:
-            return node
+    """There is no close target on a module any more.
+
+    The x in the title bar was one of two ways to remove a module that were
+    not the menu, and a thing to hit by accident while reaching for the title.
+    Removal is the context menu's, the Edit menu's, and the Delete key's. The
+    press handler still asks, and is always told no.
+    """
     return None
-
-
-def _refresh_module_close_buttons() -> None:
-    """Draw title-bar close affordances without changing node contents."""
-    if not dpg.does_item_exist(MODULE_CLOSE_LAYER):
-        return
-    dpg.delete_item(MODULE_CLOSE_LAYER, children_only=True)
-    mouse_position = tuple(dpg.get_mouse_pos(local=False))
-    hovered_node = _module_close_at(mouse_position)
-    for node in RACK_NODES:
-        bounds = _module_close_bounds(node)
-        if bounds is None:
-            continue
-        left, top, right, bottom = bounds
-        hovered = node == hovered_node
-        dpg.draw_rectangle(
-            (left, top),
-            (right, bottom),
-            parent=MODULE_CLOSE_LAYER,
-            color=(255, 241, 226, 155 if not hovered else 255),
-            fill=(30, 24, 22, 105) if not hovered else OUTPUT_ACCENT,
-            rounding=4.0,
-            thickness=1.0,
-        )
-        inset = max(4.0, (right - left) * 0.28)
-        line_color = (255, 246, 232, 235)
-        dpg.draw_line(
-            (left + inset, top + inset),
-            (right - inset, bottom - inset),
-            parent=MODULE_CLOSE_LAYER,
-            color=line_color,
-            thickness=1.7,
-        )
-        dpg.draw_line(
-            (right - inset, top + inset),
-            (left + inset, bottom - inset),
-            parent=MODULE_CLOSE_LAYER,
-            color=line_color,
-            thickness=1.7,
-        )
 
 
 def _module_title_at(
@@ -4881,6 +5179,19 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 callback=_unplug_all,
                 user_data=runtime,
             )
+            dpg.add_separator()
+            dpg.add_menu_item(
+                label="Group Selection",
+                shortcut="⌘G",
+                callback=_group_selection,
+                user_data=runtime,
+            )
+            dpg.add_menu_item(
+                label="Ungroup",
+                shortcut="⌘⇧G",
+                callback=_ungroup_selection,
+                user_data=runtime,
+            )
         with dpg.menu(label="Clock"):
             dpg.add_slider_float(
                 tag=CLOCK_BPM_INPUT,
@@ -5006,6 +5317,12 @@ def _begin_knob_drag(
         CANVAS_INTERACTION.press_consumed = True
         _press_console_toggle(*toggle)
         return
+    group_id = _group_label_at(mouse_position)
+    if group_id is not None:
+        # A press on a group's name takes hold of the whole group.
+        GROUP_DRAG[:] = [group_id, float(mouse_position[0]), float(mouse_position[1])]
+        RACK_CURSOR.grab()
+        return
     close_node = _module_close_at(mouse_position)
     if runtime is not None and close_node is not None:
         CANVAS_INTERACTION.press_consumed = True
@@ -5058,6 +5375,9 @@ def _drag_knob(
         _pan_rack()
         return
     knob = interaction.active_knob
+    if knob is None and GROUP_DRAG:
+        _drag_group()
+        return
     if knob is None:
         canvas = CANVAS_INTERACTION
         if canvas.press_consumed or canvas.marquee_origin is not None:
@@ -5107,6 +5427,7 @@ def _end_knob_drag(
     CANVAS_INTERACTION.marquee_origin = None
     CANVAS_INTERACTION.press_consumed = False
     CANVAS_INTERACTION.press_classified = False
+    GROUP_DRAG.clear()
     RACK_CURSOR.reset()
     if CANVAS_INTERACTION.panning:
         if CANVAS_INTERACTION.pan_moved:
@@ -5150,6 +5471,8 @@ def _unregister_rack_node(node: int | str, instance_id: str) -> None:
     """Forget every registry entry that referred to a removed module."""
     if node in RACK_NODES:
         RACK_NODES.remove(node)
+    RACK_GROUPS.forget(instance_id)
+    GROUP_LAST_POSITIONS.pop(node, None)
     INSTANCE_NODE_TAGS.pop(instance_id, None)
     VIEW_NODE_TAGS.pop(instance_id, None)
     MODULE_ACCENTS.pop(node, None)
@@ -5451,8 +5774,6 @@ def _configure_rack_theme() -> None:
 
 
 def _configure_knob_handlers(runtime: AppRuntime) -> None:
-    if not dpg.does_item_exist(MODULE_CLOSE_LAYER):
-        dpg.add_viewport_drawlist(tag=MODULE_CLOSE_LAYER, front=True)
     if dpg.does_item_exist(INPUT_HANDLERS):
         return
     with dpg.handler_registry(tag=INPUT_HANDLERS):
@@ -5488,6 +5809,7 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             (dpg.mvKey_T, _tidy_rack),
             (dpg.mvKey_L, _toggle_library_pane),
             (dpg.mvKey_Z, _undo_or_redo_rack_edit),
+            (dpg.mvKey_G, _group_shortcut),
             (dpg.mvKey_Q, _quit_shortcut),
             (dpg.mvKey_O, _open_shortcut),
             (dpg.mvKey_N, _new_shortcut),
@@ -7469,7 +7791,6 @@ def _add_module_row(
     )
     dpg.bind_item_theme(arrow, OUTLINE_ARROW_THEME)
     _add_module_link(row, runtime, instance_id, connection)
-    _add_rack_outline_remove_button(row, runtime, instance_id)
     OUTLINE_ROWS.setdefault(instance_id, []).append((arrow, details))
     return details
 
@@ -7526,34 +7847,6 @@ def _centre_node(node: int | str) -> None:
     interaction.recenter_y.snap(0.0)
     interaction.recenter_x.retarget(view_width * 0.5 - pan_x - centre_x)
     interaction.recenter_y.retarget(view_height * 0.5 - pan_y - centre_y)
-
-
-def _remove_module_from_outline(
-    _sender: int | str,
-    _app_data: object,
-    selection: tuple[AppRuntime, str],
-) -> None:
-    runtime, instance_id = selection
-    node = INSTANCE_NODE_TAGS.get(instance_id)
-    if node is not None:
-        _remove_module_node(node, runtime)
-
-
-def _add_rack_outline_remove_button(
-    parent: int | str,
-    runtime: AppRuntime,
-    instance_id: str,
-) -> None:
-    button = dpg.add_button(
-        label="×",
-        parent=parent,
-        width=22,
-        height=20,
-        callback=_remove_module_from_outline,
-        user_data=(runtime, instance_id),
-    )
-    with dpg.tooltip(button):
-        dpg.add_text(f"Remove {runtime.patch.modules[instance_id].manifest.name}")
 
 
 OUTLINE_PARAMETER_TEXTS: dict[tuple[str, str], tuple[int | str, object, tuple[str | int, ...]]] = {}
@@ -8650,6 +8943,24 @@ def _mount_preset_ui(runtime: AppRuntime, preset: PatchPreset) -> None:
                 [saved_node.position.x, saved_node.position.y],
             )
 
+    # The document's groups, less any member it no longer has a module for.
+    RACK_GROUPS.clear()
+    present = set(runtime.patch.modules)
+    saved_groups = [
+        ModuleGroup(
+            group.group_id,
+            group.name,
+            [m for m in group.members if m in present],
+            [g for g in group.groups if any(h.group_id == g for h in preset.view.groups)],
+        )
+        for group in preset.view.groups
+    ]
+    for group in GroupBook(saved_groups):
+        RACK_GROUPS.groups[group.group_id] = group
+    for group in tuple(RACK_GROUPS):
+        if len(group.members) + len(group.groups) < 2:
+            RACK_GROUPS.dissolve(group.group_id)
+
     zoom = min(
         MAX_RACK_ZOOM,
         max(MIN_RACK_ZOOM, float(preset.view.zoom)),
@@ -8732,6 +9043,10 @@ def build_ui(
         dpg.delete_item(CONSOLE_CABLES, children_only=True)
     CONSOLE_BALLISTICS.clear()
     RETURN_BALLISTICS.clear()
+    RACK_GROUPS.clear()
+    GROUP_LAST_POSITIONS.clear()
+    GROUP_LABEL_BOXES.clear()
+    GROUP_DRAG.clear()
     CANVAS_INTERACTION.reset()
     MODULE_COLLAPSE.reset()
     dpg.set_global_font_scale(1.0)

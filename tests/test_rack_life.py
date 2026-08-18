@@ -719,3 +719,74 @@ def test_new_modules_land_in_the_middle_of_the_view_and_then_beside_each_other(m
     finally:
         PENDING_PLACEMENTS.clear()
         dpg.destroy_context()
+
+
+def test_grouped_modules_move_together_and_the_group_travels_with_the_document(monkeypatch, tmp_path) -> None:
+    from noodler.app import (
+        GROUP_LAST_POSITIONS,
+        RACK,
+        RACK_GROUPS,
+        RACK_HISTORY,
+        _capture_current_preset,
+        _follow_groups,
+        _group_selection,
+        _mount_new_module,
+        _mount_preset_ui,
+        _release_from_group,
+        _ungroup_selection,
+    )
+    from noodler.preset import read_patch_preset, write_patch_preset
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        clock = _mount_new_module(runtime, "clock")
+        adsr = _mount_new_module(runtime, "adsr_envelope")
+        vco = _mount_new_module(runtime, "classic_vco")
+        ids = {node: instance for instance, node in INSTANCE_NODE_TAGS.items()}
+        selected = [dpg.get_alias_id(clock), dpg.get_alias_id(adsr)]
+        monkeypatch.setattr(dpg, "get_selected_nodes", lambda editor: selected)
+        _group_selection(0, None, runtime)
+        assert len(RACK_GROUPS) == 1
+        group = next(iter(RACK_GROUPS))
+        assert set(group.members) == {ids[clock], ids[adsr]}
+
+        # The editor moves the clock; its companion goes with it, the vco stays.
+        dpg.set_item_pos(clock, [100.0, 100.0]); dpg.set_item_pos(adsr, [400.0, 120.0]); dpg.set_item_pos(vco, [700.0, 50.0])
+        monkeypatch.setattr(dpg, "is_mouse_button_down", lambda button: True)
+        _follow_groups()  # baseline
+        dpg.set_item_pos(clock, [130.0, 110.0])
+        _follow_groups()
+        assert [round(v) for v in dpg.get_item_pos(adsr)] == [430, 130]
+        assert [round(v) for v in dpg.get_item_pos(vco)] == [700, 50]
+        # With Option held, a grouped module moves alone.
+        monkeypatch.setattr("noodler.app._move_alone_held", lambda: True)
+        dpg.set_item_pos(clock, [150.0, 110.0])
+        _follow_groups()
+        assert [round(v) for v in dpg.get_item_pos(adsr)] == [430, 130]
+        monkeypatch.setattr("noodler.app._move_alone_held", lambda: False)
+
+        # Undo takes the group away; redo brings it back.
+        RACK_HISTORY.undo()
+        assert len(RACK_GROUPS) == 0
+        RACK_HISTORY.redo()
+        assert len(RACK_GROUPS) == 1
+
+        # Saved with the document, and read back.
+        preset = _capture_current_preset(runtime, "Grouped")
+        assert len(preset.view.groups) == 1 and set(preset.view.groups[0].members) == {ids[clock], ids[adsr]}
+        path = write_patch_preset(preset, tmp_path / "grouped.noodler")
+        again = read_patch_preset(path)
+        assert again.view.groups[0].name == group.name
+
+        # Take one out; then ungroup what is left -- one thing is not a group.
+        _release_from_group(adsr, runtime)
+        assert len(RACK_GROUPS) == 0, "a group of one is dissolved"
+        RACK_HISTORY.undo()
+        assert len(RACK_GROUPS) == 1
+        _ungroup_selection(0, None, runtime)
+        assert len(RACK_GROUPS) == 0
+    finally:
+        RACK_GROUPS.clear()
+        GROUP_LAST_POSITIONS.clear()
+        dpg.destroy_context()
