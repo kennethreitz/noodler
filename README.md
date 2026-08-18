@@ -57,9 +57,11 @@ views of the same patch. Patching an output back into something that already
 feeds it is a technique, not a mistake: a loop closes on the previous block, the
 way a real-time graph has always closed one.
 
-**The interface should feel like an instrument.** Modules sit on magnetic
-semantic rails, the rack moves as a single surface, and dense technical detail
-can fold away. The aim is legibility and touch, not an engineering debugger.
+**The interface should feel like an instrument.** Modules stay where the hand
+puts them, while an explicit **Tidy** command can read the patch and arrange its
+signal flow. The rack moves beneath a pinned mixing console, live jacks and
+cables glow with their signals, and dense technical detail can collapse away.
+The aim is legibility and touch, not an engineering debugger.
 
 **A patch is a document.** `.noodler` files are readable, versioned JSON. They
 store the modules, controls, cables, output routing, and rack view needed to
@@ -85,8 +87,9 @@ name of whatever is patched into it. Press **▶ PLAY** in the menu bar — or t
 space, or ⌘↩ — to open the audio device and start the clock; audio never starts
 on its own. Patch a send into a reverb and the reverb goes fully wet by itself,
 since the dry sound is already on the channel.
-Every output jack glows with the signal on it, and a right-click on any module
-folds it, resets it, unplugs it or removes it.
+Every output jack and cable glows with the signal on it, and a right-click on
+any module offers its local actions: collapse, duplicate, reset, unplug, or
+remove.
 
 Each strip has **M** and **S**. The sends come out of the master strip as
 jacks and come back on two **return strips** — patch **Send A** into a reverb
@@ -116,41 +119,60 @@ The left sidebar has two related views:
   graph. Expand a module to inspect its connected and open ports.
 - **Module Library** is the catalog of instruments and utilities available to
   add. It stays present beneath the rack tree so building a patch does not
-  require repeatedly opening a modal browser.
+  require repeatedly opening a modal browser. The entire pane can be collapsed
+  when the rack needs the room.
 
-The freeform rack occupies the rest of the window. Control and modulation
-modules settle onto one semantic rail; the audio path reads toward System
-Output on another. These rails organize the current role of a module without
-restricting what it may be patched into.
+The freeform rack occupies the rest of the window. Position belongs to the
+user: a module remains where it is dragged, and nothing silently snaps it back.
+Order belongs to the patch: **Tidy** is the deliberate act that reads the
+executable graph and lays its signal flow out from left to right. Panning,
+zooming, framing, and revealing new modules treat the console band as reserved
+space, so the camera does not hide modules beneath it.
 
 Every declared jack is visible by default. Modules can be dragged, removed
-with the close target in their title, or folded by double-clicking the title
-bar. A folded module becomes a narrow, sideways book spine while its DSP and
-cables continue to run.
+with the close target in their title, or collapsed by double-clicking the title
+bar. A collapsed module keeps its title and connected jacks visible while its
+open jacks and controls get out of the way. Its DSP and cables continue to run.
+
+The rack also shows what it is doing. Output jacks and cables brighten with
+their current signal, gates blink, and each console strip draws its meter around
+its level dial. Playback going dark is visible before it needs to be diagnosed.
 
 ### Rack controls
 
 | Gesture or key | Action |
 | --- | --- |
-| Background drag | Pan the rack |
-| Space + pointer movement | Pan without holding a mouse button |
-| Pinch or scroll | Smooth, pointer-anchored zoom |
+| Background drag or scroll | Pan the rack |
+| Space + drag | Pan even when the gesture begins over a module |
+| Space tap or Command-Return | Play / stop audio and the transport |
+| Pinch or − / 100% / + | Smooth, pointer-anchored zoom |
 | Shift + background drag | Box-select modules |
 | Module title drag | Move a module along the rack |
-| Module title double-click | Fold or unfold the module |
+| Module title double-click | Collapse or open the module |
+| Module right-click | Collapse, duplicate, reset, unplug, or remove it |
 | Knob drag up/down | Adjust a value; movement accelerates with speed |
-| Shift + knob drag | Fine adjustment |
+| Scroll over a knob | Turn it without moving the rack |
+| Shift + knob drag or scroll | Fine adjustment |
 | Knob double-click | Restore the parameter default |
 | Double-click a cable | Unpatch it |
 | Delete / Backspace | Remove selected cables or modules |
 | Command-K | Focus the module library |
 | Command-Z / Command-Shift-Z | Undo / redo |
+| T | Tidy the rack by signal flow |
+| L | Collapse or restore the library pane |
 | F | Frame the whole rack |
-| Escape | Close the browser or clear selection |
+| Escape | Clear the selection |
 
 `Unplug All` removes every module cable as one graph edit, so experiments remain
 easy to unwind. The master's own bus survives it: that is not a cable anyone
 patched, and it is not one anyone can pull out.
+
+Patching, unplugging, adding, duplicating, removing, resetting, and turning a
+knob all participate in the same undo history. A knob sweep is one musical
+gesture and therefore one undo—not hundreds of tiny values. The window title
+shows a dot when the patch differs from its last save; New, Open, and Quit ask
+before losing that work, and **File → Open Recent** remembers the last eight
+documents.
 
 ## Modules
 
@@ -176,9 +198,10 @@ A `.noodler` document stores:
 
 - stable provider, module-type, and instance identifiers;
 - validated module parameters;
-- directed cables, and the master's stereo taps;
-- master gain; and
-- module positions, folded state, semantic rails, and rack zoom.
+- directed cables and the master's stereo taps;
+- console levels, pan, sends, returns, mute, solo, and master gain;
+- tempo and time signature; and
+- module positions, collapsed state, and rack viewport.
 
 It intentionally does not serialize audio device handles, sample buffers,
 oscillator phase, random-generator progress, delay memory, or a running audio
@@ -189,8 +212,10 @@ The format is human-readable and friendly to source control. See the
 [example patches](examples/) for the complete shape — including a set of
 seven tone-system patches (pelog, slendro, Bohlen-Pierce, carnatic, shruti,
 19-TET, makam), every one played by PyTheory's own synthesis and tuned by a
-single Key, and a groove that follows the clock in the menu bar. They are all
-under **File → Open Example**, and the tempo travels with each document.
+single Key. **Highlife Kalimba** and **Keherwa Kalimba** add clocked arrangements:
+PyTheory drums, melodic brains, and voices share the sample clock while groove,
+sends, and tempo remain part of the document. All examples are available under
+**File → Open Example**.
 
 ## Architecture
 
@@ -270,6 +295,7 @@ do.
 - [Module interoperability](DOCS/MODULES.md)
 - [Patch graph and system audio](DOCS/AUDIO.md)
 - [Rack motion](DOCS/MOTION.md)
+- [Interaction model](DOCS/INTERACTION.md)
 - [Editing and undo](DOCS/EDITING.md)
 - [Patch file format](DOCS/PATCH_FORMAT.md)
 
