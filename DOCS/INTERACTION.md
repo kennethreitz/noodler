@@ -1,6 +1,6 @@
 # Noodler interaction model
 
-**Status:** Proposed, 2026-08-18
+**Status:** Adopted, 2026-08-18
 
 The rack does not feel loose because any one gesture is wrong. It feels loose
 because no single decision governs them. Features arrived one at a time, each
@@ -19,15 +19,19 @@ a physical surface with things on it. That gives the whole model:
 Every rule below follows from that, and everything that does not follow from it
 should go.
 
-## What is wrong today
+## What was wrong
 
 **Three ways to pan.** Background drag, Space with movement, Space with a drag.
 Each was added to work around the previous one fighting the node editor's box
-selection. They now all work, which is three answers to one question.
+selection. Dragging pans, and Space is the modifier that lets the same drag
+start from over a module rather than only from empty background — one gesture
+and one modifier, rather than three answers to one question.
 
-**Two module browsers.** The empty rack shows an inline pane; the starter rack
-opens a 620×700 modal. Same tag, two experiences, and code throughout that has
-to ask which one it is looking at.
+**Two module browsers.** The empty rack showed an inline pane; the starter rack
+opened a 620×700 modal, under the same tag, with code throughout asking which
+one it was looking at. The modal is gone. Because the library is a pane beside
+the rack rather than a dialog over it, Escape has nothing to close and simply
+clears the selection.
 
 **Layout has no owner.** Rails snap Y, make room in X, and TIDY packs. Between
 them the user gets neither freedom nor order: a module can be placed but not
@@ -35,8 +39,10 @@ kept, arranged but not trusted. This has now been through both extremes —
 free placement that drifts, and packing that refuses a drag — because the
 question "who owns position" was never answered.
 
-**The status bar is a cheat sheet.** It lists eleven gestures because eleven
-gestures exist. It is the symptom, not the problem.
+**The status bar was a cheat sheet.** It listed eleven gestures because eleven
+gestures existed, and ran off the edge of the window. Actions and the keys that
+reach them now live in the View and Edit menus, where they can be read on
+purpose; the status line is for what just happened.
 
 ## The model
 
@@ -57,13 +63,12 @@ gestures exist. It is the symptom, not the problem.
 or a menu — not all three. The status bar should say what just happened or what
 is in hand, not what is possible.
 
-## What this costs
+## Where the rack starts
 
-Removals, mostly: the modal browser, the duplicate toolbar path, one of the pan
-routes, and roughly half the status bar. The parts worth keeping are the parts
-that already answer to the model — module panels derived from the parameter
-schema, the library pane, patch documents, undo, and the motion layer, which is
-the one piece already built to a single rule.
+Start-up positions were chosen before anything was laid out, against a window
+whose size was not yet known, so a coordinate that fitted one machine put the
+system output past the edge of another. The rack is now centred on the first
+frame the viewport is real — once, so it never fights the user afterwards.
 
 ## What this is not
 

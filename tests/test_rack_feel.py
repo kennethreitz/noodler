@@ -43,7 +43,6 @@ from noodler.app import (
     _remove_module_node,
     _reveal_node,
     _settle_rack_rails,
-    _settle_space_pan,
     _tidy_rack,
     _module_depths,
     _settle_recenter,
@@ -306,7 +305,7 @@ def test_delete_is_ignored_while_the_module_browser_is_open(monkeypatch) -> None
     dpg.create_context()
     try:
         runtime = build_ui(starter_patch=True)
-        dpg.show_item(MODULE_SELECTOR)
+        monkeypatch.setattr("noodler.app._keyboard_is_captured", lambda: True)
         monkeypatch.setattr(dpg, "get_selected_links", lambda _rack: [])
         monkeypatch.setattr(
             dpg, "get_selected_nodes", lambda _rack: [dpg.get_alias_id(VCO_NODE)]
@@ -333,20 +332,21 @@ def test_delete_with_an_empty_selection_says_so(monkeypatch) -> None:
         dpg.destroy_context()
 
 
-def test_escape_closes_the_browser_before_clearing_the_selection() -> None:
+def test_escape_clears_the_selection(monkeypatch) -> None:
     dpg.create_context()
     try:
-        runtime = build_ui(starter_patch=True)
-        dpg.show_item(MODULE_SELECTOR)
+        runtime = build_ui()
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            "noodler.app._clear_rack_selection", lambda: cleared.append(1)
+        )
 
         _dismiss_rack_focus("test", None, runtime)
-        assert not dpg.is_item_shown(MODULE_SELECTOR)
 
-        _dismiss_rack_focus("test", None, runtime)
-        assert dpg.get_value(CONTROL_STATUS) == DEFAULT_CONTROL_STATUS
+        assert cleared == [1]
+        assert dpg.is_item_shown(MODULE_SELECTOR), "the library is not a dialog"
     finally:
         dpg.destroy_context()
-
 
 def test_double_clicking_a_control_restores_its_default(monkeypatch) -> None:
     dpg.create_context()
@@ -639,107 +639,10 @@ def test_closing_a_module_does_not_slide_into_a_pan(monkeypatch) -> None:
         dpg.destroy_context()
 
 
-def _hold_space(monkeypatch, pointer, *, button_down: bool = False) -> None:
-    monkeypatch.setattr(
-        dpg, "get_mouse_pos", lambda *, local=False: tuple(pointer)
-    )
-    monkeypatch.setattr(
-        dpg, "is_key_down", lambda key: key == dpg.mvKey_Spacebar
-    )
-    monkeypatch.setattr(dpg, "is_mouse_button_down", lambda _button: button_down)
-    monkeypatch.setattr("noodler.app._mouse_is_over_rack", lambda: True)
-    monkeypatch.setattr("noodler.app._keyboard_is_captured", lambda: False)
 
 
-def test_space_and_movement_pans_with_no_button_held(monkeypatch) -> None:
-    """A held button is what hands the gesture to the editor's box select."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        pointer = [300.0, 240.0]
-        _hold_space(monkeypatch, pointer)
-        start = tuple(dpg.get_item_pos(VCO_NODE))
-
-        _settle_space_pan()  # the frame Space goes down only takes a bearing
-        assert CANVAS_INTERACTION.space_panning is True
-        assert tuple(dpg.get_item_pos(VCO_NODE)) == start
-
-        for step in ((360.0, 270.0), (420.0, 300.0)):
-            pointer[0], pointer[1] = step
-            _settle_space_pan()
-
-        moved = tuple(dpg.get_item_pos(VCO_NODE))
-        assert moved[0] - start[0] == pytest.approx(120.0)
-        assert moved[1] - start[1] == pytest.approx(60.0)
-        assert CANVAS_INTERACTION.panning is False, "no button was ever down"
-    finally:
-        dpg.destroy_context()
 
 
-def test_releasing_space_leaves_the_rack_gliding(monkeypatch) -> None:
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        pointer = [300.0, 240.0]
-        _hold_space(monkeypatch, pointer)
-        _settle_space_pan()
-        monkeypatch.setattr("noodler.app.clamp_timestep", lambda _dt: 1.0 / 60.0)
-        for step in ((340.0, 240.0), (380.0, 240.0), (420.0, 240.0)):
-            pointer[0], pointer[1] = step
-            _settle_space_pan()
-
-        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
-        _settle_space_pan()
-
-        assert CANVAS_INTERACTION.space_panning is False
-        assert CANVAS_INTERACTION.glide_x.moving
-    finally:
-        dpg.destroy_context()
-
-
-def test_a_pure_space_pan_keeps_the_selection(monkeypatch) -> None:
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        pointer = [300.0, 240.0]
-        cleared: list[bool] = []
-        monkeypatch.setattr(
-            "noodler.app._clear_rack_selection", lambda: cleared.append(True)
-        )
-
-        _hold_space(monkeypatch, pointer, button_down=False)
-        _settle_space_pan()
-        pointer[0] = 360.0
-        _settle_space_pan()
-        assert cleared == [], "moving the view must not drop a selection"
-
-        # A stray press would let the editor box-select invisibly.
-        _hold_space(monkeypatch, pointer, button_down=True)
-        pointer[0] = 400.0
-        _settle_space_pan()
-        assert cleared == [True]
-    finally:
-        dpg.destroy_context()
-
-
-def test_space_does_not_pan_while_a_text_field_is_open(monkeypatch) -> None:
-    """Space is a character before it is a gesture."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        pointer = [300.0, 240.0]
-        _hold_space(monkeypatch, pointer)
-        monkeypatch.setattr("noodler.app._keyboard_is_captured", lambda: True)
-        start = tuple(dpg.get_item_pos(VCO_NODE))
-
-        _settle_space_pan()
-        pointer[0] = 400.0
-        _settle_space_pan()
-
-        assert CANVAS_INTERACTION.space_panning is False
-        assert tuple(dpg.get_item_pos(VCO_NODE)) == start
-    finally:
-        dpg.destroy_context()
 
 
 class _RecordingCursor:
@@ -753,28 +656,6 @@ class _RecordingCursor:
     def reset(self) -> bool:
         self.events.append("reset")
         return True
-
-
-def test_a_space_pan_takes_the_pointer_and_gives_it_back(monkeypatch) -> None:
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        cursor = _RecordingCursor()
-        monkeypatch.setattr("noodler.app.RACK_CURSOR", cursor)
-        pointer = [300.0, 240.0]
-        _hold_space(monkeypatch, pointer)
-
-        _settle_space_pan()
-        assert cursor.events == ["grab"]
-        pointer[0] = 360.0
-        _settle_space_pan()
-        assert cursor.events == ["grab", "grab"], "held gestures re-assert"
-
-        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
-        _settle_space_pan()
-        assert cursor.events[-1] == "reset"
-    finally:
-        dpg.destroy_context()
 
 
 def test_a_background_drag_also_takes_the_pointer(monkeypatch) -> None:
@@ -800,21 +681,6 @@ def test_a_background_drag_also_takes_the_pointer(monkeypatch) -> None:
     finally:
         dpg.destroy_context()
 
-
-def test_a_stray_release_does_not_steal_the_pointer_back(monkeypatch) -> None:
-    """Space still holds the gesture, so a button release must leave it alone."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        cursor = _RecordingCursor()
-        monkeypatch.setattr("noodler.app.RACK_CURSOR", cursor)
-        CANVAS_INTERACTION.space_panning = True
-
-        _end_knob_drag("test", None, KNOB_INTERACTION)
-
-        assert "reset" not in cursor.events
-    finally:
-        dpg.destroy_context()
 
 
 def test_tidy_orders_a_rail_by_the_way_signal_flows() -> None:
@@ -922,19 +788,17 @@ def test_space_and_a_click_drag_pans_rather_than_selects(monkeypatch) -> None:
         )
         start = tuple(dpg.get_item_pos(VCO_NODE))
 
-        _settle_space_pan()
         _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
         assert CANVAS_INTERACTION.panning is True
 
         for step in ((360.0, 280.0), (430.0, 310.0)):
             pointer[0], pointer[1] = step
-            _settle_space_pan()
             _begin_knob_drag("test", None, (KNOB_INTERACTION, runtime))
             _drag_knob("test", None, KNOB_INTERACTION)
 
         moved = tuple(dpg.get_item_pos(VCO_NODE))
         assert moved[0] - start[0] == pytest.approx(130.0)
         assert moved[1] - start[1] == pytest.approx(70.0)
-        assert len(cleared) >= 3, "the editor keeps trying to select; keep clearing"
+        assert cleared, "the editor keeps trying to select; keep clearing"
     finally:
         dpg.destroy_context()

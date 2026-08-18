@@ -227,12 +227,15 @@ SIGNAL_COLORS = {
     "trigger": (221, 111, 82, 255),
     "musical": (163, 126, 205, 255),
 }
-DEFAULT_CONTROL_STATUS = (
-    "DRAG JACKS TO PATCH  ·  DRAG MODULES SIDEWAYS TO REORDER  ·  "
-    "T = TIDY  ·  F = FRAME ALL  ·  L = LIBRARY  ·  ⌘Z = UNDO  ·  "
-    "⌘K = ADD MODULE  ·  SPACE + MOVE = PAN  ·  PINCH = ZOOM  ·  "
-    "SELECT + DELETE TO REMOVE  ·  DOUBLE-CLICK KNOB = RESET"
-)
+DEFAULT_CONTROL_STATUS = "DRAG JACKS TO PATCH  ·  ⌘K ADD MODULE  ·  ⌘Z UNDO"
+"""What the status line says when it has nothing to report.
+
+It listed eleven gestures because eleven gestures existed, which made it a
+reference card that ran off the edge of the window. Actions and the keys
+that reach them belong in the menu, where they can be read on purpose; this
+line is for what just happened.
+"""
+
 
 
 
@@ -371,8 +374,9 @@ class CanvasInteraction:
     glide_y: Glide = field(default_factory=Glide)
     pan_velocity_x: float = 0.0
     pan_velocity_y: float = 0.0
-    space_panning: bool = False
     press_consumed: bool = False
+    pending_reveal: bool = True
+    """The rack has not been put in front of the user yet."""
     """A press already answered by a one-shot control, held until release."""
     recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
     recenter_y: Spring = field(default_factory=lambda: pixel_spring(0.0))
@@ -393,7 +397,7 @@ class CanvasInteraction:
         self.rail_y.clear()
         self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
         self.press_consumed = False
-        self.space_panning = False
+        self.pending_reveal = True
         self.stop_glide()
 
     def stop_glide(self) -> None:
@@ -1283,8 +1287,8 @@ def _refresh_frame(
     # motion rather than teleporting it.
     dt = clamp_timestep(dpg.get_delta_time())
     _release_stale_key_latches()
+    _reveal_rack_once()
     _settle_library_layout()
-    _settle_space_pan()
     _consume_macos_magnification()
     _glide_rack(dt)
     _settle_recenter(dt)
@@ -1760,6 +1764,34 @@ def _frame_rack(
     _set_patch_status("FRAMED THE RACK  ·  PRESS F ANY TIME")
 
 
+def _reveal_rack_once() -> None:
+    """Centre the rack the first frame the window is big enough to know how.
+
+    Start-up positions are chosen before anything is laid out, against a window
+    whose size is not known yet, so a coordinate that fits one machine puts the
+    system output past the edge of another. Rather than tune the number, wait
+    until the viewport is real and put the rack in the middle of it — once, so
+    it never fights the user afterwards.
+    """
+    interaction = CANVAS_INTERACTION
+    if not interaction.pending_reveal or not dpg.does_item_exist(RACK):
+        return
+    view_width, view_height = (
+        float(value) for value in dpg.get_item_rect_size(RACK)
+    )
+    if view_width <= 1.0 or view_height <= 1.0:
+        return
+    bounds = _rack_content_bounds()
+    interaction.pending_reveal = False
+    if bounds is None:
+        return
+    minimum_x, minimum_y, maximum_x, maximum_y = bounds
+    _translate_rack(
+        view_width * 0.5 - (minimum_x + maximum_x) * 0.5,
+        view_height * 0.5 - (minimum_y + maximum_y) * 0.5,
+    )
+
+
 def _reveal_node(node: int | str) -> bool:
     """Bring one module into view if it arrived outside the window.
 
@@ -1975,7 +2007,6 @@ def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
     """Spring modules onto semantic lanes and prevent horizontal overlap."""
     if (
         CANVAS_INTERACTION.panning
-        or CANVAS_INTERACTION.space_panning
         or not CANVAS_INTERACTION.rail_y
     ):
         return
@@ -2474,10 +2505,8 @@ def _show_knob_hints(visible: bool) -> None:
 
 
 def _library_pane_is_inline() -> bool:
-    """Report whether the browser is the side pane rather than the dialog."""
-    return dpg.does_item_exist(MODULE_SELECTOR) and not dpg.get_item_type(
-        MODULE_SELECTOR
-    ).endswith("mvWindowAppItem")
+    """Report whether this rack has a library pane at all."""
+    return dpg.does_item_exist(MODULE_SELECTOR)
 
 
 def _set_library_pane(visible: bool) -> None:
@@ -2628,6 +2657,29 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 callback=_toggle_library_pane,
                 user_data=runtime,
             )
+        with dpg.menu(label="Edit"):
+            dpg.add_menu_item(
+                label="Undo",
+                shortcut="⌘Z",
+                callback=lambda: _apply_history(False),
+            )
+            dpg.add_menu_item(
+                label="Redo",
+                shortcut="⌘⇧Z",
+                callback=lambda: _apply_history(True),
+            )
+            dpg.add_separator()
+            dpg.add_menu_item(
+                label="Remove Selected",
+                shortcut="⌫",
+                callback=_delete_rack_selection,
+                user_data=runtime,
+            )
+            dpg.add_menu_item(
+                label="Unplug All",
+                callback=_unplug_all,
+                user_data=runtime,
+            )
 
 
 def _settle_library_layout() -> None:
@@ -2648,47 +2700,6 @@ def _settle_library_layout() -> None:
         dpg.configure_item(RACK_OUTLINE_BODY, height=wanted)
 
 
-def _settle_space_pan() -> None:
-    """Pan by moving the pointer while Space is held, with no button down.
-
-    A held button is what makes the node editor claim a background drag for box
-    selection, so the modifier-only form never has to fight it — and it matches
-    the hand-tool reach people already have from other canvas tools.
-    """
-    interaction = CANVAS_INTERACTION
-    holding = (
-        dpg.is_key_down(dpg.mvKey_Spacebar)
-        and not _keyboard_is_captured()
-        and _mouse_is_over_rack()
-    )
-    if not holding:
-        if interaction.space_panning:
-            interaction.space_panning = False
-            RACK_CURSOR.reset()
-            _release_pan_momentum()
-            _set_patch_status(DEFAULT_CONTROL_STATUS)
-        return
-    RACK_CURSOR.grab()
-    if not interaction.space_panning:
-        interaction.space_panning = True
-        interaction.stop_glide()
-        mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
-        interaction.last_mouse_x = float(mouse_x)
-        interaction.last_mouse_y = float(mouse_y)
-        _set_patch_status("PANNING  ·  MOVE OR DRAG TO PLACE VIEW")
-        return
-    if interaction.panning:
-        # A button is down and the drag handler is already moving the rack.
-        # Keep clearing the selection the editor keeps trying to make.
-        _clear_rack_selection()
-        return
-    # A selection survives a pure space pan; only a button press, which the
-    # editor would answer with a box select, has to clear it.
-    _pan_rack(
-        clear_selection=dpg.is_mouse_button_down(dpg.mvMouseButton_Left)
-    )
-
-
 def _release_pan_momentum() -> None:
     """Hand the pointer velocity measured during a pan to the glide."""
     interaction = CANVAS_INTERACTION
@@ -2701,7 +2712,7 @@ def _release_pan_momentum() -> None:
 def _glide_rack(dt: float = 1.0 / 60.0) -> None:
     """Carry a flicked rack to rest instead of stopping it dead."""
     interaction = CANVAS_INTERACTION
-    if interaction.panning or interaction.space_panning:
+    if interaction.panning:
         return
     _translate_rack(
         interaction.glide_x.advance(dt),
@@ -2736,9 +2747,9 @@ def _begin_knob_drag(
         _remove_module_node(close_node, runtime)
         return
     if dpg.is_key_down(dpg.mvKey_Spacebar) and _mouse_is_over_rack():
-        # Space and a drag is the reach people already have. Panning claims the
-        # press so the editor cannot spend it on a selection, and it works from
-        # over a module as well as from the background.
+        # Dragging pans. Space is not a second way to pan: it is the modifier
+        # that lets the same drag start from over a module rather than only
+        # from empty background.
         CANVAS_INTERACTION.arm_pan(mouse_position)
         _begin_canvas_pan(mouse_position)
         return
@@ -2830,8 +2841,7 @@ def _end_knob_drag(
 ) -> None:
     _show_box_selector(False)
     CANVAS_INTERACTION.press_consumed = False
-    if not CANVAS_INTERACTION.space_panning:
-        RACK_CURSOR.reset()
+    RACK_CURSOR.reset()
     if CANVAS_INTERACTION.panning:
         _clear_rack_selection()
         _release_pan_momentum()
@@ -2998,10 +3008,6 @@ def _keyboard_is_captured() -> bool:
         SAVE_PATCH_DIALOG
     ):
         return True
-    if not dpg.does_item_exist(MODULE_SELECTOR):
-        return False
-    if dpg.get_item_type(MODULE_SELECTOR).endswith("mvWindowAppItem"):
-        return dpg.is_item_shown(MODULE_SELECTOR)
     return dpg.does_item_exist(MODULE_SELECTOR_SEARCH) and (
         dpg.is_item_active(MODULE_SELECTOR_SEARCH)
         or dpg.is_item_focused(MODULE_SELECTOR_SEARCH)
@@ -3063,7 +3069,11 @@ def _undo_or_redo_rack_edit(
         dpg.is_key_down(dpg.mvKey_ModSuper) or dpg.is_key_down(dpg.mvKey_ModCtrl)
     ):
         return
-    forward = dpg.is_key_down(dpg.mvKey_ModShift)
+    _apply_history(dpg.is_key_down(dpg.mvKey_ModShift))
+
+
+def _apply_history(forward: bool) -> None:
+    """Step the rack back or forward through its reversible edits."""
     verb = "REDO" if forward else "UNDO"
     try:
         edit = RACK_HISTORY.redo() if forward else RACK_HISTORY.undo()
@@ -4742,6 +4752,9 @@ def _show_module_selector(
     _app_data: object,
     _user_data: object,
 ) -> None:
+    if not dpg.does_item_exist(MODULE_SELECTOR_SEARCH):
+        _set_patch_status("THIS RACK HAS NO LIBRARY PANE")
+        return
     dpg.set_value(MODULE_SELECTOR_SEARCH, "")
     _filter_module_selector("", "", None)
     dpg.show_item(MODULE_SELECTOR)
@@ -4834,42 +4847,6 @@ def _build_module_library(runtime: AppRuntime) -> None:
                         ):
                             for manifest in manifests:
                                 _add_module_library_entry(runtime, manifest)
-
-
-def _build_module_selector(runtime: AppRuntime) -> None:
-    with dpg.window(
-        tag=MODULE_SELECTOR,
-        label="Add a Module",
-        show=False,
-        modal=True,
-        width=620,
-        height=700,
-        no_collapse=True,
-    ):
-        dpg.add_input_text(
-            tag=MODULE_SELECTOR_SEARCH,
-            hint="Search oscillators, filters, PyTheory…",
-            callback=_filter_module_selector,
-            width=-1,
-        )
-        dpg.add_text(
-            f"{len(BUILTIN_PROVIDER_MANIFEST.modules)} MODULES",
-            tag=MODULE_SELECTOR_STATUS,
-            color=MUTED_TEXT,
-        )
-        with dpg.child_window(height=-42, border=False):
-            current_category = None
-            for manifest in BUILTIN_PROVIDER_MANIFEST.modules:
-                if manifest.category != current_category:
-                    if current_category is not None:
-                        dpg.add_separator()
-                    current_category = manifest.category
-                    dpg.add_text(current_category.upper(), color=SCALE_ACCENT)
-                _add_module_library_entry(runtime, manifest)
-        dpg.add_button(
-            label="CLOSE",
-            callback=lambda _s, _a, _u: dpg.hide_item(MODULE_SELECTOR),
-        )
 
 
 def build_runtime_from_preset(preset: PatchPreset) -> AppRuntime:
@@ -5097,13 +5074,7 @@ def _build_empty_rack_ui(
                     _add_module_spines(runtime)
         dpg.add_separator()
         dpg.add_text(
-            (
-                "ADD A MODULE TO BEGIN  ·  DRAG BACKGROUND = PAN  ·  "
-                "PINCH / SCROLL = ZOOM"
-                if module_count == 0
-                else f"LOADED  {patch_name.upper()}  ·  DRAG BACKGROUND = PAN  ·  "
-                "PINCH / SCROLL = ZOOM"
-            ),
+            DEFAULT_CONTROL_STATUS,
             tag=CONTROL_STATUS,
             color=MUTED_TEXT,
         )
@@ -5528,7 +5499,6 @@ def build_ui(
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
-    _build_module_selector(runtime)
     _configure_rack_theme()
     _configure_knob_handlers(runtime)
     return runtime

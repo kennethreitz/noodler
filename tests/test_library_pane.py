@@ -8,7 +8,6 @@ from noodler.app import (
     MODULE_LIBRARY_HEADER,
     MODULE_SELECTOR,
     MODULE_SELECTOR_SEARCH,
-    _library_pane_is_inline,
     _show_module_selector,
     _toggle_library_pane,
     build_ui,
@@ -84,20 +83,5 @@ def test_the_pane_toggle_stands_down_for_a_text_field(monkeypatch) -> None:
         _toggle_library_pane()
 
         assert dpg.is_item_shown(MODULE_SELECTOR) is True
-    finally:
-        dpg.destroy_context()
-
-
-def test_the_toggle_leaves_the_dialog_browser_alone() -> None:
-    """The starter rack browses modules in a modal, which has its own close."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        assert _library_pane_is_inline() is False
-        shown = dpg.is_item_shown(MODULE_SELECTOR)
-
-        _toggle_library_pane()
-
-        assert dpg.is_item_shown(MODULE_SELECTOR) is shown
     finally:
         dpg.destroy_context()
