@@ -180,6 +180,7 @@ AUDIO_LINK_THEME = "noodler.theme.link.audio"
 GATE_LINK_THEME = "noodler.theme.link.gate"
 MUSICAL_LINK_THEME = "noodler.theme.link.musical"
 METER_THEME = "noodler.theme.meter"
+RACK_THEME = "noodler.theme.rack"
 RACK_BOX_SELECTOR = "noodler.theme.rack.box_selector"
 BOX_SELECTOR_FILL = f"{RACK_BOX_SELECTOR}.fill"
 BOX_SELECTOR_OUTLINE = f"{RACK_BOX_SELECTOR}.outline"
@@ -222,9 +223,10 @@ SIGNAL_COLORS = {
 DEFAULT_CONTROL_STATUS = (
     "DRAG JACKS TO PATCH  ·  SELECT + DELETE TO UNPATCH OR REMOVE  ·  "
     "⌘Z = UNDO  ·  ⌘K = ADD MODULE  ·  F = FRAME ALL  ·  "
-    "DRAG BACKGROUND = PAN  ·  SHIFT + DRAG = SELECT  ·  PINCH = ZOOM  ·  "
-    "DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET"
+    "SPACE + MOVE = PAN  ·  DRAG BACKGROUND = PAN  ·  SHIFT + DRAG = SELECT  ·  "
+    "PINCH = ZOOM  ·  DOUBLE-CLICK TITLE = FOLD  ·  DOUBLE-CLICK KNOB = RESET"
 )
+
 
 KNOB_HINT_DRAG_LIMIT = 3
 MIN_RACK_ZOOM = 0.55
@@ -341,6 +343,7 @@ class CanvasInteraction:
     glide_y: Glide = field(default_factory=Glide)
     pan_velocity_x: float = 0.0
     pan_velocity_y: float = 0.0
+    space_panning: bool = False
     press_consumed: bool = False
     """A press already answered by a one-shot control, held until release."""
     recenter_x: Spring = field(default_factory=lambda: pixel_spring(0.0))
@@ -361,6 +364,8 @@ class CanvasInteraction:
         self.pending_magnification = 0.0
         self.rail_y.clear()
         self.zoom_spring = unit_spring(1.0, ZOOM_HALF_LIFE)
+        self.press_consumed = False
+        self.space_panning = False
         self.stop_glide()
 
     def stop_glide(self) -> None:
@@ -369,7 +374,6 @@ class CanvasInteraction:
         self.glide_y.stop()
         self.pan_velocity_x = 0.0
         self.pan_velocity_y = 0.0
-        self.press_consumed = False
         self.recenter_x.snap(0.0)
         self.recenter_y.snap(0.0)
         self.translate_residue_x = 0.0
@@ -573,26 +577,6 @@ def _configure_theme() -> None:
             dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 8)
             dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 7, 3)
             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
-        with dpg.theme_component(dpg.mvNodeEditor):
-            # The grid and the selection marquee belong to the editor, not to a
-            # node. Declared against mvNode they are simply never applied, which
-            # is how the default blue box survived a transparent colour.
-            for editor_color, color, tag in (
-                (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255), 0),
-                (dpg.mvNodeCol_GridLine, (43, 45, 40, 150), 0),
-                (dpg.mvNodeCol_BoxSelector, BOX_SELECTOR_HIDDEN, BOX_SELECTOR_FILL),
-                (
-                    dpg.mvNodeCol_BoxSelectorOutline,
-                    BOX_SELECTOR_HIDDEN,
-                    BOX_SELECTOR_OUTLINE,
-                ),
-            ):
-                dpg.add_theme_color(
-                    editor_color,
-                    color,
-                    tag=tag,
-                    category=dpg.mvThemeCat_Nodes,
-                )
         with dpg.theme_component(dpg.mvNode):
             for node_color, color in (
                 (dpg.mvNodeCol_NodeBackground, (38, 36, 32, 248)),
@@ -1265,6 +1249,7 @@ def _refresh_frame(
     # motion rather than teleporting it.
     dt = clamp_timestep(dpg.get_delta_time())
     _release_stale_key_latches()
+    _settle_space_pan()
     _consume_macos_magnification()
     _glide_rack(dt)
     _settle_recenter(dt)
@@ -1852,7 +1837,11 @@ def _dragged_rack_node() -> int | str | None:
 
 def _settle_rack_rails(dt: float = 1.0 / 60.0) -> None:
     """Spring modules onto semantic lanes and prevent horizontal overlap."""
-    if CANVAS_INTERACTION.panning or not CANVAS_INTERACTION.rail_y:
+    if (
+        CANVAS_INTERACTION.panning
+        or CANVAS_INTERACTION.space_panning
+        or not CANVAS_INTERACTION.rail_y
+    ):
         return
     active_node = _dragged_rack_node()
     gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
@@ -2385,9 +2374,10 @@ def _track_pan_velocity(delta_x: float, delta_y: float) -> None:
     ) * blend
 
 
-def _pan_rack() -> None:
+def _pan_rack(*, clear_selection: bool = True) -> None:
     interaction = CANVAS_INTERACTION
-    _clear_rack_selection()
+    if clear_selection:
+        _clear_rack_selection()
     mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
     delta_x = mouse_x - interaction.last_mouse_x
     delta_y = mouse_y - interaction.last_mouse_y
@@ -2395,6 +2385,40 @@ def _pan_rack() -> None:
     _track_pan_velocity(delta_x, delta_y)
     interaction.last_mouse_x = float(mouse_x)
     interaction.last_mouse_y = float(mouse_y)
+
+
+def _settle_space_pan() -> None:
+    """Pan by moving the pointer while Space is held, with no button down.
+
+    A held button is what makes the node editor claim a background drag for box
+    selection, so the modifier-only form never has to fight it — and it matches
+    the hand-tool reach people already have from other canvas tools.
+    """
+    interaction = CANVAS_INTERACTION
+    holding = (
+        dpg.is_key_down(dpg.mvKey_Spacebar)
+        and not _keyboard_is_captured()
+        and _mouse_is_over_rack()
+    )
+    if not holding:
+        if interaction.space_panning:
+            interaction.space_panning = False
+            _release_pan_momentum()
+            _set_patch_status(DEFAULT_CONTROL_STATUS)
+        return
+    if not interaction.space_panning:
+        interaction.space_panning = True
+        interaction.stop_glide()
+        mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
+        interaction.last_mouse_x = float(mouse_x)
+        interaction.last_mouse_y = float(mouse_y)
+        _set_patch_status("PANNING  ·  MOVE TO PLACE VIEW  ·  RELEASE SPACE")
+        return
+    # A selection survives a pure space pan; only a stray button press, which
+    # the editor would answer with an invisible box select, has to clear it.
+    _pan_rack(
+        clear_selection=dpg.is_mouse_button_down(dpg.mvMouseButton_Left)
+    )
 
 
 def _release_pan_momentum() -> None:
@@ -2409,7 +2433,7 @@ def _release_pan_momentum() -> None:
 def _glide_rack(dt: float = 1.0 / 60.0) -> None:
     """Carry a flicked rack to rest instead of stopping it dead."""
     interaction = CANVAS_INTERACTION
-    if interaction.panning:
+    if interaction.panning or interaction.space_panning:
         return
     _translate_rack(
         interaction.glide_x.advance(dt),
@@ -2444,8 +2468,9 @@ def _begin_knob_drag(
         _remove_module_node(close_node, runtime)
         return
     if dpg.is_key_down(dpg.mvKey_Spacebar) and _mouse_is_over_rack():
-        CANVAS_INTERACTION.arm_pan(mouse_position)
-        _begin_canvas_pan(mouse_position)
+        # Space already pans on movement alone; the button has nothing to add
+        # and would only hand the gesture to the editor's box selection.
+        CANVAS_INTERACTION.press_consumed = True
         return
     for knob, binding in reversed(tuple(interaction.bindings.items())):
         if dpg.does_item_exist(knob) and dpg.is_item_hovered(knob):
@@ -2792,6 +2817,41 @@ def _open_module_selector_shortcut(
     if not dpg.does_item_exist(MODULE_SELECTOR):
         return
     _show_module_selector(sender, app_data, runtime)
+
+
+def _configure_rack_theme() -> None:
+    """Theme the editor itself, not the nodes inside it.
+
+    The grid and the selection marquee are the editor's own colours. Declared
+    against mvNode they were simply never applied, which is how a marquee that
+    had been transparent for months kept drawing in default blue. Binding the
+    theme to the item removes the question of which component type matches.
+    """
+    if not dpg.does_item_exist(RACK_THEME):
+        with dpg.theme(tag=RACK_THEME):
+            with dpg.theme_component(dpg.mvNodeEditor):
+                for editor_color, color, tag in (
+                    (dpg.mvNodeCol_GridBackground, (22, 23, 21, 255), 0),
+                    (dpg.mvNodeCol_GridLine, (43, 45, 40, 150), 0),
+                    (
+                        dpg.mvNodeCol_BoxSelector,
+                        BOX_SELECTOR_HIDDEN,
+                        BOX_SELECTOR_FILL,
+                    ),
+                    (
+                        dpg.mvNodeCol_BoxSelectorOutline,
+                        BOX_SELECTOR_HIDDEN,
+                        BOX_SELECTOR_OUTLINE,
+                    ),
+                ):
+                    dpg.add_theme_color(
+                        editor_color,
+                        color,
+                        tag=tag,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+    if dpg.does_item_exist(RACK):
+        dpg.bind_item_theme(RACK, RACK_THEME)
 
 
 def _configure_knob_handlers(runtime: AppRuntime) -> None:
@@ -4737,6 +4797,7 @@ def _build_empty_rack_ui(
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
+    _configure_rack_theme()
     _configure_knob_handlers(runtime)
     return runtime
 
@@ -5135,6 +5196,7 @@ def build_ui(
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     _build_module_selector(runtime)
+    _configure_rack_theme()
     _configure_knob_handlers(runtime)
     return runtime
 

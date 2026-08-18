@@ -20,6 +20,7 @@ instrument was telling the user to press a key that did nothing.
 | ⌘K | open the module browser |
 | F | frame the whole rack |
 | Escape | close the browser, or clear the selection |
+| Space + pointer movement | pan the rack, with no button held |
 | Shift + background drag | box-select modules (a plain drag pans) |
 
 Both Delete and Backspace are bound, because most Mac keyboards send Backspace
@@ -27,6 +28,19 @@ for the key labelled Delete and the forward-delete key is not present at all.
 That makes the guard essential rather than defensive: `_keyboard_is_captured`
 stands the rack down while the module browser or the save-patch dialog is open,
 so typing a patch name costs a character rather than a module.
+
+### Panning without a button
+
+A held mouse button is what makes the node editor claim a background drag for
+box selection, and that claim cannot be turned off. Space therefore pans on
+pointer *movement* alone, so the gesture never competes: nothing is pressed, so
+there is nothing for the editor to answer. A plain background drag still pans
+too, with the marquee themed away, and Shift keeps box selection on the drag
+where the marquee is worth drawing.
+
+A pure space pan keeps whatever was selected. Only a stray button press during
+one clears the selection, because the editor would otherwise box-select
+invisibly underneath.
 
 ## Reversible edits
 
