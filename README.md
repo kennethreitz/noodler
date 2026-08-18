@@ -187,8 +187,10 @@ its level dial. Playback going dark is visible before it needs to be diagnosed.
 document's tempo from bar one, then a tail for the rooms to ring out — on a
 thread, with progress in the status bar. The rack outline on the left names
 every module as a link: click it and the module glides to the middle of the
-view; the arrow at the front of its row opens its parameters, kept current,
-and its ports beneath.
+view and opens; the arrow at the front of its row opens its parameters, kept
+current, and its ports beneath — and the row and the panel are one state:
+open the row and the module opens on the canvas, fold the module and its row
+folds.
 
 `Unplug All` removes every module cable as one graph edit, so experiments remain
 easy to unwind. The master's own bus survives it: that is not a cable anyone

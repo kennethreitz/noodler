@@ -4407,6 +4407,7 @@ def _set_module_collapsed(
         state.labels[node] = label
         _apply_collapse(node, runtime)
         _set_patch_status(f"COLLAPSED  {label}")
+        _sync_outline_rows_for_node(node)
         return
 
     visibility = state.attributes.pop(node, None)
@@ -4420,6 +4421,13 @@ def _set_module_collapsed(
             _set_attribute_text_shown(attribute, True)
     _refresh_patch_bays(runtime.patch)
     _set_patch_status(f"OPENED  {label}")
+    _sync_outline_rows_for_node(node)
+
+
+def _sync_outline_rows_for_node(node: int | str) -> None:
+    instance_id = _module_id_for_node(node)
+    if instance_id is not None:
+        _sync_outline_rows(instance_id)
 
 
 def _move_knob(knob: int | str, position: float) -> None:
@@ -7416,6 +7424,26 @@ def _add_module_link(
     OUTLINE_LINKS[link] = len(name) * OUTLINE_CHAR_PX
 
 
+OUTLINE_ROWS: dict[str, list[tuple[int | str, int | str]]] = {}
+"""Each module's rows in the outline -- (arrow, details) -- there may be
+several, since a module that feeds two others is written under both. A row
+is open exactly when its module is; the two are one state, kept here."""
+
+
+def _sync_outline_rows(instance_id: str) -> None:
+    """Open or close a module's outline rows to match its panel."""
+    node = INSTANCE_NODE_TAGS.get(instance_id)
+    if node is None:
+        return
+    opened = not MODULE_COLLAPSE.is_collapsed(node)
+    for arrow, details in tuple(OUTLINE_ROWS.get(instance_id, ())):
+        if not (dpg.does_item_exist(arrow) and dpg.does_item_exist(details)):
+            continue
+        if dpg.is_item_shown(details) != opened:
+            dpg.configure_item(details, show=opened)
+        dpg.configure_item(arrow, direction=dpg.mvDir_Down if opened else dpg.mvDir_Right)
+
+
 def _add_module_row(
     parent: int | str, runtime: AppRuntime, instance_id: str, connection: str | None = None
 ) -> int | str:
@@ -7428,29 +7456,40 @@ def _add_module_row(
     sits at the front of the name's own row, and there is nothing to read
     twice.
     """
+    node = INSTANCE_NODE_TAGS.get(instance_id)
+    opened = node is not None and not MODULE_COLLAPSE.is_collapsed(node)
     row = dpg.add_group(parent=parent, horizontal=True, horizontal_spacing=2)
-    details = dpg.add_group(parent=parent, indent=OUTLINE_DETAIL_INDENT, show=False)
+    details = dpg.add_group(parent=parent, indent=OUTLINE_DETAIL_INDENT, show=opened)
     arrow = dpg.add_button(
         parent=row,
         arrow=True,
-        direction=dpg.mvDir_Right,
+        direction=dpg.mvDir_Down if opened else dpg.mvDir_Right,
         callback=_toggle_outline_details,
-        user_data=details,
+        user_data=(runtime, instance_id, details),
     )
     dpg.bind_item_theme(arrow, OUTLINE_ARROW_THEME)
     _add_module_link(row, runtime, instance_id, connection)
     _add_rack_outline_remove_button(row, runtime, instance_id)
+    OUTLINE_ROWS.setdefault(instance_id, []).append((arrow, details))
     return details
 
 
-def _toggle_outline_details(sender: int | str, _app_data: object, details: int | str) -> None:
-    """Open or close the details under a module's row; the arrow turns."""
-    if not dpg.does_item_exist(details):
+def _toggle_outline_details(
+    _sender: int | str, _app_data: object, data: tuple[AppRuntime, str, int | str]
+) -> None:
+    """The arrow on a module's row: open the module and its row, or close both.
+
+    The row and the panel are one state. Opening the row opens the panel --
+    every control and jack -- and folding the panel folds the row, wherever
+    the module is written in the tree.
+    """
+    runtime, instance_id, details = data
+    node = INSTANCE_NODE_TAGS.get(instance_id)
+    if node is None or not dpg.does_item_exist(details):
         return
     opening = not dpg.is_item_shown(details)
-    dpg.configure_item(details, show=opening)
-    if dpg.does_item_exist(sender):
-        dpg.configure_item(sender, direction=dpg.mvDir_Down if opening else dpg.mvDir_Right)
+    _set_module_collapsed(node, not opening, runtime)
+    _sync_outline_rows(instance_id)
 
 
 def _centre_module_from_outline(
@@ -7462,10 +7501,9 @@ def _centre_module_from_outline(
         return
     _centre_node(node)
     _clear_rack_selection()
-    try:
-        dpg.set_value(f"{node}.selected", True)
-    except Exception:
-        pass
+    # Going to a module is looking at it: it opens, and so does its row.
+    _set_module_collapsed(node, False, runtime)
+    _sync_outline_rows(instance_id)
     label = runtime.patch.modules[instance_id].manifest.name.upper()
     _set_patch_status(f"HERE  ·  {label}  [{instance_id}]")
 
@@ -7753,6 +7791,7 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
     dpg.delete_item(RACK_OUTLINE_BODY, children_only=True)
     OUTLINE_PARAMETER_TEXTS.clear()
     OUTLINE_LINKS.clear()
+    OUTLINE_ROWS.clear()
     reachable: set[str] = set()
     signal_flow = dpg.add_tree_node(
         label="SIGNAL FLOW",

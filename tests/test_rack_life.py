@@ -628,7 +628,14 @@ def test_a_selected_module_wears_an_amber_outline_and_a_shift_drag_draws_the_mar
 
 
 def test_each_outline_row_carries_its_own_arrow_and_no_details_row(monkeypatch) -> None:
-    from noodler.app import RACK_OUTLINE_BODY, _toggle_outline_details, default_rack_preset
+    from noodler.app import (
+        MODULE_COLLAPSE,
+        RACK_OUTLINE_BODY,
+        _centre_module_from_outline,
+        _set_module_collapsed,
+        _toggle_outline_details,
+        default_rack_preset,
+    )
 
     dpg.create_context()
     try:
@@ -649,14 +656,22 @@ def test_each_outline_row_carries_its_own_arrow_and_no_details_row(monkeypatch) 
         assert len(arrows) == 2, "one arrow per module row: the delay and the room"
         assert "DETAILS" not in labels, "the name's row is the details' row"
         arrow = arrows[0]
-        details = dpg.get_item_user_data(arrow)
-        assert not dpg.is_item_shown(details), "closed until asked"
-        _toggle_outline_details(arrow, None, details)
+        runtime, instance_id, details = dpg.get_item_user_data(arrow)
+        node = INSTANCE_NODE_TAGS[instance_id]
+        # The default effects are collapsed, so their rows are closed: one state.
+        assert MODULE_COLLAPSE.is_collapsed(node)
+        assert not dpg.is_item_shown(details), "closed, as the module is"
+        _toggle_outline_details(arrow, None, (runtime, instance_id, details))
         assert dpg.is_item_shown(details)
+        assert not MODULE_COLLAPSE.is_collapsed(node), "opening the row opens the module"
         assert dpg.get_item_configuration(arrow)["direction"] == dpg.mvDir_Down
-        _toggle_outline_details(arrow, None, details)
+        # Folding the panel folds the row.
+        _set_module_collapsed(node, True, runtime)
         assert not dpg.is_item_shown(details)
         assert dpg.get_item_configuration(arrow)["direction"] == dpg.mvDir_Right
+        # Going to the module from the tree opens both.
+        _centre_module_from_outline(0, None, (runtime, instance_id))
+        assert not MODULE_COLLAPSE.is_collapsed(node) and dpg.is_item_shown(details)
     finally:
         dpg.destroy_context()
 
