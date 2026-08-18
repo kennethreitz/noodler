@@ -93,6 +93,12 @@ class PatchGraph:
         self._processing_order: tuple[str, ...] = ()
         self._feedback: frozenset[Cable] = frozenset()
         self._previous: dict[tuple[str, str], ArrayLike] = {}
+        self.transport: object | None = None
+        """Where the clock stands for the block being rendered, if anyone set it.
+
+        The engine writes a fresh snapshot here before every callback. Rendered
+        offline -- tests, exports -- it stays None and clocked modules run free.
+        """
 
     @property
     def modules(self) -> Mapping[str, BlockModule]:
@@ -274,8 +280,14 @@ class PatchGraph:
             incoming[cable.target.module_id].append(cable)
 
         rendered: dict[str, Mapping[str, ArrayLike]] = {}
+        transport = self.transport
         for module_id in self._processing_order:
+            module = self._modules[module_id]
             inputs: dict[str, ArrayLike] = {}
+            if transport is not None and getattr(module, "uses_transport", False):
+                # Not a port and not a cable: the clock is ambient, and only
+                # a module that says it wants it is handed it.
+                inputs["transport"] = transport
             for cable in incoming[module_id]:
                 if cable in self._feedback:
                     # A loop is closed with the previous block, which is what
@@ -293,11 +305,7 @@ class PatchGraph:
                         "module did not render connected output "
                         f"{cable.source.module_id}.{cable.source.port_id}"
                     ) from exc
-            rendered[module_id] = self._modules[module_id].process(
-                frame_count,
-                sample_rate,
-                inputs,
-            )
+            rendered[module_id] = module.process(frame_count, sample_rate, inputs)
         self._remember(rendered)
         return rendered
 

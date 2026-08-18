@@ -53,6 +53,35 @@ BEAT_UNITS: tuple[int, ...] = (1, 2, 4, 8, 16)
 """Note values a signature can count in: whole through sixteenth."""
 
 
+@dataclass(frozen=True, slots=True)
+class TransportFrame:
+    """Where the clock stood when an audio block began.
+
+    This is how tempo reaches the DSP without the DSP learning about music:
+    a module that asks for it is handed one of these per block, sample-exact,
+    and everything else never sees it. It is a snapshot, so a module can read
+    it freely while the clock moves on underneath.
+    """
+
+    bpm: float
+    phase: float
+    """Position within the bar at the first sample of the block, zero to one."""
+    bars: int
+    """How many whole bars have gone by since the clock last started at zero."""
+    beats_per_bar: int
+    quarters_per_bar: float
+    running: bool
+
+    @property
+    def quarters(self) -> float:
+        """Absolute position in quarter notes, which is what patterns count in."""
+        return (self.bars + self.phase) * self.quarters_per_bar
+
+    @property
+    def quarters_per_second(self) -> float:
+        return self.bpm / 60.0
+
+
 @dataclass(slots=True)
 class Transport:
     """The rack's tempo, and where it currently is in the bar."""
@@ -61,6 +90,9 @@ class Transport:
     running: bool = True
     phase: float = 0.0
     """Position within a bar, from zero to one."""
+
+    bars: int = 0
+    """Whole bars elapsed, so patterns longer than a bar know where they are."""
 
     beats_per_bar: int = 4
     """The signature's upper number: how many beats a bar holds."""
@@ -118,8 +150,38 @@ class Transport:
         """Move the clock on by one frame and return the position in the bar."""
         if self.running and dt > 0.0:
             bar_seconds = self.quarters_per_bar * 60.0 / max(1e-6, self.bpm)
-            self.phase = (self.phase + dt / bar_seconds) % 1.0
+            moved = self.phase + dt / bar_seconds
+            self.bars += int(moved)
+            self.phase = moved % 1.0
         return self.phase
+
+    def frame(self) -> TransportFrame:
+        """A snapshot of the clock, for a module to read this block."""
+        return TransportFrame(
+            bpm=self.bpm,
+            phase=self.phase,
+            bars=self.bars,
+            beats_per_bar=self.beats_per_bar,
+            quarters_per_bar=self.quarters_per_bar,
+            running=self.running,
+        )
+
+    def tick(self, frame_count: int, sample_rate: float) -> TransportFrame:
+        """Advance by one audio block and return where the block *began*.
+
+        Called from the audio callback, so the clock runs on the sample clock
+        rather than the frame rate: a beat lands on the sample it should, not
+        within sixteen milliseconds of it.
+        """
+        frame = self.frame()
+        if sample_rate > 0.0:
+            self.advance(frame_count / float(sample_rate))
+        return frame
+
+    def rewind(self) -> None:
+        """Back to the top of bar one."""
+        self.phase = 0.0
+        self.bars = 0
 
     @property
     def beat(self) -> int:
@@ -152,5 +214,6 @@ __all__ = [
     "MAX_BPM",
     "MIN_BPM",
     "Transport",
+    "TransportFrame",
     "is_rate_field",
 ]

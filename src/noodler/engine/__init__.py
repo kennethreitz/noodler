@@ -8,6 +8,7 @@ import numpy as np
 import sounddevice as sd
 
 from noodler.patch import PatchGraph
+from noodler.transport import Transport
 
 
 SCOPE_POINTS = 480
@@ -33,6 +34,7 @@ class SystemAudioEngine:
         device: int | str | None = None,
         master_gain: float = 0.8,
         stream_factory: Callable[..., Any] | None = None,
+        transport: Transport | None = None,
     ) -> None:
         if sample_rate is not None and sample_rate <= 0:
             raise ValueError("sample_rate must be positive")
@@ -42,6 +44,10 @@ class SystemAudioEngine:
             raise ValueError("channels must be positive")
 
         self.patch = patch
+        self.transport = transport
+        """The clock this engine keeps time for, advanced per block on the sample
+        clock so a beat lands on the sample it should. None means the engine
+        keeps no time and clocked modules run free."""
         self.requested_sample_rate = sample_rate
         self.block_size = block_size
         self.channels = channels
@@ -149,6 +155,9 @@ class SystemAudioEngine:
             sample_rate = self._active_sample_rate
             if sample_rate is None:
                 raise RuntimeError("audio callback ran without an active sample rate")
+            transport = self.transport
+            if transport is not None:
+                self.patch.transport = transport.tick(frame_count, sample_rate)
             stereo = self.patch.render_stereo(frame_count, sample_rate)
             stereo *= self.master_gain
             np.nan_to_num(stereo, copy=False, nan=0.0, posinf=1.0, neginf=-1.0)

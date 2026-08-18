@@ -39,7 +39,12 @@ It renders a note per semitone, so playing a pitch barely resamples it — and
 because the cost of a note is a property of the instrument rather than the
 library (a tenth of a millisecond for a music box, twenty for a piano), how
 much it renders before it answers is decided by a time budget, and the rest
-arrives on a worker while the instrument is already playing. PyTheory is not a menu hidden behind
+arrives on a worker while the instrument is already playing. **PyTheory Beats**
+plays any of the library's hundred rhythm presets — funk, teental, bossa nova,
+trap — through its own drum synthesis, locked to the rack's clock so beat one
+is beat one; and a **Clock** module turns that clock into triggers and a ramp,
+so anything with a clock input can be patched to the tempo in the menu bar.
+PyTheory is not a menu hidden behind
 the synthesizer; it is part of the synthesizer.
 
 **Audio and CV are cousins.** Noodler distinguishes signal meaning and warns
@@ -135,12 +140,12 @@ patched, and it is not one anyone can pull out.
 
 ## Modules
 
-The built-in provider currently contains 21 modules, grouped around the way a
+The built-in provider currently contains 26 modules, grouped around the way a
 patch is made rather than around implementation details.
 
 | Shelf | Modules |
 | --- | --- |
-| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Scale Generator, Function Utility, Wogglebug |
+| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, PyTheory Beats, Scale Generator, Function Utility, Wogglebug |
 | Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
 | Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
 | Mix & Space | Master Mixer, Polarizing Mixer, Echo Delay, Stereo Reverb |

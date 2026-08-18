@@ -67,6 +67,15 @@ from .pytheory_voice import (
     PyTheoryVoiceParameters,
     render_note,
 )
+from .clocked import (
+    CLOCK_MANIFEST,
+    Clock,
+    ClockParameters,
+    PATTERN_NAMES,
+    PYTHEORY_BEATS_MANIFEST,
+    PyTheoryBeats,
+    PyTheoryBeatsParameters,
+)
 from .master import (
     MASTER_CHANNELS,
     MASTER_MIXER_MANIFEST,
@@ -130,6 +139,8 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
     modules=(
         INSTRUMENT_VOICE_MANIFEST,
         PYTHEORY_VOICE_MANIFEST,
+        PYTHEORY_BEATS_MANIFEST,
+        CLOCK_MANIFEST,
         MASTER_MIXER_MANIFEST,
         KEY_MANIFEST,
         QUANTIZER_MANIFEST,
@@ -160,6 +171,8 @@ BUILTIN_MODULE_TYPES = MappingProxyType({
     for manifest, module_type in (
         (INSTRUMENT_VOICE_MANIFEST, InstrumentVoice),
         (PYTHEORY_VOICE_MANIFEST, PyTheoryVoice),
+        (PYTHEORY_BEATS_MANIFEST, PyTheoryBeats),
+        (CLOCK_MANIFEST, Clock),
         (MASTER_MIXER_MANIFEST, MasterMixer),
         (KEY_MANIFEST, Key),
         (QUANTIZER_MANIFEST, Quantizer),
@@ -209,6 +222,13 @@ class BuiltinProvider:
 
 __all__ = [
     "ADSR_ENVELOPE_MANIFEST",
+    "CLOCK_MANIFEST",
+    "Clock",
+    "ClockParameters",
+    "PATTERN_NAMES",
+    "PYTHEORY_BEATS_MANIFEST",
+    "PyTheoryBeats",
+    "PyTheoryBeatsParameters",
     "PYTHEORY_VOICE_MANIFEST",
     "PyTheoryVoice",
     "PyTheoryVoiceParameters",

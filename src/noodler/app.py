@@ -155,6 +155,7 @@ RACK_OUTLINE_BODY = "noodler.rack_outline.body"
 RACK_OUTLINE_STATUS = "noodler.rack_outline.status"
 RACK_SUMMARY = "noodler.rack_summary"
 CLOCK_READOUT = "noodler.clock.readout"
+CLOCK_REWIND_ITEM = "noodler.clock.rewind"
 CLOCK_BPM_INPUT = "noodler.clock.bpm"
 CLOCK_RUN_ITEM = "noodler.clock.run"
 CLOCK_BEATS_INPUT = "noodler.clock.beats"
@@ -745,8 +746,14 @@ def _apply_transport_sync() -> None:
 
 
 def _refresh_clock(dt: float) -> None:
-    """Run the clock and show where it is."""
-    TRANSPORT.advance(dt)
+    """Run the clock and show where it is.
+
+    While audio is playing the engine advances the clock on the sample clock,
+    per block, and this only reads it. Otherwise the frame rate is the best
+    clock there is, and it is good enough for a readout.
+    """
+    if not (ACTIVE_RUNTIME and ACTIVE_RUNTIME[0].audio.is_running):
+        TRANSPORT.advance(dt)
     _apply_transport_sync()
     if not dpg.does_item_exist(CLOCK_READOUT):
         return
@@ -804,6 +811,12 @@ def _settle_clock_readout() -> None:
 def _toggle_clock(_sender: int | str = 0, _app_data: object = None, _u: object = None) -> None:
     TRANSPORT.running = not TRANSPORT.running
     _set_patch_status("CLOCK RUNNING" if TRANSPORT.running else "CLOCK STOPPED")
+
+
+def _rewind_clock(_sender: int | str = 0, _app_data: object = None, _u: object = None) -> None:
+    """Back to the top of bar one, so every clocked pattern starts over together."""
+    TRANSPORT.rewind()
+    _set_patch_status("CLOCK  ·  BAR ONE")
 
 RACK_CURSOR = MacCursor()
 """The pointer shape, while a pan gesture holds it."""
@@ -3346,6 +3359,11 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 tag=CLOCK_RUN_ITEM,
                 callback=_toggle_clock,
             )
+            dpg.add_menu_item(
+                label="Return to bar one",
+                tag=CLOCK_REWIND_ITEM,
+                callback=_rewind_clock,
+            )
         # Pushed to the right edge each frame, where a transport belongs.
         dpg.add_spacer(tag=CLOCK_SPACER, width=1)
         dpg.add_text("", tag=CLOCK_READOUT, color=MUTED_TEXT)
@@ -5849,6 +5867,7 @@ def build_runtime_from_preset(preset: PatchPreset) -> AppRuntime:
         audio=SystemAudioEngine(
             patch,
             master_gain=preset.system_output.master_gain,
+            transport=TRANSPORT,
         ),
     )
 
@@ -5871,7 +5890,7 @@ def build_runtime(
         ensure_master(patch)
         return AppRuntime(
             patch=patch,
-            audio=SystemAudioEngine(patch, master_gain=0.8),
+            audio=SystemAudioEngine(patch, master_gain=0.8, transport=TRANSPORT),
         )
 
     if vco is None:
@@ -5994,7 +6013,7 @@ def build_runtime(
         low_pass_gate=low_pass_gate,
         reverb=reverb,
         patch=patch,
-        audio=SystemAudioEngine(patch, master_gain=0.72),
+        audio=SystemAudioEngine(patch, master_gain=0.72, transport=TRANSPORT),
     )
 
 

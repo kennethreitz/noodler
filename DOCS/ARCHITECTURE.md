@@ -199,6 +199,17 @@ A `both` tap duplicates a mono source when desired. The prototype still
 allocates during rendering; reusable buffers and graph-snapshot handoff remain
 required before calling the callback path real-time hardened.
 
+The engine also keeps time. It holds the rack's `Transport` and advances it
+once per callback by `frame_count / sample_rate`, so the clock runs on the
+sample clock rather than the frame rate; the UI reads the position and only
+advances it itself while no audio is playing. Before rendering, the engine
+writes a frozen `TransportFrame` — tempo, bar phase at the block's first
+sample, bars elapsed, running — onto the graph, and the graph hands it to any
+module that sets `uses_transport`. Nothing else sees it. A module rendered
+without one (offline, in a test) runs free from its own rate, so clocked
+modules are faithful to the transport when there is one and never dependent
+on it. Divisions still reach ordinary rates through the control path as hertz.
+
 ## Signal types
 
 Noodler should distinguish signal meaning instead of treating every cable as
