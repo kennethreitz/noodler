@@ -163,3 +163,66 @@ def test_each_voice_in_the_garden_has_its_own_register() -> None:
     assert bowl < kalimba < bells, (
         f"bowl {bowl:.0f} Hz, kalimba {kalimba:.0f} Hz, bells {bells:.0f} Hz"
     )
+
+
+TONE_SYSTEM_SET = {
+    "bohlen-pierce-chapel": "bohlen-pierce",
+    "carnatic-loom": "carnatic",
+    "makam-divan": "makam",
+    "nineteen": "19-tet",
+    "pelog-bell-garden": "pelog",
+    "shruti-drone": "shruti",
+    "slendro-rain": "slendro",
+}
+
+
+@pytest.mark.parametrize("stem,system", sorted(TONE_SYSTEM_SET.items()))
+def test_each_patch_in_the_set_is_in_the_system_its_name_says(stem, system) -> None:
+    preset = read_patch_preset(Path("examples") / f"{stem}.noodler")
+    runtime = build_runtime_from_preset(preset)
+    key = runtime.patch.modules["key"]
+    assert key.parameters.system == system
+
+    # Every voice is PyTheory's own synthesis, and every quantizer reads the Key.
+    voices = [m for m in runtime.patch.modules.values() if m.manifest.id == "pytheory_voice"]
+    quantizers = {
+        instance_id
+        for instance_id, m in runtime.patch.modules.items()
+        if m.manifest.id == "quantizer"
+    }
+    fed = {
+        cable.target.module_id
+        for cable in runtime.patch.cables
+        if cable.source.module_id == "key" and cable.source.port_id == "scale"
+    }
+    assert voices, "no PyTheory voice"
+    assert quantizers and fed == quantizers, "a quantizer is not reading the Key"
+
+
+@pytest.mark.parametrize("stem", sorted(TONE_SYSTEM_SET))
+def test_each_patch_in_the_set_is_not_twelve_tone(stem) -> None:
+    """The point of the set. A tuning indistinguishable from a piano is not one."""
+    preset = read_patch_preset(Path("examples") / f"{stem}.noodler")
+    key = build_runtime_from_preset(preset).patch.modules["key"]
+    tones = sorted(frequency for _name, frequency in key.field.tones)
+    steps = [1_200.0 * np.log2(b / a) for a, b in zip(tones, tones[1:])]
+    assert steps
+    assert not all(abs(step - 100.0) < 3.0 for step in steps), f"{stem} is 12-TET"
+
+
+def test_the_set_leaves_headroom() -> None:
+    """Every patch sits in the same loudness range and none approaches clipping."""
+    levels = {}
+    for stem in TONE_SYSTEM_SET:
+        runtime = build_runtime_from_preset(
+            read_patch_preset(Path("examples") / f"{stem}.noodler")
+        )
+        runtime.patch.prepare(48_000.0, 256)
+        audio = np.concatenate(
+            [runtime.patch.render_stereo(256, 48_000.0) for _ in range(1_500)]
+        )
+        peak = float(np.max(np.abs(audio)))
+        assert peak < 0.85, f"{stem} peaks at {peak:.2f}"
+        levels[stem] = float(np.sqrt(np.mean(audio**2)))
+    loudest, quietest = max(levels.values()), min(levels.values())
+    assert loudest / quietest < 4.0, levels

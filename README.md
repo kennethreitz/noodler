@@ -167,7 +167,10 @@ device. Loading a patch creates fresh DSP state from the saved instrument.
 
 The format is human-readable and friendly to source control. See the
 [version-one patch contract](DOCS/PATCH_FORMAT.md) and the
-[example patches](examples/) for the complete shape.
+[example patches](examples/) for the complete shape — including a set of
+seven tone-system patches (pelog, slendro, Bohlen-Pierce, carnatic, shruti,
+19-TET, makam), every one played by PyTheory's own synthesis and tuned by a
+single Key.
 
 ## Architecture
 

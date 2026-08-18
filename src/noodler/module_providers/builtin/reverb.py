@@ -17,6 +17,9 @@ from noodler.module_providers import (
 
 
 FloatBlock = NDArray[np.float32]
+DC_BLOCK_HZ = 6.0
+"""Corner of the high-pass on the way into the tank. Below anything musical."""
+
 OUTPUT_NAMES = ("wet_left", "wet_right", "left", "right")
 MAX_PRE_DELAY_SECONDS = 0.25
 COMB_DELAY_SECONDS = (0.0253, 0.0269, 0.0290, 0.0307, 0.0322, 0.0338)
@@ -148,6 +151,8 @@ class Reverb:
         self._damping_state: list[NDArray[np.float64]] = []
         self._allpass_buffers: list[list[NDArray[np.float64]]] = []
         self._allpass_indices: list[list[int]] = []
+        self._dc_last_in = 0.0
+        self._dc_last_out = 0.0
 
     @property
     def sample_rate(self) -> float | None:
@@ -215,6 +220,32 @@ class Reverb:
         self._allpass_indices = [
             [0] * len(buffers) for buffers in self._allpass_buffers
         ]
+        self._dc_last_in = 0.0
+        self._dc_last_out = 0.0
+
+    def _block_dc(self, dry: NDArray[np.float64], sample_rate: float) -> NDArray[np.float64]:
+        """Take the offset out of what enters the tank.
+
+        The combs feed back at very nearly unity when the decay is long, and at
+        DC there is no damping to lose it, so an input with any offset at all
+        -- a slightly asymmetric waveform, one of PyTheory's renders, a source
+        sitting a hundredth above zero -- integrates until the soft clip pins
+        the whole tank at a rail. Eleven seconds of decay turned an offset of
+        0.009 into a constant 0.71 on both sides. A one-pole high-pass at a few
+        hertz costs nothing audible and removes the failure entirely.
+        """
+        radius = 1.0 - 2.0 * np.pi * DC_BLOCK_HZ / sample_rate
+        samples = dry.tolist()
+        last_in = self._dc_last_in
+        last_out = self._dc_last_out
+        blocked = [0.0] * len(samples)
+        for index, sample in enumerate(samples):
+            last_out = sample - last_in + radius * last_out
+            last_in = sample
+            blocked[index] = last_out
+        self._dc_last_in = last_in
+        self._dc_last_out = last_out
+        return np.asarray(blocked, dtype=np.float64)
 
     def process(
         self,
@@ -237,6 +268,8 @@ class Reverb:
 
         inputs = inputs or {}
         dry = self._optional_block("audio", inputs, frame_count)
+        # The dry path keeps whatever offset it had; only the tank is protected.
+        tank_input = self._block_dc(np.asarray(dry, dtype=np.float64), sample_rate)
         mix_cv = self._optional_block("mix_cv", inputs, frame_count)
         decay_cv = self._optional_block("decay_cv", inputs, frame_count)
         freeze_gate = self._optional_block("freeze", inputs, frame_count)
@@ -262,7 +295,7 @@ class Reverb:
         feedback_lanes = tuple(
             tuple(lane.tolist() for lane in channel) for channel in feedback
         )
-        dry_samples = np.asarray(dry, dtype=np.float64).tolist()
+        dry_samples = tank_input.tolist()
         freeze_samples = np.asarray(freeze_gate, dtype=np.float64).tolist()
         late = np.empty((frame_count, 2), dtype=np.float64)
         pre_delay_samples = min(
@@ -283,7 +316,7 @@ class Reverb:
         if frame_count <= shortest and steady_freeze and pre_delay_ready:
             late = self._render_tank(
                 frame_count,
-                np.asarray(dry, dtype=np.float64),
+                tank_input,
                 feedback,
                 pre_delay_samples,
                 damping,

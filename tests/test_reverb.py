@@ -163,3 +163,33 @@ def test_a_frozen_tank_still_rings() -> None:
     ]
 
     assert min(held) > 0.0, "a frozen tank should keep ringing"
+
+
+def test_an_offset_at_the_input_does_not_pin_the_tank() -> None:
+    """Long decays feed back at nearly unity, and at DC nothing damps it.
+
+    Eleven seconds of decay turned a +0.009 offset -- one of PyTheory's koto
+    renders, through a voice -- into a constant 0.71 on both sides.
+    """
+    reverb = Reverb(ReverbParameters(decay_seconds=11.0, mix=0.5, damping=0.62))
+    reverb.prepare(48_000.0, 256)
+    offset = np.full(256, 0.01, dtype=np.float32)
+
+    left = np.concatenate(
+        [
+            reverb.process(256, 48_000.0, {"audio": offset})["left"]
+            for _ in range(int(12 * 48_000 / 256))
+        ]
+    )
+
+    assert abs(float(np.mean(left[-48_000:]))) < 0.02, "the tank railed on DC"
+
+
+def test_the_dry_path_keeps_its_offset() -> None:
+    """Only the tank is protected; what the user sent is what the user hears."""
+    reverb = Reverb(ReverbParameters(mix=0.0))
+    reverb.prepare(48_000.0, 256)
+    offset = np.full(256, 0.25, dtype=np.float32)
+    for _ in range(20):
+        out = reverb.process(256, 48_000.0, {"audio": offset})
+    assert float(np.mean(out["left"])) == pytest.approx(0.25, abs=0.02)
