@@ -934,7 +934,65 @@ def _new_patch(_sender: int | str = 0, _app_data: object = None, _u: object = No
 def _new_patch_now() -> None:
     CURRENT_PATCH_PATH.clear()
     PENDING_OPEN[:] = [default_rack_preset()]
+    PARK_EFFECTS[:] = [True]
     _set_patch_status("NEW RACK")
+
+
+PARK_EFFECTS: list[bool] = []
+"""Set when the default rack is built: park its two effects above the effect
+strips once the console has settled, wherever the window put the console."""
+PARK_LIFT = 130.0
+"""Room left between the parked effects and the console for the cables."""
+
+
+def _park_default_effects() -> None:
+    """Stand the default rack's delay and room above FX A and FX B.
+
+    The console is pinned to the bottom of whatever window this is, so the two
+    effects that hang off it cannot have positions in the document; they are
+    placed here, once, after the strips have settled: the room's right edge a
+    little past FX B's, the delay a gap to its left, both a cable's height
+    above the strips, both collapsed to their names and jacks.
+    """
+    if not PARK_EFFECTS:
+        return
+    delay = INSTANCE_NODE_TAGS.get("delay")
+    room = INSTANCE_NODE_TAGS.get("reverb")
+    fx_a = CONSOLE_RETURN.format(bus="a")
+    fx_b = CONSOLE_RETURN.format(bus="b")
+    if not all(dpg.does_item_exist(item) for item in (delay, room, fx_a, fx_b) if item is not None):
+        return
+    if delay is None or room is None:
+        PARK_EFFECTS.clear()
+        return
+    # Not before the console has settled. On the first frame the rack measures
+    # a few pixels, _settle_console leaves the strips where they were built --
+    # at the origin -- and parking against those put the effects a screen
+    # above and to the left of where the strips went next.
+    if not dpg.does_item_exist(RACK):
+        return
+    view_width, view_height = (float(v) for v in dpg.get_item_rect_size(RACK))
+    if view_width < MIN_REVEAL_VIEWPORT or view_height < MIN_REVEAL_VIEWPORT:
+        return
+    try:
+        strip_x, strip_y = (float(v) for v in dpg.get_item_pos(fx_b))
+        strip_w = float(dpg.get_item_rect_size(fx_b)[0])
+        room_w, room_h = (float(v) for v in dpg.get_item_rect_size(room))
+        delay_w, delay_h = (float(v) for v in dpg.get_item_rect_size(delay))
+    except (KeyError, SystemError):
+        return
+    if strip_w <= 1.0 or room_w <= 1.0 or delay_w <= 1.0:
+        return
+    if strip_y <= CONSOLE_MARGIN:
+        return  # still where it was built; the row has not been laid yet
+    room_x = strip_x + strip_w + 40.0 - room_w
+    room_y = strip_y - PARK_LIFT - room_h
+    delay_x = room_x - delay_w - 44.0
+    delay_y = strip_y - PARK_LIFT + 16.0 - delay_h
+    dpg.set_item_pos(room, [room_x, room_y])
+    dpg.set_item_pos(delay, [delay_x, delay_y])
+    CANVAS_INTERACTION.pending_reveal = False
+    PARK_EFFECTS.clear()
 
 
 def default_rack_preset() -> PatchPreset:
@@ -2861,6 +2919,7 @@ def _refresh_frame(
         _settle_rack_zoom(dt)
         _settle_rack_rails(dt)
         _settle_console()
+        _park_default_effects()
         _refresh_clock(dt)
         _refresh_ui(runtime, dt)
         _refresh_transport_button(runtime)
@@ -8574,6 +8633,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             min_width=900,
             min_height=600,
         )
+        if preset is None:
+            PARK_EFFECTS[:] = [True]
         runtime = build_ui(preset=preset if preset is not None else default_rack_preset())
         dpg.setup_dearpygui()
         dpg.set_primary_window(PRIMARY_WINDOW, True)

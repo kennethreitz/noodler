@@ -552,3 +552,37 @@ def test_the_outline_lists_parameters_and_keeps_them_current(monkeypatch) -> Non
         assert dpg.get_value(text) == "7.500"
     finally:
         dpg.destroy_context()
+
+
+def test_the_default_rack_parks_its_effects_above_the_effect_strips(monkeypatch) -> None:
+    from noodler.app import CONSOLE_RETURN, PARK_EFFECTS, RACK, _park_default_effects, _settle_console, default_rack_preset
+
+    dpg.create_context()
+    try:
+        PARK_EFFECTS[:] = [True]
+        runtime = build_ui(preset=default_rack_preset())
+        # The first frame: the rack measures a few pixels and the strips are
+        # still where they were built. Parking must wait.
+        monkeypatch.setattr(dpg, "get_item_rect_size", lambda item: [4, 4] if item == RACK else [78, 118])
+        _settle_console()
+        _park_default_effects()
+        assert PARK_EFFECTS, "not parked against unsettled strips"
+        monkeypatch.setattr(
+            dpg,
+            "get_item_rect_size",
+            lambda item: [950, 700] if item == RACK else ([120, 80] if item in INSTANCE_NODE_TAGS.values() else [78, 118]),
+        )
+        _settle_console()
+        _park_default_effects()
+
+        fx_b = CONSOLE_RETURN.format(bus="b")
+        strip_x, strip_y = dpg.get_item_pos(fx_b)
+        delay_x, delay_y = dpg.get_item_pos(INSTANCE_NODE_TAGS["delay"])
+        room_x, room_y = dpg.get_item_pos(INSTANCE_NODE_TAGS["reverb"])
+        assert not PARK_EFFECTS, "parked once"
+        assert room_y + 80 < strip_y and delay_y + 80 < strip_y, "above the console"
+        assert delay_x < room_x, "delay to the left, room to the right"
+        assert room_x + 120 > strip_x, "the room reaches over FX B"
+    finally:
+        PARK_EFFECTS.clear()
+        dpg.destroy_context()
