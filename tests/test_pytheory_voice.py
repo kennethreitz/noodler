@@ -12,7 +12,11 @@ from noodler.module_providers.builtin import (
     PyTheoryVoiceParameters,
     render_note,
 )
-from noodler.module_providers.builtin.pytheory_voice import ANCHOR_HZ
+from noodler.module_providers.builtin.pytheory_voice import (
+    ANCHOR_HZ,
+    LOWEST_HZ,
+    SEMITONES,
+)
 
 
 def _blocks(voice: PyTheoryVoice, gate: np.ndarray, pitch: float = 0.0) -> np.ndarray:
@@ -82,13 +86,101 @@ def test_pitch_chooses_and_shifts_the_rendered_note() -> None:
     assert crossings(1.0) > crossings(0.0)
 
 
-def test_notes_are_rendered_for_several_pitches() -> None:
-    voice = PyTheoryVoice()
+def test_a_cheap_instrument_gets_every_semitone() -> None:
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="music_box"))
     voice.prepare(48_000.0, 256)
 
     assert voice.ready
-    assert set(voice._anchors) == set(ANCHOR_HZ)
+    assert len(voice._anchors) == SEMITONES
+    assert voice.resolution == "every semitone"
     assert all(note.size > 0 for note in voice._anchors.values())
+
+
+def test_the_budget_stops_an_expensive_instrument_short() -> None:
+    """A budget that cannot be spent is not a budget."""
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="cello"))
+    voice.refresh(budget_ms=0.0, in_background=False)
+
+    assert voice.ready, "it must still be playable"
+    # The coarse set is not optional, and neither is the unbudgeted first note.
+    assert set(ANCHOR_HZ) <= set(voice._anchors)
+    assert len(voice._anchors) == len(ANCHOR_HZ) + 1
+    assert "of" in voice.resolution
+
+
+def test_the_first_note_is_not_charged_to_the_budget() -> None:
+    """Compiling a synth is a one-off, not evidence the instrument is slow."""
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="granular_pad"))
+    voice.refresh(in_background=False)
+    first = len(voice._anchors)
+
+    voice.refresh(in_background=False)
+    assert len(voice._anchors) == first == SEMITONES
+
+
+def test_what_the_click_cannot_afford_is_finished_in_the_background() -> None:
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="piano"))
+    voice.refresh(budget_ms=0.0)
+    assert len(voice._anchors) < SEMITONES, "the click should not have covered it"
+
+    voice._worker.join(timeout=60.0)
+    assert not voice._worker.is_alive()
+    assert len(voice._anchors) == SEMITONES
+    assert voice.resolution == "every semitone"
+
+
+def test_changing_instrument_abandons_the_previous_one() -> None:
+    """A worker still rendering a cello must not fill a piano with cello notes."""
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="cello"))
+    voice.refresh(budget_ms=0.0)
+    stale = voice._worker
+
+    voice.parameters.instrument = "music_box"
+    voice.refresh(in_background=False)
+    stale.join(timeout=60.0)
+
+    assert voice._rendered_for == "music_box"
+    reference = render_note("music_box", 440.0)
+    played = voice._anchors[min(voice._anchors, key=lambda hz: abs(hz - 440.0))]
+    assert np.array_equal(played[: reference.size], reference)
+
+
+def test_the_background_worker_is_never_the_audio_thread_s_problem() -> None:
+    """Notes appear by swapping the whole dict, never by growing it."""
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="piano"))
+    voice.refresh(budget_ms=0.0)
+
+    # Reading anchors while the worker fills them must not raise.
+    for _ in range(2_000):
+        anchors = voice._anchors
+        assert min(anchors, key=lambda hz: abs(hz - 440.0)) in anchors
+    voice._worker.join(timeout=60.0)
+
+
+def test_rendered_pitches_are_spread_rather_than_bunched() -> None:
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="cello"))
+    voice.refresh(budget_ms=0.0, in_background=False)
+
+    rendered = sorted(voice._anchors)
+    assert rendered[0] == pytest.approx(LOWEST_HZ), "the bottom is covered"
+    assert rendered[-1] > 1_000.0, "so is the top"
+
+
+def test_a_note_is_played_near_the_rate_it_was_rendered_at() -> None:
+    """The point of per-semitone rendering: barely any resampling."""
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="music_box"))
+    voice.prepare(44_100.0, 256)
+    voice._begin(440.0)
+
+    assert voice._step == pytest.approx(1.0, abs=0.03)
+
+
+def test_the_status_line_says_how_finely_it_rendered() -> None:
+    voice = PyTheoryVoice(PyTheoryVoiceParameters(instrument="music_box"))
+    voice.prepare(48_000.0, 256)
+
+    assert "MUSIC BOX" in voice.label
+    assert "EVERY SEMITONE" in voice.label
 
 
 def test_changing_instrument_needs_a_refresh_not_a_render_in_the_callback() -> None:

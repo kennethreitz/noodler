@@ -33,9 +33,13 @@ music; change the Key and everything downstream is retuned at once. An
 **Instrument Voice** reads any of PyTheory's eighty-four instruments as a recipe
 — oscillator, contour and filter chosen together — so "celesta" or "analog pad"
 is a whole voice rather than a preset name, while **PyTheory Voice** runs the
-library's own synthesis: notes are rendered by PyTheory on the control thread
-and read back in real time, because rendering a note costs about as long as an
-entire audio callback. PyTheory is not a menu hidden behind
+library's own synthesis: notes are rendered by PyTheory and read back in real
+time, because rendering one costs about as long as an entire audio callback.
+It renders a note per semitone, so playing a pitch barely resamples it — and
+because the cost of a note is a property of the instrument rather than the
+library (a tenth of a millisecond for a music box, twenty for a piano), how
+much it renders before it answers is decided by a time budget, and the rest
+arrives on a worker while the instrument is already playing. PyTheory is not a menu hidden behind
 the synthesizer; it is part of the synthesizer.
 
 **Audio and CV are cousins.** Noodler distinguishes signal meaning and warns

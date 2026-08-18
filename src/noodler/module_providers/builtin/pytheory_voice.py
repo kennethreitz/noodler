@@ -11,13 +11,17 @@ callback that must finish in five milliseconds *total*. So the note is rendered
 on the control thread, before it is needed, and the callback only reads it: a
 sampler whose samples are made by the algorithm rather than recorded from one.
 
-A handful of pitches are rendered per instrument and the nearest is resampled to
-the pitch actually asked for. Rendering one note per semitone would be truer and
-is the obvious next step; an octave apart is close enough that the shift is
-small, and it keeps changing instrument to a fifth of a second.
+One note is rendered per semitone, so a played pitch is read back at very near
+the rate it was rendered at and PyTheory's own timbre survives. That is only
+affordable because the cost of a note varies enormously between instruments —
+a tenth of a millisecond for a music box, nine for a cello — so the resolution
+is not fixed: notes are filled in for as long as a time budget allows, and an
+instrument too expensive to cover finely keeps a coarse set and stays playable.
 """
 
 from collections.abc import Mapping
+import threading
+import time
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -34,7 +38,50 @@ PYTHEORY_RATE = 44_100.0
 """The rate PyTheory renders at, whatever the audio device is doing."""
 
 ANCHOR_HZ: tuple[float, ...] = (55.0, 110.0, 220.0, 440.0, 880.0, 1760.0)
-"""Pitches rendered per instrument; everything else is resampled from these."""
+"""The coarse set, rendered first so an instrument is playable immediately."""
+
+LOWEST_HZ = 55.0
+SEMITONES = 61
+"""Every semitone from 55 Hz to 1760 Hz, which is the range a rack reaches for."""
+
+RENDER_BUDGET_MS = 260.0
+"""How long filling in notes may take before changing instrument stops feeling
+instant.
+
+The cost of a note is not a property of the library, it is a property of the
+instrument: a music box renders in a tenth of a millisecond and a cello in nine.
+Rendering a fixed number would either leave the cheap instruments coarser than
+they could be or freeze the app on the expensive ones, so the budget is time and
+the resolution is whatever fits inside it.
+
+The clock starts *after* the first note, because the first render of a synth
+pays for compiling it — most of a second, once, for something that costs 0.8 ms
+a note thereafter. Charging that to the budget would permanently punish an
+instrument for being new rather than for being slow.
+"""
+
+
+def _spread(count: int) -> list[int]:
+    """Order indices so that stopping early still covers the whole range.
+
+    Filling in order would leave a partially rendered instrument accurate at
+    the bottom and an octave out at the top. Bisecting means every note is as
+    near a rendered one as the budget allows.
+    """
+    order: list[int] = []
+    pending = [(0, count - 1)]
+    seen = set()
+    while pending:
+        low, high = pending.pop(0)
+        if low > high:
+            continue
+        middle = (low + high) // 2
+        if middle not in seen:
+            seen.add(middle)
+            order.append(middle)
+        pending.append((low, middle - 1))
+        pending.append((middle + 1, high))
+    return order
 
 VOICE_OUTPUTS = ("audio", "envelope")
 SYNTH_BY_NAME = {member.value: member for member in Synth}
@@ -47,11 +94,17 @@ def render_note(instrument: str, hertz: float) -> NDArray[np.float64]:
     if synth is None:
         return np.zeros(0, dtype=np.float64)
     rendered = synth(float(hertz), **dict(spec.get("synth_kw") or {}))
-    samples = np.asarray(rendered, dtype=np.float64)
+    samples = np.asarray(rendered, dtype=np.float32)
     if not samples.size:
         return samples
     peak = float(np.max(np.abs(samples)))
-    return samples / peak if peak > 0.0 else samples
+    if peak > 0.0:
+        samples = samples / peak
+    # Trailing silence is most of a rendered note and none of the sound.
+    loud = np.flatnonzero(np.abs(samples) > 1e-4)
+    if loud.size:
+        samples = samples[: int(loud[-1]) + 1]
+    return np.asarray(samples, dtype=np.float32)
 
 
 class PyTheoryVoiceParameters(BaseModel):
@@ -96,6 +149,10 @@ class PyTheoryVoice:
     def __init__(self, parameters: PyTheoryVoiceParameters | None = None) -> None:
         self.parameters = parameters or PyTheoryVoiceParameters()
         self._anchors: dict[float, NDArray[np.float64]] = {}
+        self._pending: list[float] = []
+        self._lock = threading.Lock()
+        self._worker: threading.Thread | None = None
+        self._generation = 0
         self._rendered_for: str | None = None
         self._sample_rate = 48_000.0
         self._note: NDArray[np.float64] | None = None
@@ -112,13 +169,118 @@ class PyTheoryVoice:
     def choices_for(self, field: str) -> tuple[str, ...]:
         return INSTRUMENT_NAMES if field == "instrument" else ()
 
-    def refresh(self) -> None:
-        """Render this instrument's notes. Control thread only — this is slow."""
+    @property
+    def resolution(self) -> str:
+        """How closely the rendered notes cover the range, in words."""
+        rendered = len(self._anchors)
+        if rendered >= SEMITONES:
+            return "every semitone"
+        return f"{rendered} of {SEMITONES} pitches"
+
+    @property
+    def label(self) -> str:
+        """What the status line says when this instrument is chosen.
+
+        Which instrument it is, and how finely it got rendered — because that
+        is decided by the budget rather than by the patch, and a player who
+        cannot see it has no way to know why one instrument tracks pitch more
+        closely than another.
+        """
+        spoken = self.parameters.instrument.replace("_", " ").upper()
+        return f"{spoken}  ·  {self.resolution.upper()}"
+
+    def refresh(
+        self, budget_ms: float = RENDER_BUDGET_MS, *, in_background: bool = True
+    ) -> None:
+        """Render this instrument's notes. Control thread only — this is slow.
+
+        The coarse set comes first, so the instrument plays straight away, and
+        semitones are filled in for as long as the budget allows. An instrument
+        that renders in a tenth of a millisecond gets all of them; one that
+        takes most of a second keeps the coarse set and is still playable.
+        """
+        with self._lock:
+            # Anything a previous instrument still owed is no longer wanted.
+            self._generation += 1
+
         instrument = self.parameters.instrument
-        self._anchors = {
-            hertz: render_note(instrument, hertz) for hertz in ANCHOR_HZ
-        }
+        wanted = [LOWEST_HZ * 2.0 ** (step / 12.0) for step in range(SEMITONES)]
+        order = _spread(SEMITONES)
+
+        # The first note pays whatever compiling this synth costs; the budget
+        # measures the ones after it, which is what the resolution depends on.
+        anchors = {wanted[order[0]]: render_note(instrument, wanted[order[0]])}
+        started = time.perf_counter()
+        for hertz in ANCHOR_HZ:
+            anchors.setdefault(hertz, render_note(instrument, hertz))
+
+        self._anchors = {hertz: note for hertz, note in anchors.items() if note.size}
+        # Reversed, because pending is consumed from the end and the spread
+        # puts the notes that improve coverage most at the front.
+        self._pending = [wanted[index] for index in reversed(order[1:])]
         self._rendered_for = instrument
+        self._spend(budget_ms, started)
+        if in_background:
+            self._finish_in_background()
+
+    def _spend(self, budget_ms: float, started: float | None = None) -> bool:
+        """Render pending notes until the budget runs out."""
+        started = time.perf_counter() if started is None else started
+        instrument = self._rendered_for or self.parameters.instrument
+        # Built aside and swapped in whole: the audio callback reads this dict
+        # from another thread, and growing one underneath a reader is a crash.
+        anchors = dict(self._anchors)
+        while self._pending:
+            if (time.perf_counter() - started) * 1_000.0 >= budget_ms:
+                break
+            hertz = self._pending.pop()
+            if any(abs(hertz - known) < 0.01 for known in anchors):
+                continue
+            note = render_note(instrument, hertz)
+            if note.size:
+                anchors[hertz] = note
+        self._anchors = anchors
+        return bool(self._pending)
+
+    def _finish_in_background(self) -> None:
+        """Render whatever the budget could not, off the interface's thread.
+
+        The click can only afford so much, and the expensive instruments are
+        exactly the ones that need the most notes. PyTheory's rendering gives
+        up the interpreter lock while it works, so doing the rest on a worker
+        costs the interface nothing measurable -- the instrument simply gets
+        better at tracking pitch over the following second, while it plays.
+        """
+        with self._lock:
+            if not self._pending or (
+                self._worker is not None and self._worker.is_alive()
+            ):
+                return
+            generation = self._generation
+            self._worker = threading.Thread(
+                target=self._fill_until_done,
+                args=(generation,),
+                name="noodler-render",
+                daemon=True,
+            )
+            self._worker.start()
+
+    def _fill_until_done(self, generation: int) -> None:
+        """Render the remaining notes one at a time, abandoning stale work."""
+        while True:
+            with self._lock:
+                if self._generation != generation or not self._pending:
+                    return
+                hertz = self._pending.pop()
+                instrument = self._rendered_for or self.parameters.instrument
+            # Rendering happens outside the lock: it is the slow part, and
+            # nothing else needs to wait for it.
+            note = render_note(instrument, hertz)
+            with self._lock:
+                if self._generation != generation:
+                    return
+                if note.size:
+                    self._anchors = {**self._anchors, hertz: note}
 
     def prepare(self, sample_rate: float, _block_size: int | None = None) -> None:
         if sample_rate <= 0:
@@ -129,10 +291,11 @@ class PyTheoryVoice:
 
     def _begin(self, hertz: float) -> None:
         """Choose the nearest rendered pitch and set the rate to read it at."""
-        if not self._anchors:
+        anchors = self._anchors
+        if not anchors:
             return
-        anchor = min(self._anchors, key=lambda candidate: abs(np.log2(hertz / candidate)))
-        note = self._anchors[anchor]
+        anchor = min(anchors, key=lambda candidate: abs(np.log2(hertz / candidate)))
+        note = anchors[anchor]
         if note.size == 0:
             return
         self._note = note
