@@ -88,11 +88,20 @@ whose size was not yet known, so a coordinate that fitted one machine put the
 output past the edge of another. The rack is now centred on the first frame the
 viewport is real — once, so it never fights the user afterwards.
 
-The master mixer is exempt, because it is not placed at all. It is pinned to the
-top-right corner and the camera does not carry it: the rack pans and zooms
-underneath while it stays where it was. Where everything goes should not be
-somewhere you can lose, and it was — three separate bug reports were the output
-panel having been panned off the edge of the window.
+The console is exempt, because it is not placed at all. Eight channel strips
+and the master are pinned in a row along the bottom edge of the canvas and the
+camera does not carry them: the rack pans and zooms underneath while they stay
+where they are. Where everything goes should not be somewhere you can lose,
+and it was — three separate bug reports were the output panel having been
+panned off the edge of the window.
+
+The strips live *inside* the node editor because that is the only place a
+cable can land: DPG draws links between node attributes and nowhere else, so
+"drop a cable on a mixer slot" is only possible if the slot is a node. Each
+strip is a jack at the top, a level dial whose outer ring is its meter, and
+pan, A and B beneath — dials rather than faders, because a strip that is 106
+pixels tall leaves the rack the room it needs. The console keeps its own font
+and its dials their own size when the rack zooms: a fader is a fader.
 
 ## What this is not
 

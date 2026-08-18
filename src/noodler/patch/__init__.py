@@ -93,6 +93,8 @@ class PatchGraph:
         self._processing_order: tuple[str, ...] = ()
         self._feedback: frozenset[Cable] = frozenset()
         self._previous: dict[tuple[str, str], ArrayLike] = {}
+        self.last_rendered: Mapping[str, Mapping[str, ArrayLike]] = {}
+        """Every module's outputs from the most recent render, for meters."""
         self.transport: object | None = None
         """Where the clock stands for the block being rendered, if anyone set it.
 
@@ -307,6 +309,10 @@ class PatchGraph:
                     ) from exc
             rendered[module_id] = module.process(frame_count, sample_rate, inputs)
         self._remember(rendered)
+        # Left where the interface can read it. The blocks are new objects
+        # every render, so a reader holding last block's dict sees last block's
+        # numbers rather than a buffer being written under it.
+        self.last_rendered = rendered
         return rendered
 
     def _remember(self, rendered: Mapping[str, Mapping[str, ArrayLike]]) -> None:

@@ -18,7 +18,7 @@ from noodler.app import (
     _add_selected_module,
     _patch_link_created,
     _remove_module_node,
-    _settle_master_pin,
+    _settle_console,
     _translate_rack,
     adopt_output_taps,
     build_ui,
@@ -86,22 +86,22 @@ def test_the_camera_does_not_carry_the_master() -> None:
         dpg.destroy_context()
 
 
-def test_the_master_settles_against_the_top_right_corner(monkeypatch) -> None:
+def test_the_console_settles_along_the_bottom_edge(monkeypatch) -> None:
     dpg.create_context()
     try:
         build_ui()
-        dpg.set_item_pos(OUTPUT_NODE, [10.0, 400.0])
+        dpg.set_item_pos(OUTPUT_NODE, [10.0, 40.0])
         monkeypatch.setattr(
             dpg,
             "get_item_rect_size",
             lambda item: [950, 700] if item == RACK else [232, 300],
         )
 
-        _settle_master_pin()
+        _settle_console()
 
         x, y = (float(value) for value in dpg.get_item_pos(OUTPUT_NODE))
-        assert x + 232.0 == pytest.approx(950.0 - 18.0, abs=1.0)
-        assert y == pytest.approx(18.0, abs=1.0)
+        assert y + 300.0 == pytest.approx(700.0 - 14.0, abs=1.0), "along the bottom"
+        assert x >= 14.0, "and in from the left edge"
     finally:
         dpg.destroy_context()
 
@@ -117,7 +117,7 @@ def test_a_barely_laid_out_viewport_does_not_move_the_master(monkeypatch) -> Non
             lambda item: [2, 2] if item == RACK else [232, 300],
         )
 
-        _settle_master_pin()
+        _settle_console()
 
         assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == placed
     finally:

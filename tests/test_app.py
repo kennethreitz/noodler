@@ -18,6 +18,7 @@ from noodler.app import (
     MODULE_COLLAPSE,
     MIXER_LPG_LINK,
     OUTPUT_NODE,
+    PINNED_NODES,
     OUTPUT_METER,
     PRIMARY_WINDOW,
     RACK,
@@ -54,7 +55,6 @@ from noodler.app import (
     ZOOM_RESET_BUTTON,
     INPUT_HANDLERS,
     INSTANCE_NODE_TAGS,
-    KNOB_HINT_DRAG_LIMIT,
     KNOB_INTERACTION,
     _control_position,
     _capture_current_preset,
@@ -114,7 +114,9 @@ def test_default_rack_starts_quiet_with_only_the_master() -> None:
             "left",
             "right",
         }
-        assert RACK_NODES == [OUTPUT_NODE]
+        # The console: eight strips and the master, and nothing else.
+        assert set(RACK_NODES) == set(PINNED_NODES)
+        assert len(PINNED_NODES) == 9
         assert dpg.does_item_exist(OUTPUT_NODE)
         assert not dpg.does_item_exist(VCO_NODE)
         assert not dpg.does_item_exist(WOGGLE_NODE)
@@ -265,14 +267,11 @@ def test_starter_patch_ui_tracks_the_mixer_channel_count() -> None:
         coarse = _sweep(-45.0, fine=False)
         fine = _sweep(-45.0, fine=True)
         assert coarse > fine > start
-        assert KNOB_INTERACTION.tooltip_tags
-        tooltip = KNOB_INTERACTION.tooltip_tags[0]
-        for drag in range(KNOB_HINT_DRAG_LIMIT):
-            KNOB_INTERACTION.active_knob = frequency_control
-            _end_knob_drag("test", None, KNOB_INTERACTION)
-            assert dpg.get_item_configuration(tooltip)["show"] is (
-                drag < KNOB_HINT_DRAG_LIMIT - 1
-            )
+        # There is no hint tooltip on a knob any more: the status bar says
+        # what the value is while it turns, and nothing covers the panel.
+        KNOB_INTERACTION.active_knob = frequency_control
+        _end_knob_drag("test", None, KNOB_INTERACTION)
+        assert KNOB_INTERACTION.active_knob is None
         assert dpg.get_item_configuration(
             f"{FUNCTION_NODE}.channel_1"
         )["show"] is True
@@ -622,11 +621,11 @@ def test_space_pan_moves_the_rack_hierarchy_as_one_view(monkeypatch) -> None:
     dpg.create_context()
     try:
         build_ui()
-        # The master is pinned to the corner, so it is not part of what pans.
+        # The console is pinned along the bottom, so it is not part of what pans.
         original = {
             node: tuple(dpg.get_item_pos(node))
             for node in RACK_NODES
-            if node != OUTPUT_NODE
+            if node not in PINNED_NODES
         }
         pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
         CANVAS_INTERACTION.panning = True
@@ -709,11 +708,11 @@ def test_background_drag_recovers_when_node_editor_claims_mouse_down(
     dpg.create_context()
     try:
         build_ui()
-        # The master is pinned to the corner, so it is not part of what pans.
+        # The console is pinned along the bottom, so it is not part of what pans.
         original = {
             node: tuple(dpg.get_item_pos(node))
             for node in RACK_NODES
-            if node != OUTPUT_NODE
+            if node not in PINNED_NODES
         }
         pinned = tuple(dpg.get_item_pos(OUTPUT_NODE))
         monkeypatch.setattr(
@@ -880,8 +879,10 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
 
     dpg.create_context()
     try:
-        build_ui()
-        # The master is pinned to the corner, so it is not part of what pans.
+        runtime = build_ui()
+        _add_selected_module("test", None, (runtime, "classic_vco"))
+        module_node = INSTANCE_NODE_TAGS["classic_vco"]
+        # The console is pinned along the bottom, so it is not part of what zooms.
         original = {
             node: tuple(dpg.get_item_pos(node))
             for node in RACK_NODES
@@ -898,7 +899,10 @@ def test_rack_zoom_scales_the_hierarchy_and_has_visible_controls() -> None:
             assert node_x == pytest.approx(original_x * 1.12, abs=1.0)
             assert node_y == pytest.approx(original_y * 1.12, abs=1.0)
         assert dpg.get_global_font_scale() == pytest.approx(1.0)
-        assert dpg.get_item_font(OUTPUT_NODE) == _rack_font_tag(1.12)
+        # Modules take the zoomed font; the console does not zoom at all.
+        assert dpg.get_item_font(module_node) == _rack_font_tag(1.12)
+        assert not dpg.get_item_info(OUTPUT_NODE)["font"], "the console keeps its own"
+        assert tuple(dpg.get_item_pos(OUTPUT_NODE)) == pinned
         assert dpg.get_item_configuration(ZOOM_RESET_BUTTON)["label"] == "112%"
 
         zoom_in = dpg.get_item_configuration(ZOOM_IN_BUTTON)

@@ -76,18 +76,19 @@ uv sync
 uv run noodler
 ```
 
-Noodler opens to a quiet rack holding nothing but the **Master Mixer**, which is
-pinned to the top-right corner and already connected to the speakers. Add an
-oscillator from the library, drag its audio output to any master channel, and
-press **Start**. There is no separate idea of an output to find first: patch
-into a channel and it is audible. Audio never starts automatically.
+Noodler opens to a quiet rack with the **console** along the bottom: eight
+channel strips and a master, pinned inside the rack so the camera never carries
+them away. Each strip has its jack at the top — drag a module's audio output
+onto it and that is the slot it plays through — a level dial with its meter
+drawn as a ring around it, and pan and two sends beneath. The strip takes the
+name of whatever is patched into it. Press **▶ PLAY** in the menu bar (or ⌘↩)
+to open the audio device and start the clock; audio never starts on its own.
 
-Each channel has a level, a pan and two sends. The sends come out of the mixer
-as jacks — patch **Send A** into a reverb and the reverb's outputs back into
-two channels, and every channel that turns its A up is in the same room. The
-return is a channel like any other, so it can be levelled and panned like any
-other; the loop it closes through the master runs one block late, which is
-what a reverb is.
+The sends come out of the master strip as jacks — patch **Send A** into a
+reverb and the reverb's outputs back into two strips, and every strip that
+turns its A up is in the same room. The return is a channel like any other, so
+it can be levelled and panned like any other; the loop it closes through the
+master runs one block late, which is what a reverb is.
 
 To open a saved patch directly:
 

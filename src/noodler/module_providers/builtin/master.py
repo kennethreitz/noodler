@@ -98,6 +98,8 @@ class MasterMixer:
 
     def __init__(self, parameters: MasterMixerParameters | None = None) -> None:
         self.parameters = parameters or MasterMixerParameters()
+        self.channel_peaks: tuple[float, ...] = (0.0,) * MASTER_CHANNELS
+        """Each channel's post-fader peak from the last block, for its meter."""
 
     def set_level(self, channel: int, level: float) -> None:
         """Set one channel's level, validated as the whole set."""
@@ -139,6 +141,7 @@ class MasterMixer:
         send_a = np.zeros(frame_count, dtype=np.float64)
         send_b = np.zeros(frame_count, dtype=np.float64)
         parameters = self.parameters
+        peaks = [0.0] * MASTER_CHANNELS
         for index in range(MASTER_CHANNELS):
             name = f"channel_{index + 1}"
             if name not in inputs:
@@ -146,6 +149,7 @@ class MasterMixer:
             signal = np.asarray(
                 block(name, inputs, frame_count), dtype=np.float64
             ) * parameters.levels[index]
+            peaks[index] = float(np.max(np.abs(signal), initial=0.0))
             # Equal power, so moving a channel across does not change how loud
             # it is — only where it is.
             angle = (parameters.pans[index] + 1.0) * 0.25 * np.pi
@@ -158,6 +162,7 @@ class MasterMixer:
             if parameters.sends_b[index]:
                 send_b += signal * parameters.sends_b[index]
 
+        self.channel_peaks = tuple(peaks)
         gain = parameters.master * np.sqrt(2.0)
         left *= gain
         right *= gain

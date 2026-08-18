@@ -97,8 +97,35 @@ MASTER_ID = "master"
 real levels, real DSP -- and the only things special about it are that it is
 always present and that its bus reaches the speakers without being asked."""
 
-MASTER_MARGIN = 18.0
-"""How far the pinned master sits from the top-right corner of the canvas."""
+CONSOLE_PREFIX = "noodler.console."
+"""Every strip, fader, meter and knob of the console carries this prefix, which
+is how the zoom knows to leave them alone."""
+
+CONSOLE_STRIP = CONSOLE_PREFIX + "strip_{channel}"
+CONSOLE_MARGIN = 14.0
+"""The gap between the console and the bottom-left corner of the canvas."""
+CONSOLE_GAP = 6.0
+"""Between one strip and the next."""
+
+LEVEL_DIAL_SIZE = 30
+LEVEL_DIAL_INSET = 4.0
+"""A strip's level is a dial, and its meter is a ring drawn around that dial in
+the margin the inset leaves -- so the meter costs no space at all."""
+
+CONSOLE_LEVEL = CONSOLE_PREFIX + "level_{channel}"
+CONSOLE_METER = CONSOLE_PREFIX + "meter_{channel}"
+CONSOLE_READOUT = CONSOLE_PREFIX + "readout_{channel}"
+CONSOLE_MASTER_LEVEL = CONSOLE_PREFIX + "master_level"
+CONSOLE_MASTER_METER = CONSOLE_PREFIX + "master_meter"
+CONSOLE_MASTER_READOUT = CONSOLE_PREFIX + "master_readout"
+CONSOLE_THEME = "noodler.theme.console"
+
+PINNED_NODES: list[int | str] = []
+"""Nodes the camera does not carry: the console strips, left to right.
+
+The rack pans and zooms underneath them; they stay along the bottom edge of
+the canvas, in this order, so there is always somewhere to drag a cable to.
+"""
 WOGGLE_NODE = "noodler.wogglebug"
 SCALE_NODE = "noodler.scale_generator"
 LPG_NODE = "noodler.low_pass_gate"
@@ -251,6 +278,10 @@ UTILITY_ACCENT = (211, 145, 57, 255)
 VCO_ACCENT = (63, 153, 161, 255)
 MIXER_ACCENT = (103, 151, 108, 255)
 OUTPUT_ACCENT = (191, 91, 73, 255)
+METER_QUIET = (98, 168, 112, 255)
+METER_HOT = (214, 164, 72, 255)
+METER_CLIP = OUTPUT_ACCENT
+"""Green, amber, red: the three things a meter has ever needed to say."""
 WOGGLE_ACCENT = (191, 102, 159, 255)
 SCALE_ACCENT = (135, 119, 211, 255)
 LPG_ACCENT = (194, 154, 79, 255)
@@ -332,7 +363,6 @@ UNIT_SUFFIXES = (
 
 LABEL_ABBREVIATIONS = {"frequency": "freq", "modulation": "mod"}
 
-KNOB_HINT_DRAG_LIMIT = 3
 MIN_RACK_ZOOM = 0.55
 MAX_RACK_ZOOM = 1.65
 RACK_ZOOM_STEP = 1.12
@@ -397,6 +427,8 @@ class KnobBinding:
     size: int = KNOB_SIZE
     default_value: float | None = None
     """The value the module was built with, restored by double-clicking."""
+    inset: float = 0.0
+    """Margin left around the dial, for something else to be drawn in."""
 
 
 @dataclass(slots=True)
@@ -422,8 +454,6 @@ class KnobInteraction:
     drag_position: float = 0.0
     drag: KnobDrag = field(default_factory=KnobDrag)
     last_mouse_y: float = 0.0
-    tooltip_tags: list[int | str] = field(default_factory=list)
-    completed_drags: int = 0
 
     def reset(self) -> None:
         self.bindings.clear()
@@ -433,8 +463,6 @@ class KnobInteraction:
         self.drag_position = 0.0
         self.drag = KnobDrag()
         self.last_mouse_y = 0.0
-        self.tooltip_tags.clear()
-        self.completed_drags = 0
 
 
 KNOB_INTERACTION = KnobInteraction()
@@ -681,7 +709,11 @@ def _consume_pending_open() -> AppRuntime | None:
 ACTIVE_RUNTIME: list[AppRuntime] = []
 """The rack the frame callback is currently driving."""
 
-TRANSPORT = Transport()
+TRANSPORT = Transport(running=False)
+"""The rack's clock. It starts stopped: play is what starts it, along with the
+audio, from the button in the menu bar."""
+
+TRANSPORT_BUTTON = "noodler.transport.button"
 """The rack's tempo, shared by every module that repeats."""
 
 
@@ -953,6 +985,11 @@ def _reset_rack_registry(*, starter_patch: bool) -> None:
     if starter_patch:
         INSTANCE_NODE_TAGS.update(BASE_INSTANCE_NODE_TAGS)
     INSTANCE_NODE_TAGS[MASTER_ID] = OUTPUT_NODE
+    strips = [CONSOLE_STRIP.format(channel=c) for c in range(1, MASTER_CHANNELS + 1)]
+    PINNED_NODES[:] = [*strips, OUTPUT_NODE]
+    for strip in strips:
+        if strip not in RACK_NODES:
+            RACK_NODES.append(strip)
     VIEW_NODE_TAGS.clear()
     VIEW_NODE_TAGS.update(INSTANCE_NODE_TAGS)
     RACK_RAILS[CONTROL_RAIL][:] = (
@@ -1147,6 +1184,28 @@ def _configure_theme() -> None:
     _link_theme(AUDIO_LINK_THEME, SIGNAL_COLORS["audio"])
     _link_theme(GATE_LINK_THEME, SIGNAL_COLORS["gate"])
     _link_theme(MUSICAL_LINK_THEME, SIGNAL_COLORS["musical"])
+    with dpg.theme(tag=CONSOLE_THEME):
+        # The console is furniture, not a module: darker, squarer, quieter,
+        # with the one warm line of its title to say which strip is which.
+        with dpg.theme_component(dpg.mvNode):
+            for node_color, color in (
+                (dpg.mvNodeCol_NodeBackground, (27, 27, 25, 252)),
+                (dpg.mvNodeCol_NodeBackgroundHovered, (31, 31, 29, 255)),
+                (dpg.mvNodeCol_NodeBackgroundSelected, (31, 31, 29, 255)),
+                (dpg.mvNodeCol_NodeOutline, (64, 60, 52, 255)),
+                (dpg.mvNodeCol_TitleBar, (46, 43, 38, 255)),
+                (dpg.mvNodeCol_TitleBarHovered, (54, 50, 44, 255)),
+                (dpg.mvNodeCol_TitleBarSelected, (46, 43, 38, 255)),
+            ):
+                dpg.add_theme_color(node_color, color, category=dpg.mvThemeCat_Nodes)
+            for node_style, value in (
+                (dpg.mvNodeStyleVar_NodeCornerRounding, 4),
+                (dpg.mvNodeStyleVar_NodeBorderThickness, 1.0),
+            ):
+                dpg.add_theme_style(node_style, value, category=dpg.mvThemeCat_Nodes)
+            dpg.add_theme_style(
+                dpg.mvNodeStyleVar_NodePadding, 6, 4, category=dpg.mvThemeCat_Nodes
+            )
     with dpg.theme(tag=METER_THEME):
         with dpg.theme_component(dpg.mvProgressBar):
             dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, OUTPUT_ACCENT)
@@ -1167,12 +1226,15 @@ def _start_audio(
     try:
         engine.start()
         rate = engine.sample_rate
-        dpg.set_value(
-            AUDIO_STATUS,
-            f"Playing on {engine.output_device_name} at {rate:.0f} Hz",
-        )
+        if dpg.does_item_exist(AUDIO_STATUS):
+            dpg.set_value(
+                AUDIO_STATUS,
+                f"{engine.output_device_name}  ·  {rate / 1000:.1f} kHz",
+            )
     except Exception as exc:
-        dpg.set_value(AUDIO_STATUS, f"Audio error: {exc}")
+        if dpg.does_item_exist(AUDIO_STATUS):
+            dpg.set_value(AUDIO_STATUS, f"AUDIO ERROR: {exc}")
+        raise
 
 
 def _stop_audio(
@@ -1181,7 +1243,55 @@ def _stop_audio(
     engine: SystemAudioEngine,
 ) -> None:
     engine.stop()
-    dpg.set_value(AUDIO_STATUS, "Stopped")
+    if dpg.does_item_exist(AUDIO_STATUS):
+        dpg.set_value(AUDIO_STATUS, "")
+
+
+def _toggle_playback(
+    _sender: int | str = 0, _app_data: object = None, runtime: AppRuntime | None = None
+) -> None:
+    """Play or stop: the audio and the clock together, from one button.
+
+    Audio never starts on its own -- pressing play is what opens the device --
+    and the clock runs while it is open, so a beat that follows the transport
+    starts when the sound does. Stopping closes the device: the button says
+    stop, and it should stop.
+    """
+    if runtime is None and ACTIVE_RUNTIME:
+        runtime = ACTIVE_RUNTIME[0]
+    if runtime is None:
+        return
+    engine = runtime.audio
+    if engine.is_running:
+        TRANSPORT.running = False
+        _stop_audio(0, None, engine)
+        _set_patch_status("STOPPED")
+    else:
+        try:
+            _start_audio(0, None, engine)
+        except Exception as exc:
+            _set_patch_status(f"COULD NOT START AUDIO: {exc}", error=True)
+            return
+        TRANSPORT.running = True
+        _set_patch_status("PLAYING")
+    _refresh_transport_button(runtime)
+
+
+def _refresh_transport_button(runtime: AppRuntime | None = None) -> None:
+    """Make the button say what it will do next."""
+    if not dpg.does_item_exist(TRANSPORT_BUTTON):
+        return
+    if runtime is None and ACTIVE_RUNTIME:
+        runtime = ACTIVE_RUNTIME[0]
+    playing = runtime is not None and runtime.audio.is_running
+    label = "■  STOP" if playing else "▶  PLAY"
+    if dpg.get_item_configuration(TRANSPORT_BUTTON)["label"] != label:
+        dpg.configure_item(TRANSPORT_BUTTON, label=label)
+
+
+def _play_shortcut(sender: int | str, app_data: object, runtime: AppRuntime) -> None:
+    if _commanded() and not _keyboard_is_captured():
+        _toggle_playback(sender, app_data, runtime)
 
 
 def _set_patch_status(message: str, *, error: bool = False) -> None:
@@ -1767,6 +1877,32 @@ def _refresh_scope(runtime: AppRuntime) -> None:
     _draw_trace(trace, BAR_SCOPE_TRACE, BAR_SCOPE_WIDTH, BAR_SCOPE_HEIGHT)
 
 
+CONSOLE_BALLISTICS: list[MeterBallistics] = []
+"""One peak-programme meter per strip, made when the console is."""
+
+
+def _refresh_console_meters(runtime: AppRuntime, dt: float, master_level: float) -> None:
+    """Light each strip's ring as far round as its channel reaches."""
+    master = runtime.patch.modules.get(MASTER_ID)
+    peaks = getattr(master, "channel_peaks", ()) if master is not None else ()
+    while len(CONSOLE_BALLISTICS) < MASTER_CHANNELS:
+        CONSOLE_BALLISTICS.append(MeterBallistics())
+    for index, meter in enumerate(CONSOLE_BALLISTICS):
+        ring = f"{CONSOLE_LEVEL.format(channel=index + 1)}.meter"
+        if not dpg.does_item_exist(ring):
+            continue
+        peak = float(peaks[index]) if index < len(peaks) else 0.0
+        level = min(1.0, meter.advance(peak, dt))
+        dpg.configure_item(ring, points=_meter_ring_points(level), color=_meter_colour(level))
+    ring = f"{CONSOLE_MASTER_LEVEL}.meter"
+    if dpg.does_item_exist(ring):
+        dpg.configure_item(
+            ring,
+            points=_meter_ring_points(master_level),
+            color=_meter_colour(master_level),
+        )
+
+
 def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
     """Copy inexpensive audio telemetry onto the UI thread."""
     _refresh_scope(runtime)
@@ -1776,10 +1912,7 @@ def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
     # Peak-programme ballistics rise instantly and fall on a known slope.
     level = min(1.0, METER_BALLISTICS.advance(runtime.audio.last_peak, dt))
     dpg.set_value(OUTPUT_METER, level)
-    dpg.configure_item(
-        OUTPUT_METER,
-        overlay=f"{_decibels(level)} dB  ·  PK {_decibels(METER_BALLISTICS.peak)}",
-    )
+    _refresh_console_meters(runtime, dt, level)
     if (
         runtime.scale_generator is not None
         and dpg.does_item_exist(SCALE_NOTE_STATUS)
@@ -1820,9 +1953,10 @@ def _refresh_frame(
     _settle_recenter(dt)
     _settle_rack_zoom(dt)
     _settle_rack_rails(dt)
-    _settle_master_pin()
+    _settle_console()
     _refresh_clock(dt)
     _refresh_ui(runtime, dt)
+    _refresh_transport_button(runtime)
     _refresh_module_close_buttons()
     dpg.set_frame_callback(
         dpg.get_frame_count() + 1,
@@ -1896,6 +2030,11 @@ def _refresh_patch_bay(binding: PatchBayBinding) -> None:
 
 
 def _refresh_patch_bays(patch: PatchGraph) -> None:
+    _console_titles(patch)
+    _refresh_patch_bay_labels(patch)
+
+
+def _refresh_patch_bay_labels(patch: PatchGraph) -> None:
     for binding in PATCH_BAYS.values():
         if binding.patch is patch:
             _refresh_patch_bay(binding)
@@ -2076,6 +2215,9 @@ def _rack_font_tag(zoom: float) -> str:
 
 
 def _bind_rack_node_font(node: int | str, zoom: float | None = None) -> None:
+    if _is_pinned(node):
+        # The console does not zoom with the rack: a fader is a fader.
+        return
     if dpg.does_item_exist(node):
         dpg.bind_item_font(
             node,
@@ -2099,7 +2241,7 @@ def _set_rack_zoom(
     anchor = _rack_zoom_anchor(screen_anchor)
     ratio = new_zoom / old_zoom
     for node in RACK_NODES:
-        if not dpg.does_item_exist(node):
+        if _is_pinned(node) or not dpg.does_item_exist(node):
             continue
         dpg.set_item_pos(
             node,
@@ -2262,6 +2404,15 @@ def _reset_rack_zoom(
     _set_rack_zoom(1.0)
 
 
+def _is_pinned(node: int | str) -> bool:
+    """Whether a node belongs to the console rather than to the rack."""
+    return node in PINNED_NODES
+
+
+def _is_console_control(knob: int | str) -> bool:
+    return isinstance(knob, str) and knob.startswith(CONSOLE_PREFIX)
+
+
 def _rack_content_bounds() -> tuple[float, float, float, float] | None:
     """Return the editor-local box containing every mounted module.
 
@@ -2270,7 +2421,7 @@ def _rack_content_bounds() -> tuple[float, float, float, float] | None:
     """
     boxes = []
     for node in RACK_NODES:
-        if node == OUTPUT_NODE or not dpg.does_item_exist(node):
+        if _is_pinned(node) or not dpg.does_item_exist(node):
             continue
         node_x, node_y = (float(value) for value in dpg.get_item_pos(node))
         width, height = (
@@ -2361,7 +2512,7 @@ def _rack_content_is_measured() -> bool:
     """
     measured = False
     for node in RACK_NODES:
-        if node == OUTPUT_NODE or not dpg.does_item_exist(node):
+        if _is_pinned(node) or not dpg.does_item_exist(node):
             continue
         width, height = dpg.get_item_rect_size(node)
         if float(width) <= 1.0 or float(height) <= 1.0:
@@ -2370,24 +2521,29 @@ def _rack_content_is_measured() -> bool:
     return measured
 
 
-def _settle_master_pin() -> None:
-    """Hold the master mixer against the top-right corner of the canvas.
+def _settle_console() -> None:
+    """Hold the console strips in a row along the bottom edge of the canvas.
 
     Where everything goes should not be somewhere you can lose. The rack pans
-    and zooms underneath it; the master stays where it was, in the corner
-    nearest the transport, so there is always somewhere to drag a cable to.
+    and zooms underneath; the strips stay put, left to right in channel order
+    with the master at the end, so there is always somewhere to drag a cable.
     """
-    if not (dpg.does_item_exist(OUTPUT_NODE) and dpg.does_item_exist(RACK)):
+    if not dpg.does_item_exist(RACK):
         return
-    view_width = float(dpg.get_item_rect_size(RACK)[0])
-    width = float(dpg.get_item_rect_size(OUTPUT_NODE)[0])
-    if view_width < MIN_REVEAL_VIEWPORT or width <= 1.0:
+    view_width, view_height = (float(v) for v in dpg.get_item_rect_size(RACK))
+    if view_width < MIN_REVEAL_VIEWPORT or view_height < MIN_REVEAL_VIEWPORT:
         return
-    wanted = [view_width - width - MASTER_MARGIN, MASTER_MARGIN]
-    if [round(value) for value in dpg.get_item_pos(OUTPUT_NODE)] != [
-        round(value) for value in wanted
-    ]:
-        dpg.set_item_pos(OUTPUT_NODE, wanted)
+    x = CONSOLE_MARGIN
+    for node in PINNED_NODES:
+        if not dpg.does_item_exist(node):
+            continue
+        width, height = (float(v) for v in dpg.get_item_rect_size(node))
+        if width <= 1.0 or height <= 1.0:
+            return
+        wanted = [x, view_height - height - CONSOLE_MARGIN]
+        if [round(v) for v in dpg.get_item_pos(node)] != [round(v) for v in wanted]:
+            dpg.set_item_pos(node, wanted)
+        x += width + CONSOLE_GAP
 
 
 def _reveal_rack_once() -> None:
@@ -2559,12 +2715,14 @@ def _tidy_rack(
         node: depths.get(instance_id, 0)
         for instance_id, node in INSTANCE_NODE_TAGS.items()
     }
-    node_depth[OUTPUT_NODE] = furthest + 1
-
     TIDY_TARGETS.clear()
     gap = RACK_RAIL_GAP * CANVAS_INTERACTION.zoom
     ordered = sorted(
-        (node for node in RACK_NODES if dpg.does_item_exist(node)),
+        (
+            node
+            for node in RACK_NODES
+            if not _is_pinned(node) and dpg.does_item_exist(node)
+        ),
         key=lambda node: (
             node_depth.get(node, 0),
             float(dpg.get_item_pos(node)[0]),
@@ -2822,7 +2980,7 @@ def _module_close_bounds(
 ) -> tuple[float, float, float, float] | None:
     """Return the screen-space close target at a module title's right edge."""
     if (
-        node == OUTPUT_NODE
+        _is_pinned(node)
         or MODULE_COLLAPSE.is_collapsed(node)
         or not dpg.does_item_exist(node)
     ):
@@ -3147,18 +3305,6 @@ def _release_stale_key_latches() -> None:
             KEY_LATCH.discard(key)
 
 
-def _show_knob_hints(visible: bool) -> None:
-    """Show or hide the rotary hint tooltips as one group.
-
-    A hint that covers the value it is explaining, at the moment the value is
-    being changed, is worse than no hint at all — so they are put away for the
-    duration of every drag, and retired for good once the gesture is learned.
-    """
-    for tooltip in KNOB_INTERACTION.tooltip_tags:
-        if dpg.does_item_exist(tooltip):
-            dpg.configure_item(tooltip, show=visible)
-
-
 def _library_pane_is_inline() -> bool:
     """Report whether this rack has a library pane at all."""
     return dpg.does_item_exist(MODULE_SELECTOR)
@@ -3237,8 +3383,8 @@ def _translate_rack(delta_x: float, delta_y: float) -> None:
     if not delta_x and not delta_y:
         return
     for node in RACK_NODES:
-        # The master is pinned to the corner, so the camera does not carry it.
-        if node == OUTPUT_NODE or not dpg.does_item_exist(node):
+        # The console is pinned to the bottom edge; the camera does not carry it.
+        if _is_pinned(node) or not dpg.does_item_exist(node):
             continue
         node_x, node_y = dpg.get_item_pos(node)
         dpg.set_item_pos(node, [node_x + delta_x, node_y + delta_y])
@@ -3420,8 +3566,15 @@ def _add_rack_menu(runtime: AppRuntime) -> None:
                 tag=CLOCK_REWIND_ITEM,
                 callback=_rewind_clock,
             )
-        # Pushed to the right edge each frame, where a transport belongs.
+        # Pushed to the right edge each frame, where a transport belongs:
+        # play, then the clock it runs.
         dpg.add_spacer(tag=CLOCK_SPACER, width=1)
+        dpg.add_button(
+            label="▶  PLAY",
+            tag=TRANSPORT_BUTTON,
+            callback=_toggle_playback,
+            user_data=runtime,
+        )
         dpg.add_text("", tag=CLOCK_READOUT, color=MUTED_TEXT)
 
 
@@ -3505,7 +3658,6 @@ def _begin_knob_drag(
             interaction.drag.maximum = maximum
             interaction.drag.begin(interaction.drag_position)
             interaction.last_mouse_y = float(dpg.get_mouse_pos(local=False)[1])
-            _show_knob_hints(False)
             if dpg.does_item_exist(CONTROL_STATUS):
                 value = _control_value(interaction.drag_position, binding)
                 dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
@@ -3605,8 +3757,6 @@ def _end_knob_drag(
     if interaction.active_knob is None:
         return
     interaction.active_knob = None
-    interaction.completed_drags += 1
-    _show_knob_hints(interaction.completed_drags < KNOB_HINT_DRAG_LIMIT)
     if dpg.does_item_exist(CONTROL_STATUS):
         dpg.configure_item(CONTROL_STATUS, color=MUTED_TEXT)
         dpg.set_value(CONTROL_STATUS, DEFAULT_CONTROL_STATUS)
@@ -3687,8 +3837,8 @@ def _remove_module_node(
     re-deriving controls that the module's own builder made, so the cheapest
     correct restore is the panel that was already there.
     """
-    if node == OUTPUT_NODE:
-        _set_patch_status("THE MASTER MIXER CANNOT BE REMOVED", error=True)
+    if _is_pinned(node):
+        _set_patch_status("THE CONSOLE CANNOT BE REMOVED", error=True)
         return False
     instance_id = _module_id_for_node(node)
     if instance_id is None:
@@ -3975,6 +4125,7 @@ def _configure_knob_handlers(runtime: AppRuntime) -> None:
             (dpg.mvKey_Q, _quit_shortcut),
             (dpg.mvKey_O, _open_shortcut),
             (dpg.mvKey_N, _new_shortcut),
+            (dpg.mvKey_Return, _play_shortcut),
             (dpg.mvKey_S, _save_shortcut),
         ):
             dpg.add_key_press_handler(
@@ -3996,6 +4147,7 @@ def _add_knob(
     size: int = KNOB_SIZE,
     tag: int | str = 0,
     compact: bool = False,
+    inset: float = 0.0,
 ) -> int | str:
     """Add a compact rotary control with a separate live value readout.
 
@@ -4030,18 +4182,13 @@ def _add_knob(
         logarithmic=logarithmic,
         size=size,
         default_value=value,
+        inset=inset,
     )
     dpg.configure_item(knob, callback=_set_knob_value, user_data=binding)
     KNOB_INTERACTION.bindings[knob] = binding
     KNOB_INTERACTION.positions[knob] = position
     _paint_knob(knob, size)
-    with dpg.tooltip(cluster) as tooltip:
-        dpg.add_text("DRAG UP / DOWN", color=TEXT)
-        dpg.add_text(
-            "Slow for fine detail · Shift for finer · Double-click to reset",
-            color=MUTED_TEXT,
-        )
-    KNOB_INTERACTION.tooltip_tags.append(tooltip)
+    del cluster
     return knob
 
 
@@ -4056,7 +4203,7 @@ def _knob_geometry(
     fraction = 0.0 if span <= 0.0 else (position - minimum) / span
     fraction = min(1.0, max(0.0, fraction))
     centre = (size * 0.5, size * 0.5)
-    radius = size * 0.5 - 1.0
+    radius = size * 0.5 - 1.0 - binding.inset
     angle = KNOB_SWEEP_START + fraction * (KNOB_SWEEP_END - KNOB_SWEEP_START)
     steps = max(2, int(24 * fraction))
     arc = [
@@ -4072,9 +4219,9 @@ def _knob_geometry(
     return centre, radius, angle, arc
 
 
-def _knob_track_points(size: int) -> list[tuple[float, float]]:
+def _knob_track_points(size: int, inset: float = 0.0) -> list[tuple[float, float]]:
     centre = size * 0.5
-    radius = size * 0.5 - 1.0
+    radius = size * 0.5 - 1.0 - inset
     return [
         (
             centre + radius * math.cos(theta),
@@ -4100,7 +4247,10 @@ def _paint_knob(knob: int | str, size: int) -> None:
         centre, radius, color=(0, 0, 0, 0), fill=KNOB_BODY, parent=knob
     )
     track = dpg.draw_polyline(
-        _knob_track_points(size), color=KNOB_TRACK, thickness=thickness, parent=knob
+        _knob_track_points(size, KNOB_INTERACTION.bindings[knob].inset),
+        color=KNOB_TRACK,
+        thickness=thickness,
+        parent=knob,
     )
     arc_item = dpg.draw_polyline(
         arc, color=KNOB_ARC, thickness=thickness, parent=knob
@@ -4155,7 +4305,7 @@ def _set_knob_position(knob: int | str, position: float) -> None:
 def _resize_knob(knob: int | str, size: int) -> None:
     """Draw a knob again at a new size, as zooming asks for."""
     size = max(KNOB_SIZE_MINIMUM, int(size))
-    if not dpg.does_item_exist(knob):
+    if _is_console_control(knob) or not dpg.does_item_exist(knob):
         return
     art = KNOB_INTERACTION.art.get(knob)
     if art is not None and art.size == size:
@@ -5283,69 +5433,142 @@ def _format_pan(value: float) -> str:
     return f"{'L' if value < 0 else 'R'}{abs(value) * 100:.0f}"
 
 
-def _build_output_node(engine: SystemAudioEngine, master: MasterMixer) -> None:
-    """Build the master mixer: the one panel every rack has.
+def _fader_readout(level: float) -> str:
+    return f"{_decibels(level)} dB"
 
-    It replaces the old system output, which was a node with three jacks and no
-    mixer behind them -- everything that reached the speakers had to be balanced
-    somewhere else first. These are real channels with real levels, and the
-    stereo bus behind them is already connected, so the question is only how
-    loud each thing is rather than how it gets out.
-    """
-    with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
+
+def _add_level_dial(
+    tag: str, value: float, label: str, setter: Callable[[float], None]
+) -> None:
+    """A level dial with a meter ring drawn around it in its own margin."""
+    _add_knob(
+        value,
+        label,
+        0.0,
+        1.0,
+        lambda level: _fader_readout(level),
+        setter,
+        size=LEVEL_DIAL_SIZE,
+        tag=tag,
+        compact=True,
+        inset=LEVEL_DIAL_INSET,
+    )
+    dpg.draw_polyline(
+        _meter_ring_points(0.0),
+        color=METER_QUIET,
+        thickness=2.0,
+        parent=tag,
+        tag=f"{tag}.meter",
+    )
+
+
+def _meter_ring_points(fraction: float) -> list[tuple[float, float]]:
+    """The outer ring of a level dial, lit as far round as the signal reaches."""
+    fraction = min(1.0, max(0.0, fraction))
+    centre = LEVEL_DIAL_SIZE * 0.5
+    radius = LEVEL_DIAL_SIZE * 0.5 - 1.0
+    steps = max(1, int(28 * fraction))
+    return [
+        (
+            centre + radius * math.cos(theta),
+            centre + radius * math.sin(theta),
+        )
+        for theta in (
+            KNOB_SWEEP_START
+            + (KNOB_SWEEP_END - KNOB_SWEEP_START) * fraction * step / steps
+            for step in range(steps + 1)
+        )
+    ]
+
+
+def _meter_colour(level: float) -> tuple[int, int, int, int]:
+    if level >= 0.98:
+        return METER_CLIP
+    if level >= 0.7:
+        return METER_HOT
+    return METER_QUIET
+
+
+def _build_strip(channel: int, master: MasterMixer) -> None:
+    """One console strip: the jack at the top, then level, then pan, A, B."""
+    with dpg.node(tag=CONSOLE_STRIP.format(channel=channel), label=f"{channel}"):
+        with dpg.node_attribute(
+            tag=f"{OUTPUT_NODE}.channel_{channel}",
+            label=f"Channel {channel}",
+            attribute_type=dpg.mvNode_Attr_Input,
+        ):
+            _add_port_text(
+                "IN", "audio", f"Channel {channel}, summed into the output bus."
+            )
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            # One header for the strip, so each channel is a row of knobs and
-            # not four labelled clusters: level, pan, send A, send B.
+            level = master.parameters.levels[channel - 1]
             with dpg.group(horizontal=True):
-                dpg.add_text("      ", color=MUTED_TEXT)
-                for heading in ("LVL", "PAN", " A ", " B "):
-                    dpg.add_text(heading, color=MUTED_TEXT)
-                    dpg.add_spacer(width=max(1, KNOB_SIZE - 14))
-        for index in range(1, MASTER_CHANNELS + 1):
-            with dpg.node_attribute(
-                tag=f"{OUTPUT_NODE}.channel_{index}",
-                label=f"Channel {index}",
-                attribute_type=dpg.mvNode_Attr_Input,
-            ):
-                with dpg.group(horizontal=True):
-                    _add_port_text(
-                        f"CH {index}",
-                        "audio",
-                        f"Channel {index}, summed into the output bus.",
-                    )
+                _add_level_dial(
+                    CONSOLE_LEVEL.format(channel=channel),
+                    level,
+                    f"Ch {channel} level",
+                    lambda value, channel=channel: _channel_level_changed(
+                        master, channel, value
+                    ),
+                )
+                dpg.add_text(
+                    _fader_readout(level),
+                    tag=CONSOLE_READOUT.format(channel=channel),
+                    color=MUTED_TEXT,
+                )
+            with dpg.group(horizontal=True):
+                _add_knob(
+                    master.parameters.pans[channel - 1],
+                    f"Ch {channel} pan",
+                    -1.0,
+                    1.0,
+                    _format_pan,
+                    lambda value, channel=channel: master.set_pan(channel, value),
+                    tag=CONSOLE_PREFIX + f"pan_{channel}",
+                    compact=True,
+                )
+                for bus in SENDS:
                     _add_knob(
-                        master.parameters.levels[index - 1],
-                        f"Ch {index} level",
+                        getattr(master.parameters, f"sends_{bus}")[channel - 1],
+                        f"Ch {channel} send {bus.upper()}",
                         0.0,
                         1.0,
                         lambda value: f"{value:.2f}",
-                        lambda value, channel=index: master.set_level(channel, value),
-                        tag=f"{OUTPUT_NODE}.control.level_{index}",
+                        lambda value, channel=channel, bus=bus: master.set_send(
+                            bus, channel, value
+                        ),
+                        tag=CONSOLE_PREFIX + f"send_{bus}_{channel}",
                         compact=True,
                     )
-                    _add_knob(
-                        master.parameters.pans[index - 1],
-                        f"Ch {index} pan",
-                        -1.0,
-                        1.0,
-                        _format_pan,
-                        lambda value, channel=index: master.set_pan(channel, value),
-                        tag=f"{OUTPUT_NODE}.control.pan_{index}",
-                        compact=True,
-                    )
-                    for bus in SENDS:
-                        _add_knob(
-                            getattr(master.parameters, f"sends_{bus}")[index - 1],
-                            f"Ch {index} send {bus.upper()}",
-                            0.0,
-                            1.0,
-                            lambda value: f"{value:.2f}",
-                            lambda value, channel=index, bus=bus: master.set_send(
-                                bus, channel, value
-                            ),
-                            tag=f"{OUTPUT_NODE}.control.send_{bus}_{index}",
-                            compact=True,
-                        )
+
+
+def _channel_level_changed(master: MasterMixer, channel: int, level: float) -> None:
+    master.set_level(channel, float(level))
+    readout = CONSOLE_READOUT.format(channel=channel)
+    if dpg.does_item_exist(readout):
+        dpg.set_value(readout, _fader_readout(float(level)))
+
+
+def _master_level_changed(master: MasterMixer, level: float) -> None:
+    master.parameters.master = float(level)
+    if dpg.does_item_exist(CONSOLE_MASTER_READOUT):
+        dpg.set_value(CONSOLE_MASTER_READOUT, _fader_readout(float(level)))
+
+
+def _build_console(engine: SystemAudioEngine, master: MasterMixer) -> None:
+    """Build the console: eight strips and the master, pinned along the bottom.
+
+    The mixer used to be one panel of knobs pinned in a corner, and it looked
+    tacked on because it was. A mixer is a row of strips: each channel has its
+    jack at the top -- so a cable can be dropped straight onto the slot it
+    should play through -- a level dial with its meter drawn as a ring around
+    it, and pan and two sends under that. The strips live inside the node
+    editor because that is the only place a cable can land, and they are
+    pinned so the rack pans and zooms underneath them.
+    """
+    for channel in range(1, MASTER_CHANNELS + 1):
+        _build_strip(channel, master)
+    with dpg.node(tag=OUTPUT_NODE, label="MASTER"):
         for port_id, name, description in (
             ("send_a", "SEND A", "Every channel's send A, summed. Patch it to an effect."),
             ("send_b", "SEND B", "Every channel's send B, summed."),
@@ -5358,59 +5581,69 @@ def _build_output_node(engine: SystemAudioEngine, master: MasterMixer) -> None:
             ):
                 _add_port_text(name, "audio", description)
         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            _add_knob(
-                engine.master_gain,
-                "Master",
-                0.0,
-                1.0,
-                lambda value: f"{value:.2f}",
-                lambda value: setattr(engine, "master_gain", value),
-                size=KNOB_SIZE_LARGE,
-                tag=f"{OUTPUT_NODE}.control.master",
-            )
-            dpg.add_text("OUTPUT", color=MUTED_TEXT)
-            with dpg.drawlist(
-                width=SCOPE_WIDTH, height=SCOPE_HEIGHT, tag=OUTPUT_SCOPE
-            ):
-                dpg.draw_rectangle(
-                    (0, 0),
-                    (SCOPE_WIDTH, SCOPE_HEIGHT),
-                    fill=(22, 23, 21, 255),
-                    color=(58, 56, 50, 255),
-                )
-                dpg.draw_line(
-                    (0, SCOPE_HEIGHT * 0.5),
-                    (SCOPE_WIDTH, SCOPE_HEIGHT * 0.5),
-                    color=(58, 56, 50, 255),
-                )
-                dpg.draw_polyline(
-                    [
-                        (index, SCOPE_HEIGHT * 0.5)
-                        for index in range(SCOPE_POINTS_DRAWN)
-                    ],
-                    color=SIGNAL_COLORS["audio"],
-                    thickness=1.4,
-                    tag=OUTPUT_SCOPE_TRACE,
-                )
-            dpg.add_progress_bar(
-                tag=OUTPUT_METER,
-                default_value=0.0,
-                overlay="-∞ dB",
-                width=150,
-            )
-            dpg.bind_item_theme(OUTPUT_METER, METER_THEME)
+            level = master.parameters.master
             with dpg.group(horizontal=True):
-                dpg.add_button(
-                    label="Start",
-                    callback=_start_audio,
-                    user_data=engine,
+                _add_level_dial(
+                    CONSOLE_MASTER_LEVEL,
+                    level,
+                    "Master",
+                    lambda value: _master_level_changed(master, value),
                 )
-                dpg.add_button(
-                    label="Stop",
-                    callback=_stop_audio,
-                    user_data=engine,
+                dpg.add_text(
+                    _fader_readout(level), tag=CONSOLE_MASTER_READOUT, color=MUTED_TEXT
                 )
-            dpg.add_text("Stopped", tag=AUDIO_STATUS, wrap=180)
+            # The peak-programme meter the tests read; the ring is what is seen.
+            dpg.add_progress_bar(
+                tag=OUTPUT_METER, default_value=0.0, overlay="", width=1, height=1, show=False
+            )
+    for node in PINNED_NODES:
+        if dpg.does_item_exist(node):
+            dpg.bind_item_theme(node, CONSOLE_THEME)
+
+
+def _console_titles(patch: PatchGraph) -> None:
+    """Name each strip after what is patched into it.
+
+    A row of numbers is a mixer nobody has used yet. Once a cable lands the
+    strip says what it is playing -- the module's own instance name, cut to
+    fit -- and goes back to its number when the cable is pulled.
+    """
+    feeding: dict[int, str] = {}
+    for cable in patch.cables:
+        if cable.target.module_id != MASTER_ID:
+            continue
+        if not cable.target.port_id.startswith("channel_"):
+            continue
+        try:
+            channel = int(cable.target.port_id.rsplit("_", 1)[1])
+        except ValueError:
+            continue
+        feeding.setdefault(channel, cable.source.module_id)
+    for channel in range(1, MASTER_CHANNELS + 1):
+        strip = CONSOLE_STRIP.format(channel=channel)
+        if not dpg.does_item_exist(strip):
+            continue
+        source = feeding.get(channel)
+        label = f"{channel}" if source is None else _strip_title(source)
+        if dpg.get_item_configuration(strip)["label"] != label:
+            dpg.configure_item(strip, label=label)
+
+
+def _strip_title(instance_id: str, width: int = 8) -> str:
+    """An instance name short enough for a strip: "P VOICE", "REVERB", "ECHO 2"."""
+    words = [word for word in instance_id.replace("-", "_").split("_") if word]
+    if not words:
+        return instance_id.upper()[:width]
+    joined = " ".join(words).upper()
+    if len(joined) <= width:
+        return joined
+    if len(words) >= 2:
+        initials = "".join(word[0] for word in words[:-1]).upper()
+        short = f"{initials} {words[-1].upper()}"
+        if len(short) <= width:
+            return short
+        return short[:width].rstrip()
+    return joined[:width].rstrip()
 
 
 def _module_selector_button_tag(module_id: str) -> str:
@@ -6181,7 +6414,7 @@ def _build_empty_rack_ui(
                     minimap=True,
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
                 ):
-                    _build_output_node(runtime.audio, ensure_master(runtime.patch))
+                    _build_console(runtime.audio, ensure_master(runtime.patch))
                     _add_module_spines(runtime)
         dpg.add_separator()
         with dpg.group(horizontal=True):
@@ -6191,8 +6424,8 @@ def _build_empty_rack_ui(
                 color=MUTED_TEXT,
             )
             _add_bar_scope()
+            dpg.add_text("", tag=AUDIO_STATUS, color=MUTED_TEXT)
         dpg.bind_item_theme(OUTPUT_NODE, OUTPUT_THEME)
-        dpg.set_item_pos(OUTPUT_NODE, [900, 250])
         CANVAS_INTERACTION.rail_y.update(
             {
                 CONTROL_RAIL: 40.0,
@@ -6397,7 +6630,7 @@ def build_ui(
             )
             _build_low_pass_gate_node(runtime.low_pass_gate, runtime.patch)
             _build_reverb_node(runtime.reverb, runtime.patch)
-            _build_output_node(runtime.audio, ensure_master(runtime.patch))
+            _build_console(runtime.audio, ensure_master(runtime.patch))
             _add_module_spines(runtime)
             _add_visual_link(
                 f"{FUNCTION_NODE}.channel_1",
@@ -6580,6 +6813,7 @@ def build_ui(
                 color=MUTED_TEXT,
             )
             _add_bar_scope()
+            dpg.add_text("", tag=AUDIO_STATUS, color=MUTED_TEXT)
         dpg.bind_item_theme(FUNCTION_NODE, UTILITY_THEME)
         dpg.bind_item_theme(VCO_NODE, VCO_THEME)
         dpg.bind_item_theme(MIXER_NODE, MIXER_THEME)

@@ -4,6 +4,7 @@ import dearpygui.dearpygui as dpg
 import pytest
 
 from noodler.app import (
+    CONSOLE_MASTER_LEVEL,
     AUDIO_RAIL,
     BOX_SELECTOR_FILL,
     CANVAS_INTERACTION,
@@ -147,7 +148,9 @@ def test_the_output_meter_rises_instantly_and_falls_back() -> None:
 
         assert dpg.get_value(OUTPUT_METER) < 0.2
         assert METER_BALLISTICS.peak > dpg.get_value(OUTPUT_METER)
-        assert "PK" in dpg.get_item_configuration(OUTPUT_METER)["overlay"]
+        # What is seen is the master dial's ring, lit as far round as the level.
+        ring = dpg.get_item_configuration(f"{CONSOLE_MASTER_LEVEL}.meter")
+        assert 1 < len(ring["points"]) < 30
     finally:
         dpg.destroy_context()
 
@@ -548,32 +551,6 @@ def test_the_marquee_is_hidden_for_panning_and_shown_for_selecting(
 
         _end_knob_drag("test", None, KNOB_INTERACTION)
         assert dpg.get_value(BOX_SELECTOR_FILL) == [0.0, 0.0, 0.0, 0.0]
-    finally:
-        dpg.destroy_context()
-
-
-def test_the_knob_hint_gets_out_of_the_way_while_turning(monkeypatch) -> None:
-    """A hint that covers the value it explains, while the value is changing."""
-    dpg.create_context()
-    try:
-        build_ui(starter_patch=True)
-        knob = f"{VCO_NODE}.control.frequency"
-        tooltip = KNOB_INTERACTION.tooltip_tags[0]
-        assert dpg.get_item_configuration(tooltip)["show"] is True
-
-        monkeypatch.setattr(
-            dpg, "get_mouse_pos", lambda *, local=False: (300.0, 240.0)
-        )
-        monkeypatch.setattr(dpg, "is_key_down", lambda _key: False)
-        monkeypatch.setattr("noodler.app._module_close_at", lambda _position: None)
-        monkeypatch.setattr(dpg, "is_item_hovered", lambda item: item == knob)
-
-        _begin_knob_drag("test", None, KNOB_INTERACTION)
-        assert KNOB_INTERACTION.active_knob == knob
-        assert dpg.get_item_configuration(tooltip)["show"] is False
-
-        _end_knob_drag("test", None, KNOB_INTERACTION)
-        assert dpg.get_item_configuration(tooltip)["show"] is True
     finally:
         dpg.destroy_context()
 
