@@ -657,6 +657,12 @@ def _set_word_parameter(combo: int | str, chosen: str, _u: object = None) -> Non
     except Exception as error:
         _set_patch_status(f"CAN'T SET: {error}".split("\n")[0][:90], error=True)
         return
+    # Some modules do real work when a word changes -- rendering an
+    # instrument, for one -- and that belongs here, on the control thread,
+    # rather than in the callback that will play it.
+    refresh = getattr(module, "refresh", None)
+    if callable(refresh):
+        refresh()
     _refresh_word_controls(module)
     label = getattr(module, "label", None)
     _set_patch_status(str(label) if label else f"SET {chosen.upper()}")

@@ -61,6 +61,12 @@ from .instrument import (
     InstrumentVoiceParameters,
     instrument_voice,
 )
+from .pytheory_voice import (
+    PYTHEORY_VOICE_MANIFEST,
+    PyTheoryVoice,
+    PyTheoryVoiceParameters,
+    render_note,
+)
 from .master import (
     MASTER_CHANNELS,
     MASTER_MIXER_MANIFEST,
@@ -123,6 +129,7 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
     version="0.1.0",
     modules=(
         INSTRUMENT_VOICE_MANIFEST,
+        PYTHEORY_VOICE_MANIFEST,
         MASTER_MIXER_MANIFEST,
         KEY_MANIFEST,
         QUANTIZER_MANIFEST,
@@ -152,6 +159,7 @@ BUILTIN_MODULE_TYPES = MappingProxyType({
     manifest.id: module_type
     for manifest, module_type in (
         (INSTRUMENT_VOICE_MANIFEST, InstrumentVoice),
+        (PYTHEORY_VOICE_MANIFEST, PyTheoryVoice),
         (MASTER_MIXER_MANIFEST, MasterMixer),
         (KEY_MANIFEST, Key),
         (QUANTIZER_MANIFEST, Quantizer),
@@ -201,6 +209,10 @@ class BuiltinProvider:
 
 __all__ = [
     "ADSR_ENVELOPE_MANIFEST",
+    "PYTHEORY_VOICE_MANIFEST",
+    "PyTheoryVoice",
+    "PyTheoryVoiceParameters",
+    "render_note",
     "INSTRUMENT_NAMES",
     "INSTRUMENT_VOICE_MANIFEST",
     "InstrumentVoice",
