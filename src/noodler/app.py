@@ -49,6 +49,7 @@ from .module_providers.builtin import (
 )
 from .engine import SystemAudioEngine
 from .history import Edit, EditHistory
+from .desktop import default_window, name_the_process, visible_screen
 from .macos_gestures import MacCursor, MacMagnifyMonitor, MacScrollMonitor
 from .motion import (
     Glide,
@@ -8618,20 +8619,25 @@ def main(argv: Sequence[str] | None = None) -> None:
             raise SystemExit(f"noodler: could not open {args.patch}: {exc}") from exc
 
     runtime: AppRuntime | None = None
+    # Before any window: the menu bar takes the process's name once.
+    name_the_process()
+    width, height, x_position, y_position = default_window(visible_screen())
     gesture_monitor = MacMagnifyMonitor(_capture_macos_magnification)
     scroll_monitor = MacScrollMonitor(_capture_macos_scroll)
     dpg.create_context()
     try:
+        placement = {} if x_position is None or y_position is None else {"x_pos": x_position, "y_pos": y_position}
         dpg.create_viewport(
             title=(
                 f"Noodler — {preset.name}"
                 if preset is not None
                 else "Noodler"
             ),
-            width=1280,
-            height=800,
+            width=width,
+            height=height,
             min_width=900,
             min_height=600,
+            **placement,
         )
         if preset is None:
             PARK_EFFECTS[:] = [True]
