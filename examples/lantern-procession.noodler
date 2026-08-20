@@ -1,0 +1,621 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Lantern Procession",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 1.6333333333333333,
+        "beats_per_bar": 4,
+        "trigger_ms": 6
+      }
+    },
+    {
+      "instance_id": "drums",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "second line",
+        "level": 0.46,
+        "swing": 0,
+        "follow_clock": true,
+        "rate_hz": 1.6333333333333333
+      }
+    },
+    {
+      "instance_id": "chords",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "[D3,A3,D4,F4]:h [Bb2,F3,Bb3,D4]:h [G2,D3,G3,Bb3]:h [A2,E3,A3,C#4]:h",
+        "gate_length": 0.68,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 1.6333333333333333,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "D5:e F5:e A5:q C6:e A5:e F5:q E5:e G5:e Bb5:q A5:e E5:e C#5:q",
+        "gate_length": 0.58,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 1.6333333333333333,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "bass",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "upright_bass",
+        "level": 0.38,
+        "release_ms": 820,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "cello",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "cello",
+        "level": 0.24,
+        "release_ms": 1100,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "clarinet",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "clarinet",
+        "level": 0.2,
+        "release_ms": 760,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "horn",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "french_horn",
+        "level": 0.19,
+        "release_ms": 980,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "trumpet",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "trumpet",
+        "level": 0.25,
+        "release_ms": 460,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "cathedral",
+        "mix": 1,
+        "decay_seconds": 3.8,
+        "width": 0.9,
+        "pre_delay_ms": 16,
+        "level": 0.82
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.4592,
+        "feedback": 0.3,
+        "mix": 1,
+        "damping": 0.46,
+        "drive": 0.9,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.62,
+          0.75,
+          0.48,
+          0.44,
+          0.42,
+          0.6,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          0,
+          0,
+          -0.5,
+          0.45,
+          -0.2,
+          0.28,
+          0,
+          0
+        ],
+        "sends_a": [
+          0.12,
+          0.2,
+          0.58,
+          0.62,
+          0.52,
+          0.44,
+          0,
+          0
+        ],
+        "sends_b": [
+          0,
+          0,
+          0.08,
+          0,
+          0,
+          0.34,
+          0,
+          0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.46,
+          0.26
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.48
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "chords",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "drums",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "bass",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "cello",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "cello",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "clarinet",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "clarinet",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "horn",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chords",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "horn",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "trumpet",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "trumpet",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "bass",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "cello",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clarinet",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "horn",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_5"
+      }
+    },
+    {
+      "source": {
+        "module_id": "trumpet",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_6"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "wet_left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "wet_right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_right"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "wet"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "wet"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.76
+  },
+  "transport": {
+    "bpm": 98,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.76,
+    "rails": {
+      "control": 150,
+      "audio": 590
+    },
+    "nodes": [
+      {
+        "node_id": "clock",
+        "position": {
+          "x": 70,
+          "y": 80
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "drums",
+        "position": {
+          "x": 280,
+          "y": 70
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "chords",
+        "position": {
+          "x": 600,
+          "y": 70
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 940,
+          "y": 70
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "bass",
+        "position": {
+          "x": 360,
+          "y": 560
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "cello",
+        "position": {
+          "x": 570,
+          "y": 560
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "clarinet",
+        "position": {
+          "x": 780,
+          "y": 560
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "horn",
+        "position": {
+          "x": 990,
+          "y": 560
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "trumpet",
+        "position": {
+          "x": 1200,
+          "y": 560
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1420,
+          "y": 610
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1420,
+          "y": 770
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "master",
+        "position": {
+          "x": 1680,
+          "y": 590
+        },
+        "collapsed": false
+      }
+    ],
+    "groups": [
+      {
+        "group_id": "paper_score",
+        "name": "INK ON PAPER",
+        "members": [
+          "clock",
+          "drums",
+          "chords",
+          "melody"
+        ],
+        "groups": []
+      },
+      {
+        "group_id": "procession",
+        "name": "THE PROCESSION",
+        "members": [
+          "bass",
+          "cello",
+          "clarinet",
+          "horn",
+          "trumpet"
+        ],
+        "groups": []
+      },
+      {
+        "group_id": "stone_street",
+        "name": "CATHEDRAL STREET",
+        "members": [
+          "space",
+          "echo",
+          "master"
+        ],
+        "groups": []
+      }
+    ]
+  }
+}

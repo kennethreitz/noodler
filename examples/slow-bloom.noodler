@@ -1,0 +1,588 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Slow Bloom",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 0.75,
+        "beats_per_bar": 4,
+        "trigger_ms": 8
+      }
+    },
+    {
+      "instance_id": "scale",
+      "module_type": "scale_generator",
+      "provider": "builtin",
+      "parameters": {
+        "system": "western",
+        "tonic": "D",
+        "octave": 3,
+        "scale_name": "lydian",
+        "pattern": "melodic wander",
+        "rate_hz": 1.5,
+        "gate_length": 0.34,
+        "reference_frequency_hz": 220,
+        "seed": 2046
+      }
+    },
+    {
+      "instance_id": "tide",
+      "module_type": "lfo",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 0.045,
+        "shape": "smooth random",
+        "depth": 0.72,
+        "offset": 0.12,
+        "phase": 0.18,
+        "pulse_width": 0.5,
+        "unipolar": false,
+        "seed": 808
+      }
+    },
+    {
+      "instance_id": "saw",
+      "module_type": "supersaw",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 110,
+        "voices": 7,
+        "detune_cents": 9,
+        "curve": 0.52,
+        "amplitude": 0.24
+      }
+    },
+    {
+      "instance_id": "ladder",
+      "module_type": "ladder_filter",
+      "provider": "builtin",
+      "parameters": {
+        "cutoff_hz": 720,
+        "resonance": 0.42,
+        "drive": 1.7,
+        "output_level": 0.96
+      }
+    },
+    {
+      "instance_id": "gate",
+      "module_type": "low_pass_gate",
+      "provider": "builtin",
+      "parameters": {
+        "decay_seconds": 2.8,
+        "brightness": 0.68,
+        "character": 0.62,
+        "level": 0.94
+      }
+    },
+    {
+      "instance_id": "air",
+      "module_type": "noise_source",
+      "provider": "builtin",
+      "parameters": {
+        "level": 0.055,
+        "clock_rate_hz": 0.75,
+        "crackle_density": 0.04,
+        "seed": 410
+      }
+    },
+    {
+      "instance_id": "air_filter",
+      "module_type": "state_variable_filter",
+      "provider": "builtin",
+      "parameters": {
+        "cutoff_hz": 1900,
+        "resonance": 0.58,
+        "drive": 0.7,
+        "output_level": 0.44
+      }
+    },
+    {
+      "instance_id": "chorus",
+      "module_type": "pytheory_fx",
+      "provider": "builtin",
+      "parameters": {
+        "effect": "chorus",
+        "mix": 0.52,
+        "rate_hz": 0.18,
+        "depth": 0.38,
+        "drive": 1,
+        "brightness": 0.55
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "canyon",
+        "mix": 1,
+        "decay_seconds": 6.8,
+        "width": 1,
+        "pre_delay_ms": 42,
+        "level": 0.84
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.6667,
+        "feedback": 0.48,
+        "mix": 1,
+        "damping": 0.68,
+        "drive": 0.82,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.9,
+          0.24,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.16,
+          0.52,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sends_a": [
+          0.76,
+          0.9,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sends_b": [
+          0.28,
+          0.08,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.58,
+          0.28
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.7
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "eighth"
+      },
+      "target": {
+        "module_id": "scale",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "scale",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "scale",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "saw",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tide",
+        "port_id": "sine"
+      },
+      "target": {
+        "module_id": "saw",
+        "port_id": "detune_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "saw",
+        "port_id": "cluster"
+      },
+      "target": {
+        "module_id": "ladder",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tide",
+        "port_id": "out"
+      },
+      "target": {
+        "module_id": "ladder",
+        "port_id": "cutoff_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "ladder",
+        "port_id": "low_24"
+      },
+      "target": {
+        "module_id": "gate",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "scale",
+        "port_id": "trigger"
+      },
+      "target": {
+        "module_id": "gate",
+        "port_id": "strike"
+      }
+    },
+    {
+      "source": {
+        "module_id": "gate",
+        "port_id": "output"
+      },
+      "target": {
+        "module_id": "chorus",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "chorus",
+        "port_id": "audio_out"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "sixteenth"
+      },
+      "target": {
+        "module_id": "air",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "air",
+        "port_id": "pink"
+      },
+      "target": {
+        "module_id": "air_filter",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "tide",
+        "port_id": "triangle"
+      },
+      "target": {
+        "module_id": "air_filter",
+        "port_id": "cutoff_cv"
+      }
+    },
+    {
+      "source": {
+        "module_id": "air_filter",
+        "port_id": "band"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "wet_left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "wet_right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_right"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "wet"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "wet"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.74
+  },
+  "transport": {
+    "bpm": 45,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.8,
+    "rails": {
+      "control": 150,
+      "audio": 600
+    },
+    "nodes": [
+      {
+        "node_id": "clock",
+        "position": {
+          "x": 70,
+          "y": 80
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "scale",
+        "position": {
+          "x": 290,
+          "y": 70
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "tide",
+        "position": {
+          "x": 600,
+          "y": 100
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "saw",
+        "position": {
+          "x": 290,
+          "y": 580
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "ladder",
+        "position": {
+          "x": 610,
+          "y": 570
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "gate",
+        "position": {
+          "x": 920,
+          "y": 590
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "chorus",
+        "position": {
+          "x": 1220,
+          "y": 600
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "air",
+        "position": {
+          "x": 290,
+          "y": 900
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "air_filter",
+        "position": {
+          "x": 610,
+          "y": 880
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1220,
+          "y": 820
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1220,
+          "y": 970
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "master",
+        "position": {
+          "x": 1510,
+          "y": 620
+        },
+        "collapsed": false
+      }
+    ],
+    "groups": [
+      {
+        "group_id": "tide_clock",
+        "name": "TWENTY-TWO SECOND TIDE",
+        "members": [
+          "clock",
+          "scale",
+          "tide"
+        ],
+        "groups": []
+      },
+      {
+        "group_id": "bloom_voice",
+        "name": "A BLOOM OPENS",
+        "members": [
+          "saw",
+          "ladder",
+          "gate",
+          "chorus"
+        ],
+        "groups": []
+      },
+      {
+        "group_id": "weather",
+        "name": "AIR / CANYON / ECHO",
+        "members": [
+          "air",
+          "air_filter",
+          "space",
+          "echo",
+          "master"
+        ],
+        "groups": []
+      }
+    ]
+  }
+}

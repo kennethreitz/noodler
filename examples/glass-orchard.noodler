@@ -1,0 +1,588 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Glass Orchard",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 1.4,
+        "beats_per_bar": 4,
+        "trigger_ms": 6
+      }
+    },
+    {
+      "instance_id": "harmony",
+      "module_type": "harmony_brain",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "A",
+        "mode": "minor",
+        "style": "dream changes",
+        "length": 8,
+        "register_octave": 3,
+        "rate_hz": 0.35,
+        "gate_length": 0.9,
+        "reference_frequency_hz": 220,
+        "seed": 1984
+      }
+    },
+    {
+      "instance_id": "arp",
+      "module_type": "arpeggio_brain",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "up / down",
+        "octave_range": 2,
+        "rate_hz": 2.8,
+        "gate_length": 0.38,
+        "fallback_pitches": [
+          0,
+          0.25,
+          0.5833333333333334,
+          1
+        ],
+        "reference_midi": 57,
+        "seed": 23
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "western",
+        "tonic": "A",
+        "octave": 4,
+        "scale_name": "dorian",
+        "style": "motif and answer",
+        "phrase_length": 16,
+        "octave_range": 2,
+        "density": 0.58,
+        "step_bias": 0.88,
+        "rate_hz": 1.4,
+        "gate_length": 0.46,
+        "reference_frequency_hz": 220,
+        "seed": 2112
+      }
+    },
+    {
+      "instance_id": "music_box",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "music_box",
+        "level": 0.34,
+        "release_ms": 620,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "flute",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "mellotron_flute",
+        "level": 0.28,
+        "release_ms": 780,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "choir",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "mellotron_choir",
+        "level": 0.22,
+        "release_ms": 1800,
+        "reference_frequency_hz": 220
+      }
+    },
+    {
+      "instance_id": "space",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "plate",
+        "mix": 1,
+        "decay_seconds": 4.2,
+        "width": 0.94,
+        "pre_delay_ms": 18,
+        "level": 0.9
+      }
+    },
+    {
+      "instance_id": "echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.5357,
+        "feedback": 0.38,
+        "mix": 1,
+        "damping": 0.58,
+        "drive": 0.9,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.7,
+          0.62,
+          0.48,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.28,
+          0.26,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sends_a": [
+          0.72,
+          0.58,
+          0.86,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sends_b": [
+          0.36,
+          0.22,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.48,
+          0.32
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.58
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "harmony",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "eighth"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "beat"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "clock"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "reset"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_2"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_3"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_4"
+      },
+      "target": {
+        "module_id": "arp",
+        "port_id": "voice_4"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "music_box",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "arp",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "music_box",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "flute",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "flute",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "harmony",
+        "port_id": "voice_1"
+      },
+      "target": {
+        "module_id": "choir",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "clock",
+        "port_id": "bar"
+      },
+      "target": {
+        "module_id": "choir",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "music_box",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "flute",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "choir",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_3"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_a"
+      },
+      "target": {
+        "module_id": "space",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "wet_left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "space",
+        "port_id": "wet_right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_a_right"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "echo",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "wet"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "echo",
+        "port_id": "wet"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.78
+  },
+  "transport": {
+    "bpm": 84,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.82,
+    "rails": {
+      "control": 150,
+      "audio": 560
+    },
+    "nodes": [
+      {
+        "node_id": "clock",
+        "position": {
+          "x": 80,
+          "y": 90
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "harmony",
+        "position": {
+          "x": 340,
+          "y": 80
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "arp",
+        "position": {
+          "x": 650,
+          "y": 100
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 340,
+          "y": 350
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "music_box",
+        "position": {
+          "x": 980,
+          "y": 490
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "flute",
+        "position": {
+          "x": 980,
+          "y": 720
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "choir",
+        "position": {
+          "x": 980,
+          "y": 950
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "space",
+        "position": {
+          "x": 1320,
+          "y": 560
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "echo",
+        "position": {
+          "x": 1320,
+          "y": 720
+        },
+        "collapsed": true
+      },
+      {
+        "node_id": "master",
+        "position": {
+          "x": 1570,
+          "y": 560
+        },
+        "collapsed": false
+      }
+    ],
+    "groups": [
+      {
+        "group_id": "orchard_brains",
+        "name": "THE ORCHARD DREAMS",
+        "members": [
+          "clock",
+          "harmony",
+          "arp",
+          "melody"
+        ],
+        "groups": []
+      },
+      {
+        "group_id": "glass_voices",
+        "name": "GLASS / AIR / CHOIR",
+        "members": [
+          "music_box",
+          "flute",
+          "choir"
+        ],
+        "groups": []
+      },
+      {
+        "group_id": "moon_room",
+        "name": "THE MOON ROOM",
+        "members": [
+          "space",
+          "echo",
+          "master"
+        ],
+        "groups": []
+      }
+    ]
+  }
+}
