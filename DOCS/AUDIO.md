@@ -97,8 +97,23 @@ module instances and their DSP state remain ordinary Python objects.
 [`sounddevice`](https://python-sounddevice.readthedocs.io/) supplies the
 PortAudio callback and uses Core Audio on macOS. Passing no device or sample
 rate selects the system's current default output and its native default rate.
-The initial engine requests stereo float32 output with a 256-frame block size
-and low latency.
+The engine requests stereo float32 output with a 256-frame render block and
+low device latency. Patch rendering happens on a dedicated worker into an
+adaptive sample reservoir; the Core Audio callback only drains already
+prepared frames.
+
+The reservoir begins three blocks ahead (about 16 ms at 48 kHz). A short read
+or a PortAudio output-underflow flag doubles its target depth, up to 32 blocks
+(about 171 ms). After twenty uninterrupted seconds it removes one block at a
+time, so a difficult patch earns safety quickly and latency falls cautiously
+when the machine settles. The storage is allocated once when playback starts;
+recovery does not allocate or restart the device from inside the callback.
+
+`SystemAudioEngine.buffered_frames`, `target_buffer_frames`,
+`target_buffer_ms`, and `underrun_count` expose that behavior as inexpensive
+telemetry. A finite reservoir cannot make sustained slower-than-real-time DSP
+keep up, so a failed render worker still aborts the stream instead of silently
+playing zeros forever.
 
 "System Output" currently means the default macOS output device. A virtual
 audio driver can be used by making it the system default. Explicit device and
@@ -116,15 +131,16 @@ the route and levels are ready.
 
 ## Real-time limitations
 
-This slice proves the end-to-end boundary; it is not yet a hardened real-time
-engine. Module processing and graph rendering allocate NumPy arrays and Python
-dictionaries in the callback, and topology changes do not yet use immutable
-snapshot handoff. The graph should remain structurally unchanged while audio
-is running.
+This slice proves the end-to-end boundary; it is not yet a fully hardened
+real-time engine. Module processing and graph rendering still allocate NumPy
+arrays and Python dictionaries, but they now do so on the render-ahead worker
+rather than on Core Audio's callback. Topology changes do not yet use immutable
+snapshot handoff. The app therefore stops the stream around structural graph
+edits.
 
-Before targeting very small buffers, Noodler should add reusable buffers,
-compile input routing outside the callback, measure callback load and xruns,
-and atomically swap prepared graph snapshots at block boundaries.
+Further hardening should add reusable module buffers, compile input routing
+outside the render loop, measure render load alongside xruns, and atomically
+swap prepared graph snapshots at block boundaries.
 
 ## Control-rate work stays off the sample clock
 

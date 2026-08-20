@@ -1465,7 +1465,8 @@ def _start_audio(
         if dpg.does_item_exist(AUDIO_STATUS):
             dpg.set_value(
                 AUDIO_STATUS,
-                f"{engine.output_device_name}  ·  {rate / 1000:.1f} kHz",
+                f"{engine.output_device_name}  ·  {rate / 1000:.1f} kHz"
+                f"  ·  AUTO BUFFER {engine.target_buffer_ms:.0f} ms",
             )
     except Exception as exc:
         if dpg.does_item_exist(AUDIO_STATUS):
@@ -3037,6 +3038,7 @@ def _refresh_console_meters(runtime: AppRuntime, dt: float, master_level: float)
 def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
     """Copy inexpensive audio telemetry onto the UI thread."""
     _refresh_scope(runtime)
+    _refresh_audio_buffer_status(runtime)
     if not dpg.does_item_exist(OUTPUT_METER):
         return
     # The engine reports a per-block peak, which flickers when drawn raw.
@@ -3055,6 +3057,20 @@ def _refresh_ui(runtime: AppRuntime, dt: float = 1.0 / 60.0) -> None:
             f"DEGREE {generator.current_degree}/{generator.degree_count}  ·  "
             f"{generator.current_frequency:.2f} Hz",
         )
+
+
+def _refresh_audio_buffer_status(runtime: AppRuntime) -> None:
+    """Keep the quiet device readout honest as the reservoir adapts."""
+    if not runtime.audio.is_running or not dpg.does_item_exist(AUDIO_STATUS):
+        return
+    current = str(dpg.get_value(AUDIO_STATUS) or "")
+    marker = "  ·  AUTO BUFFER "
+    device = current.partition(marker)[0]
+    if not device:
+        return
+    updated = f"{device}{marker}{runtime.audio.target_buffer_ms:.0f} ms"
+    if updated != current:
+        dpg.set_value(AUDIO_STATUS, updated)
 
 
 LAST_FRAME_ERROR: list[str] = [""]

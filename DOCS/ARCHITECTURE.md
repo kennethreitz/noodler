@@ -182,8 +182,9 @@ The intended responsibilities are:
   feedback.
 - **Control path:** patch validation, graph changes, module configuration,
   transport changes, and preparation of state needed by the audio callback.
-- **Audio callback:** processing an already prepared graph for the current
-  block with bounded, predictable work.
+- **Render-ahead worker:** processing an already prepared graph into a bounded
+  adaptive sample reservoir.
+- **Audio callback:** draining prepared frames with bounded, predictable work.
 
 The callback must not perform file access, dependency loading, UI operations,
 or other blocking work. Graph edits and expensive preparation happen outside
@@ -197,16 +198,18 @@ preemptively. If profiling later identifies a native-code bottleneck, the
 block processor may be replaced or accelerated without changing the module
 model or user interface.
 
-The first implementation uses sounddevice to open the default Core Audio
-output. Its callback renders a prepared stereo `PatchGraph`, applies the
-system-output gain and safety clamp, and preserves explicit left/right taps.
-A `both` tap duplicates a mono source when desired. The prototype still
-allocates during rendering; reusable buffers and graph-snapshot handoff remain
-required before calling the callback path real-time hardened.
+The sounddevice adapter opens the default Core Audio output. A dedicated worker
+renders a prepared stereo `PatchGraph`, applies the system-output gain and
+safety clamp, and fills an adaptive ring. The callback copies those prepared
+samples to the device. A `both` tap duplicates a mono source when desired. The
+ring grows quickly after an underrun and shrinks cautiously after sustained
+stability. Rendering still allocates; reusable module buffers and graph-
+snapshot handoff remain valuable even though that work is no longer performed
+on the device deadline.
 
 The engine also keeps time. It holds the rack's `Transport` and advances it
-once per callback by `frame_count / sample_rate`, so the clock runs on the
-sample clock rather than the frame rate; the UI reads the position and only
+once per rendered block by `frame_count / sample_rate`, so the clock runs on
+the sample clock rather than the frame rate; the UI reads the position and only
 advances it itself while no audio is playing. Before rendering, the engine
 writes a frozen `TransportFrame` — tempo, bar phase at the block's first
 sample, bars elapsed, running — onto the graph, and the graph hands it to any
