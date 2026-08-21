@@ -1,0 +1,536 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Rainlight Cathedral",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 1.4666666666666666,
+        "beats_per_bar": 4,
+        "trigger_ms": 6.0
+      }
+    },
+    {
+      "instance_id": "drums",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "second line",
+        "level": 0.42,
+        "swing": 0.0,
+        "follow_clock": true,
+        "rate_hz": 1.4666666666666666
+      }
+    },
+    {
+      "instance_id": "chords",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "[D2,A2,C3,E3]:h [Bb1,F2,A2,E3]:h [A1,E2,F2,C3]:h [C2,G2,A2,D3]:h [G1,D2,F2,A2]:h [F1,C2,D2,A2]:h [Eb1,Bb1,D2,A2]:h [A1,E2,G2,D3]:h [D2,A2,C3,F3]:h [C2,G2,Bb2,E3]:h [Bb1,F2,A2,D3]:h [A1,E2,G2,C#3]:h [G1,D2,F2,Bb2]:h [D2,A2,C3,E3]:h [Eb1,Bb1,D2,G2]:h [A1,E2,G2,C#3]:h",
+        "gate_length": 0.84,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 1.4666666666666666,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "D5:q F5:e A5:e C6:q A5:q E5:e F5:e A5:q G5:e F5:e D5:q C5:q D5:e F5:e A5:q G5:q E5:h D5:q r:q G5:q A5:e Bb5:e D6:q C6:q A5:e G5:e F5:q E5:e F5:e A5:q G5:q F5:e Eb5:e D5:q A4:q C#5:q E5:q A5:h",
+        "gate_length": 0.62,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 1.4666666666666666,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "counterpoint",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "A4:h C5:q D5:q Bb4:h A4:h F4:h C5:h G4:q A4:q C#5:h D5:h Bb4:h A4:h F4:h G4:h Bb4:h E4:h A4:h",
+        "gate_length": 0.72,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 1.4666666666666666,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "arpeggio",
+      "module_type": "arpeggio_brain",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "up / down",
+        "octave_range": 2,
+        "rate_hz": 5.866666666666666,
+        "gate_length": 0.38,
+        "fallback_pitches": [
+          0.0,
+          0.3333333333333333,
+          0.5833333333333334,
+          1.0
+        ],
+        "reference_midi": 57.0,
+        "seed": 31415
+      }
+    },
+    {
+      "instance_id": "bass",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "upright_bass",
+        "level": 0.36,
+        "release_ms": 760.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "cello",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "cello",
+        "level": 0.2,
+        "release_ms": 1450.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "horn",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "french_horn",
+        "level": 0.17,
+        "release_ms": 1300.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "choir",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "choir",
+        "level": 0.16,
+        "release_ms": 1800.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "halo",
+      "module_type": "pytheory_fx",
+      "provider": "builtin",
+      "parameters": {
+        "effect": "chorus",
+        "mix": 0.56,
+        "rate_hz": 0.21,
+        "depth": 0.7,
+        "drive": 1.0,
+        "brightness": 0.58
+      }
+    },
+    {
+      "instance_id": "crystal",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "music_box",
+        "level": 0.27,
+        "release_ms": 740.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "crystal_gate",
+      "module_type": "low_pass_gate",
+      "provider": "builtin",
+      "parameters": {
+        "decay_seconds": 0.48,
+        "brightness": 0.74,
+        "character": 0.42,
+        "level": 0.82
+      }
+    },
+    {
+      "instance_id": "lead",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "flute",
+        "level": 0.22,
+        "release_ms": 680.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "answer",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "clarinet",
+        "level": 0.18,
+        "release_ms": 820.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "cathedral",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "taj_mahal",
+        "mix": 1.0,
+        "decay_seconds": 5.6,
+        "width": 0.96,
+        "pre_delay_ms": 27.0,
+        "level": 0.82
+      }
+    },
+    {
+      "instance_id": "rain_echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.5113636363636364,
+        "feedback": 0.34,
+        "mix": 1.0,
+        "damping": 0.56,
+        "drive": 0.92,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.62,
+          0.78,
+          0.58,
+          0.55,
+          0.5,
+          0.7,
+          0.62,
+          0.56
+        ],
+        "pans": [
+          0.0,
+          -0.06,
+          -0.46,
+          0.38,
+          0.12,
+          -0.58,
+          0.34,
+          -0.26
+        ],
+        "sends_a": [
+          0.1,
+          0.12,
+          0.56,
+          0.5,
+          0.76,
+          0.52,
+          0.58,
+          0.46
+        ],
+        "sends_b": [
+          0.03,
+          0.0,
+          0.05,
+          0.04,
+          0.08,
+          0.46,
+          0.26,
+          0.14
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.48,
+          0.27
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.5
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {"module_id": "clock", "port_id": "sixteenth"},
+      "target": {"module_id": "arpeggio", "port_id": "clock"}
+    },
+    {
+      "source": {"module_id": "clock", "port_id": "bar"},
+      "target": {"module_id": "arpeggio", "port_id": "reset"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "pitch"},
+      "target": {"module_id": "arpeggio", "port_id": "voice_1"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "voice_2"},
+      "target": {"module_id": "arpeggio", "port_id": "voice_2"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "voice_3"},
+      "target": {"module_id": "arpeggio", "port_id": "voice_3"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "voice_4"},
+      "target": {"module_id": "arpeggio", "port_id": "voice_4"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "pitch"},
+      "target": {"module_id": "bass", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "gate"},
+      "target": {"module_id": "bass", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "voice_2"},
+      "target": {"module_id": "cello", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "gate"},
+      "target": {"module_id": "cello", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "voice_3"},
+      "target": {"module_id": "horn", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "gate"},
+      "target": {"module_id": "horn", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "voice_4"},
+      "target": {"module_id": "choir", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "chords", "port_id": "gate"},
+      "target": {"module_id": "choir", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "choir", "port_id": "audio"},
+      "target": {"module_id": "halo", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "arpeggio", "port_id": "pitch"},
+      "target": {"module_id": "crystal", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "arpeggio", "port_id": "gate"},
+      "target": {"module_id": "crystal", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "crystal", "port_id": "audio"},
+      "target": {"module_id": "crystal_gate", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "arpeggio", "port_id": "trigger"},
+      "target": {"module_id": "crystal_gate", "port_id": "strike"}
+    },
+    {
+      "source": {"module_id": "arpeggio", "port_id": "position"},
+      "target": {"module_id": "crystal_gate", "port_id": "level_cv"}
+    },
+    {
+      "source": {"module_id": "melody", "port_id": "pitch"},
+      "target": {"module_id": "lead", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "melody", "port_id": "gate"},
+      "target": {"module_id": "lead", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "counterpoint", "port_id": "pitch"},
+      "target": {"module_id": "answer", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "counterpoint", "port_id": "gate"},
+      "target": {"module_id": "answer", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "drums", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_1"}
+    },
+    {
+      "source": {"module_id": "bass", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_2"}
+    },
+    {
+      "source": {"module_id": "cello", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_3"}
+    },
+    {
+      "source": {"module_id": "horn", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_4"}
+    },
+    {
+      "source": {"module_id": "halo", "port_id": "audio_out"},
+      "target": {"module_id": "master", "port_id": "channel_5"}
+    },
+    {
+      "source": {"module_id": "crystal_gate", "port_id": "output"},
+      "target": {"module_id": "master", "port_id": "channel_6"}
+    },
+    {
+      "source": {"module_id": "lead", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_7"}
+    },
+    {
+      "source": {"module_id": "answer", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_8"}
+    },
+    {
+      "source": {"module_id": "master", "port_id": "send_a"},
+      "target": {"module_id": "cathedral", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "master", "port_id": "send_b"},
+      "target": {"module_id": "rain_echo", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "cathedral", "port_id": "wet_left"},
+      "target": {"module_id": "master", "port_id": "return_a_left"}
+    },
+    {
+      "source": {"module_id": "cathedral", "port_id": "wet_right"},
+      "target": {"module_id": "master", "port_id": "return_a_right"}
+    },
+    {
+      "source": {"module_id": "rain_echo", "port_id": "wet"},
+      "target": {"module_id": "master", "port_id": "return_b_left"}
+    },
+    {
+      "source": {"module_id": "rain_echo", "port_id": "wet"},
+      "target": {"module_id": "master", "port_id": "return_b_right"}
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {"module_id": "master", "port_id": "left"},
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {"module_id": "master", "port_id": "right"},
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.78
+  },
+  "transport": {
+    "bpm": 88.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.68,
+    "rails": {
+      "control": 150.0,
+      "audio": 640.0
+    },
+    "nodes": [
+      {"node_id": "clock", "position": {"x": 70.0, "y": 90.0}, "collapsed": false},
+      {"node_id": "drums", "position": {"x": 70.0, "y": 370.0}, "collapsed": false},
+      {"node_id": "chords", "position": {"x": 360.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "melody", "position": {"x": 360.0, "y": 390.0}, "collapsed": false},
+      {"node_id": "counterpoint", "position": {"x": 360.0, "y": 700.0}, "collapsed": true},
+      {"node_id": "arpeggio", "position": {"x": 360.0, "y": 830.0}, "collapsed": true},
+      {"node_id": "bass", "position": {"x": 760.0, "y": 650.0}, "collapsed": false},
+      {"node_id": "cello", "position": {"x": 760.0, "y": 910.0}, "collapsed": true},
+      {"node_id": "horn", "position": {"x": 1010.0, "y": 650.0}, "collapsed": true},
+      {"node_id": "choir", "position": {"x": 1010.0, "y": 790.0}, "collapsed": true},
+      {"node_id": "halo", "position": {"x": 1010.0, "y": 930.0}, "collapsed": true},
+      {"node_id": "crystal", "position": {"x": 1260.0, "y": 650.0}, "collapsed": false},
+      {"node_id": "crystal_gate", "position": {"x": 1260.0, "y": 930.0}, "collapsed": true},
+      {"node_id": "lead", "position": {"x": 1510.0, "y": 650.0}, "collapsed": false},
+      {"node_id": "answer", "position": {"x": 1510.0, "y": 930.0}, "collapsed": true},
+      {"node_id": "cathedral", "position": {"x": 1800.0, "y": 650.0}, "collapsed": false},
+      {"node_id": "rain_echo", "position": {"x": 1800.0, "y": 960.0}, "collapsed": true},
+      {"node_id": "master", "position": {"x": 2100.0, "y": 650.0}, "collapsed": false}
+    ],
+    "groups": [
+      {
+        "group_id": "conductor",
+        "name": "THE CONDUCTOR",
+        "members": ["clock", "drums"],
+        "groups": []
+      },
+      {
+        "group_id": "score",
+        "name": "INK / MEMORY / CHANCE",
+        "members": ["chords", "melody", "counterpoint", "arpeggio"],
+        "groups": []
+      },
+      {
+        "group_id": "low_strings",
+        "name": "FOUNDATION",
+        "members": ["bass", "cello"],
+        "groups": []
+      },
+      {
+        "group_id": "winds",
+        "name": "BREATH AND HALO",
+        "members": ["horn", "choir", "halo", "lead", "answer"],
+        "groups": []
+      },
+      {
+        "group_id": "crystal_section",
+        "name": "RAINLIGHT",
+        "members": ["crystal", "crystal_gate"],
+        "groups": []
+      },
+      {
+        "group_id": "orchestra",
+        "name": "THE ORCHESTRA",
+        "members": [],
+        "groups": ["low_strings", "winds", "crystal_section"]
+      },
+      {
+        "group_id": "room",
+        "name": "THE CATHEDRAL AFTER RAIN",
+        "members": ["cathedral", "rain_echo", "master"],
+        "groups": []
+      }
+    ]
+  }
+}

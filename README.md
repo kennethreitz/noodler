@@ -21,7 +21,7 @@ macOS, Python 3.14, managed with [`uv`](https://docs.astral.sh/uv/):
 uv python install 3.14
 uv sync
 uv run noodler                          # a fresh rack
-uv run noodler examples/mirror-canon.noodler
+uv run noodler examples/rainlight-cathedral.noodler
 ```
 
 A rack opens with the **console** along the bottom — eight strips and two
@@ -31,6 +31,10 @@ jack and that is the slot it plays through. Press **▶ PLAY** (or tap space) to
 start the audio device and the clock; nothing sounds until you do.
 **File → Open Example** has more patches; **File → Export Audio** bounces one
 to a WAV.
+
+**Rainlight Cathedral** is the full showcase: an eight-bar chamber piece whose
+written harmony, melody and counterpoint feed a chord-following arpeggiator,
+seven PyTheory instruments, second-line percussion and a shared stereo room.
 
 ## What's inside
 
