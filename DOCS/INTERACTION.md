@@ -63,6 +63,14 @@ purpose; the status line is for what just happened.
 or a menu — not all three. The status bar should say what just happened or what
 is in hand, not what is possible.
 
+**Complexity opens one level at a time.** The current-rack outline begins with
+the groups the patch already owns, recursively nested and closed by default;
+ungrouped modules share one shelf. Signal Flow is still there, but does not
+unroll a second copy of a dense rack on launch. In the rack, a group name is
+one surface with two natural gestures: click it to fold or open its member
+panels, drag it to move the group. Folding changes presentation only — the
+modules, their patched jacks, their cables, and their sound remain present.
+
 ## How big a knob is
 
 Dear PyGui's knob widget is drawn at a fixed forty pixels. Its `width`, its

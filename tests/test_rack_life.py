@@ -792,6 +792,58 @@ def test_grouped_modules_move_together_and_the_group_travels_with_the_document(m
         dpg.destroy_context()
 
 
+def test_nested_groups_are_a_compact_hierarchy_and_fold_one_level_at_a_time() -> None:
+    from noodler.app import (
+        MODULE_COLLAPSE,
+        RACK_GROUPS,
+        RACK_OUTLINE_BODY,
+        _mount_new_module,
+        _refresh_rack_outline,
+        _toggle_group_panels,
+    )
+
+    dpg.create_context()
+    try:
+        runtime = build_ui()
+        clock_node = _mount_new_module(runtime, "clock")
+        envelope_node = _mount_new_module(runtime, "adsr_envelope")
+        voice_node = _mount_new_module(runtime, "classic_vco")
+        ids = {node: instance for instance, node in INSTANCE_NODE_TAGS.items()}
+        inner = RACK_GROUPS.make(
+            [ids[clock_node], ids[envelope_node]], name="CLOCKWORK"
+        )
+        outer = RACK_GROUPS.make(
+            [ids[clock_node], ids[voice_node]], name="INSTRUMENT"
+        )
+        _refresh_rack_outline(runtime)
+
+        labels = []
+        pending = [RACK_OUTLINE_BODY]
+        while pending:
+            item = pending.pop()
+            for slot in dpg.get_item_children(item).values():
+                for child in slot:
+                    if dpg.get_item_type(child).endswith("mvTreeNode"):
+                        labels.append(dpg.get_item_configuration(child)["label"])
+                    pending.append(child)
+        assert "RACK HIERARCHY" in labels
+        assert "INSTRUMENT  ·  3 MODULES" in labels
+        assert "CLOCKWORK  ·  2 MODULES" in labels
+
+        _toggle_group_panels(outer, runtime)
+        assert all(
+            MODULE_COLLAPSE.is_collapsed(node)
+            for node in (clock_node, envelope_node, voice_node)
+        )
+        _toggle_group_panels(inner, runtime)
+        assert not MODULE_COLLAPSE.is_collapsed(clock_node)
+        assert not MODULE_COLLAPSE.is_collapsed(envelope_node)
+        assert MODULE_COLLAPSE.is_collapsed(voice_node)
+    finally:
+        RACK_GROUPS.clear()
+        dpg.destroy_context()
+
+
 def test_cables_hang_with_their_length_and_are_clipped_to_the_editor() -> None:
     from noodler.app import (
         CABLE_SAG_MAX,

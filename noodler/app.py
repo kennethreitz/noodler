@@ -2491,7 +2491,8 @@ GROUP_LAST_POSITIONS: dict[int | str, tuple[float, float]] = {}
 GROUP_LABEL_BOXES: dict[str, tuple[float, float, float, float]] = {}
 """Where each group's name was drawn, for the press that takes hold of it."""
 GROUP_DRAG: list = []
-"""A group being dragged by its name: [group_id, last mouse x, last mouse y]."""
+"""A group press: id, last xy, start xy, and whether it became a drag."""
+GROUP_CLICK_SLOP = 4.0
 
 
 def _selected_instance_ids() -> list[str]:
@@ -2735,8 +2736,13 @@ def _drag_group() -> None:
     """A group taken by its name: every module in it moves with the pointer."""
     if not GROUP_DRAG:
         return
-    group_id, last_x, last_y = GROUP_DRAG
+    group_id, last_x, last_y, start_x, start_y, moved = GROUP_DRAG
     mouse_x, mouse_y = (float(v) for v in dpg.get_mouse_pos(local=False))
+    if not moved:
+        if math.hypot(mouse_x - start_x, mouse_y - start_y) < GROUP_CLICK_SLOP:
+            return
+        GROUP_DRAG[5] = True
+        last_x, last_y = start_x, start_y
     delta_x, delta_y = mouse_x - last_x, mouse_y - last_y
     if not delta_x and not delta_y:
         return
@@ -2766,6 +2772,35 @@ def _group_depth(group_id: str) -> int:
     return 1 + max(_group_depth(child) for child in group.groups)
 
 
+def _group_panels_are_collapsed(group_id: str) -> bool:
+    nodes = [
+        INSTANCE_NODE_TAGS.get(instance_id)
+        for instance_id in RACK_GROUPS.modules_in(group_id)
+        if instance_id != MASTER_ID
+    ]
+    nodes = [node for node in nodes if node is not None and dpg.does_item_exist(node)]
+    return bool(nodes) and all(MODULE_COLLAPSE.is_collapsed(node) for node in nodes)
+
+
+def _toggle_group_panels(group_id: str, runtime: AppRuntime) -> None:
+    """Fold or open every panel in a group, without hiding the group itself."""
+    group = RACK_GROUPS.get(group_id)
+    if group is None:
+        return
+    collapsed = not _group_panels_are_collapsed(group_id)
+    count = 0
+    for instance_id in RACK_GROUPS.modules_in(group_id):
+        if instance_id == MASTER_ID:
+            continue
+        node = INSTANCE_NODE_TAGS.get(instance_id)
+        if node is None or not dpg.does_item_exist(node):
+            continue
+        _set_module_collapsed(node, collapsed, runtime)
+        count += 1
+    verb = "FOLDED" if collapsed else "OPENED"
+    _set_patch_status(f"{verb} GROUP  ·  {group.name}  ·  {count} MODULES")
+
+
 def _refresh_group_outlines() -> None:
     """Draw every group: a soft line round its modules and its name.
 
@@ -2782,7 +2817,8 @@ def _refresh_group_outlines() -> None:
     if rect is None:
         return
     left, top, right, bottom = rect
-    hovered = _group_label_at(tuple(float(v) for v in dpg.get_mouse_pos(local=False))) if not GROUP_DRAG else GROUP_DRAG[0]
+    mouse_x, mouse_y = (float(v) for v in dpg.get_mouse_pos(local=False))
+    dragging = GROUP_DRAG[0] if GROUP_DRAG else None
     for group in RACK_GROUPS:
         boxes = []
         for instance_id in RACK_GROUPS.modules_in(group.group_id):
@@ -2805,24 +2841,35 @@ def _refresh_group_outlines() -> None:
         gy1 = max(b[3] for b in boxes) + pad
         if gx1 < left or gx0 > right or gy1 < top or gy0 > bottom:
             continue
-        lit = hovered == group.group_id
+        label_x, label_y = gx0 + 10.0, gy0 + 3.0
+        indicator = "▸" if _group_panels_are_collapsed(group.group_id) else "▾"
+        label = f"{indicator}  {group.name}"
+        label_w = len(label) * 7.0 + 8.0
+        label_box = (
+            label_x - 4.0,
+            label_y - 1.0,
+            label_x + label_w - 4.0,
+            label_y + 15.0,
+        )
+        lit = dragging == group.group_id or (
+            label_box[0] <= mouse_x <= label_box[2]
+            and label_box[1] <= mouse_y <= label_box[3]
+        )
         line = (*GROUP_COLOR, 200 if lit else 110)
         dpg.draw_rectangle(
             (max(left, gx0), max(top, gy0)), (min(right, gx1), min(bottom, gy1)),
             color=line, thickness=1.5 if lit else 1.0, rounding=10.0, parent=GROUP_LAYER,
         )
-        label_x, label_y = gx0 + 10.0, gy0 + 3.0
-        label_w = len(group.name) * 7.0 + 8.0
         if label_x + label_w <= right and label_y + 16.0 <= bottom and label_x >= left and label_y >= top:
             dpg.draw_rectangle(
                 (label_x - 4.0, label_y - 1.0), (label_x + label_w - 4.0, label_y + 15.0),
                 fill=(*GROUP_COLOR, 60 if lit else 34), color=(0, 0, 0, 0), rounding=4.0, parent=GROUP_LAYER,
             )
             dpg.draw_text(
-                (label_x, label_y), group.name, size=12,
+                (label_x, label_y), label, size=12,
                 color=(*GROUP_COLOR, 255 if lit else 210), parent=GROUP_LAYER,
             )
-            GROUP_LABEL_BOXES[group.group_id] = (label_x - 4.0, label_y - 1.0, label_x + label_w - 4.0, label_y + 15.0)
+            GROUP_LABEL_BOXES[group.group_id] = label_box
 
 
 SELECTION_LAYER = "noodler.selection_layer"
@@ -5052,8 +5099,10 @@ def _begin_knob_drag(
         return
     group_id = _group_label_at(mouse_position)
     if group_id is not None:
-        # A press on a group's name takes hold of the whole group.
-        GROUP_DRAG[:] = [group_id, float(mouse_position[0]), float(mouse_position[1])]
+        # A click folds/opens the group; travel takes hold of it. The slop is
+        # what lets those two intentions share one small, physical label.
+        x, y = float(mouse_position[0]), float(mouse_position[1])
+        GROUP_DRAG[:] = [group_id, x, y, x, y, False]
         RACK_CURSOR.grab()
         return
     close_node = _module_close_at(mouse_position)
@@ -5160,11 +5209,19 @@ def _end_knob_drag(
     CANVAS_INTERACTION.marquee_origin = None
     CANVAS_INTERACTION.press_consumed = False
     CANVAS_INTERACTION.press_classified = False
+    clicked_group = (
+        str(GROUP_DRAG[0])
+        if len(GROUP_DRAG) == 6 and not bool(GROUP_DRAG[5])
+        else None
+    )
     GROUP_DRAG.clear()
     for module, semitone in KEYBED_MOUSE_NOTE:
         module.release(semitone)
     KEYBED_MOUSE_NOTE.clear()
     RACK_CURSOR.reset()
+    if clicked_group is not None and ACTIVE_RUNTIME:
+        _toggle_group_panels(clicked_group, ACTIVE_RUNTIME[0])
+        return
     if CANVAS_INTERACTION.panning:
         if CANVAS_INTERACTION.pan_moved:
             _clear_rack_selection()
@@ -7556,6 +7613,33 @@ def _add_rack_outline_signal_branch(
         )
 
 
+def _add_group_outline_branch(
+    parent: int | str,
+    runtime: AppRuntime,
+    group_id: str,
+) -> None:
+    """One authored group in the compact current-rack hierarchy."""
+    group = RACK_GROUPS.get(group_id)
+    if group is None:
+        return
+    members = [
+        instance_id
+        for instance_id in RACK_GROUPS.modules_in(group_id)
+        if instance_id in runtime.patch.modules and instance_id != MASTER_ID
+    ]
+    noun = "MODULE" if len(members) == 1 else "MODULES"
+    branch = dpg.add_tree_node(
+        label=f"{group.name.upper()}  ·  {len(members)} {noun}",
+        parent=parent,
+        default_open=False,
+    )
+    for child_id in group.groups:
+        _add_group_outline_branch(branch, runtime, child_id)
+    for instance_id in group.members:
+        if instance_id in runtime.patch.modules and instance_id != MASTER_ID:
+            _add_module_link(branch, runtime, instance_id)
+
+
 def _rack_outline_unpatched_modules(
     runtime: AppRuntime,
     reachable: set[str],
@@ -7621,16 +7705,47 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
     OUTLINE_PARAMETER_TEXTS.clear()
     OUTLINE_LINKS.clear()
     OUTLINE_ROWS.clear()
+    module_ids = [
+        instance_id
+        for instance_id in runtime.patch.modules
+        if instance_id != MASTER_ID
+    ]
+    dense = len(module_ids) > 8
+    grouped_ids = {
+        instance_id
+        for group in RACK_GROUPS
+        for instance_id in group.members
+    }
+    loose_ids = [
+        instance_id for instance_id in module_ids if instance_id not in grouped_ids
+    ]
+    if len(RACK_GROUPS) or dense:
+        hierarchy = dpg.add_tree_node(
+            label="RACK HIERARCHY",
+            parent=RACK_OUTLINE_BODY,
+            default_open=True,
+        )
+        for group_id in RACK_GROUPS.top_level():
+            _add_group_outline_branch(hierarchy, runtime, group_id)
+        if loose_ids:
+            loose = dpg.add_tree_node(
+                label=f"UNGROUPED  ·  {len(loose_ids)}",
+                parent=hierarchy,
+                default_open=False,
+            )
+            for instance_id in loose_ids:
+                _add_module_link(loose, runtime, instance_id)
+
     reachable: set[str] = set()
     signal_flow = dpg.add_tree_node(
         label="SIGNAL FLOW",
         parent=RACK_OUTLINE_BODY,
-        default_open=True,
+        default_open=not len(RACK_GROUPS) and not dense,
     )
     system_output = dpg.add_tree_node(
         label="CONSOLE",
         parent=signal_flow,
-        default_open=True,
+        default_open=not len(RACK_GROUPS) and not dense,
     )
     # What reaches the speakers is what is in the master, so the outline shows
     # the modules feeding it rather than the master feeding itself.
@@ -7668,7 +7783,7 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
         unpatched_root = dpg.add_tree_node(
             label="UNPATCHED",
             parent=RACK_OUTLINE_BODY,
-            default_open=True,
+            default_open=not len(RACK_GROUPS) and not dense,
         )
         for heading, instance_ids in unpatched.items():
             if not instance_ids:
@@ -7676,7 +7791,7 @@ def _refresh_rack_outline(runtime: AppRuntime) -> None:
             lane = dpg.add_tree_node(
                 label=heading,
                 parent=unpatched_root,
-                default_open=True,
+                default_open=not len(RACK_GROUPS) and not dense,
             )
             for instance_id in instance_ids:
                 branch = _add_module_row(lane, runtime, instance_id)

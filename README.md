@@ -52,7 +52,8 @@ seven PyTheory instruments, second-line percussion and a shared stereo room.
   it, and *QWERTY Keys* turns the keyboard in front of you into one. Modules
   stay where you put them; **Tidy** lays a patch out by signal flow on request.
   Select some modules and ⌘G **groups** them so they move together — logical
-  only, nestable, saved with the patch.
+  only, nestable, saved with the patch. The outline presents those groups as
+  a nested, closed-by-default hierarchy instead of repeating a dense rack.
 - **The graph is real.** Every cable changes the executable `PatchGraph` the
   audio callback runs; the rack and the sound are two views of one patch.
   Feedback is a technique: a loop closes on the previous block.
@@ -69,14 +70,16 @@ seven PyTheory instruments, second-line percussion and a shared stereo room.
 | Space tap or ⌘↩ | Play / stop |
 | Shift + background drag | Box-select · Escape clears |
 | ⌘G / ⌘⇧G | Group the selection / ungroup · Option-drag moves one member alone |
+| Group name click / drag | Fold or open its member panels / move the whole group |
 | Module title drag / double-click / right-click | Move · fold or open · collapse, duplicate, reset, unplug, group, remove |
 | Knob drag, scroll, Shift, double-click | Turn · turn without panning · fine · reset |
 | Click / double-click a cable | Pick it (Delete removes) / unpatch it |
 | ⌘K · ⌘Z · ⌘⇧Z · T · L | Search the library · undo · redo · tidy · hide the library |
 
-The outline on the left names every module as a link — click one and it
-glides to the middle of the view and opens; the arrow at the front of its row
-shows its parameters and jacks.
+The outline on the left begins with a compact rack hierarchy: groups contain
+groups, and ungrouped modules have one quiet shelf. Signal Flow remains below
+it and starts closed on a complex patch. Click a module name and it glides to
+the middle of the view and opens; its detail arrow shows parameters and jacks.
 
 ## Modules
 
