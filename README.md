@@ -36,6 +36,12 @@ to a WAV.
 written harmony, melody and counterpoint feed a chord-following arpeggiator,
 seven PyTheory instruments, second-line percussion and a shared stereo room.
 
+**Velvet Algorithm** is its generative after-hours counterpart: harmony wanders,
+theory listens back, and a saxophone improvisation casts a negative-harmony shadow.
+
+**Acid Communion** patches a written 16th-note bassline through a resonant
+envelope-and-accent-driven ladder, piano stabs and a 124 BPM warehouse rhythm.
+
 ## What's inside
 
 - **PyTheory in the rack.** *PyTheory Voice* renders any of the library's

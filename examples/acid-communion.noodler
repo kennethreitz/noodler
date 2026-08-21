@@ -1,0 +1,245 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Acid Communion",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {"rate_hz": 2.066666666666667, "beats_per_bar": 4, "trigger_ms": 5.0}
+    },
+    {
+      "instance_id": "drums",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {"pattern": "house", "level": 0.58, "swing": 0.0, "follow_clock": true, "rate_hz": 2.066666666666667}
+    },
+    {
+      "instance_id": "acid_score",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "A2:s*9 r:s A2:s*6 C3:s*8 E3:e*9 r:s E3:s*5 G2:s*7 A2:s*9 r:e C3:s*8 B2:s*5 A2:e*9 A2:s*9 E3:s*5 G3:s*8 A3:s*9 r:e E3:s*7 D3:s*5 C3:e*8 r:s C3:s*6 E3:s*9 G2:s*5 A2:e*9 A2:e*9 r:s A2:s*6 D3:s*8 E3:s*9 G3:e*7 E3:s*6 D3:s*5 r:e C3:s*8 B2:s*4 A2:e*9 E3:s*8 r:s E3:s*6 G3:s*9 A3:e*9 G3:s*5 E3:s*8 D3:e*6 C3:s*7 B2:s*5 G#2:s*9 B2:s*6 D3:s*8 E3:s*9",
+        "gate_length": 0.62,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 2.066666666666667,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "bass_vco",
+      "module_type": "classic_vco",
+      "provider": "builtin",
+      "parameters": {"frequency": 220.0, "fine_tune_cents": -3.0, "fm_amount": 0.0, "pulse_width": 0.48, "amplitude": 0.42}
+    },
+    {
+      "instance_id": "bass_env",
+      "module_type": "adsr_envelope",
+      "provider": "builtin",
+      "parameters": {"attack_seconds": 0.0015, "decay_seconds": 0.13, "sustain": 0.16, "release_seconds": 0.055, "curve": 0.48}
+    },
+    {
+      "instance_id": "sweep",
+      "module_type": "lfo",
+      "provider": "builtin",
+      "parameters": {"rate_hz": 0.06458333333333334, "shape": "triangle", "depth": 1.0, "offset": 0.0, "phase": 0.62, "pulse_width": 0.5, "unipolar": true, "seed": 303}
+    },
+    {
+      "instance_id": "filter_motion",
+      "module_type": "polarizing_mixer",
+      "provider": "builtin",
+      "parameters": {"channels": 4, "gains": [1.0, 0.72, 0.86, 0.0]}
+    },
+    {
+      "instance_id": "acid_filter",
+      "module_type": "ladder_filter",
+      "provider": "builtin",
+      "parameters": {"cutoff_hz": 310.0, "resonance": 0.64, "drive": 1.82, "output_level": 0.82}
+    },
+    {
+      "instance_id": "bass_vca",
+      "module_type": "vca",
+      "provider": "builtin",
+      "parameters": {"level": 1.0, "bias": 0.0, "response": "exponential", "drive": 1.35}
+    },
+    {
+      "instance_id": "chords",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "[A3,C4,E4,G4]:e*8 r:3.5 [F3,A3,C4,E4]:e*7 r:3.5 [D3,F3,A3,C4]:e*8 r:3.5 [E3,G#3,B3,D4]:e*9 r:3.5",
+        "gate_length": 0.38,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 2.066666666666667,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "stab_1",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {"instrument": "piano", "level": 0.13, "release_ms": 260.0, "reference_frequency_hz": 220.0}
+    },
+    {
+      "instance_id": "stab_2",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {"instrument": "piano", "level": 0.13, "release_ms": 260.0, "reference_frequency_hz": 220.0}
+    },
+    {
+      "instance_id": "stab_3",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {"instrument": "electric_piano", "level": 0.12, "release_ms": 300.0, "reference_frequency_hz": 220.0}
+    },
+    {
+      "instance_id": "stab_4",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {"instrument": "electric_piano", "level": 0.11, "release_ms": 320.0, "reference_frequency_hz": 220.0}
+    },
+    {
+      "instance_id": "stab_mix",
+      "module_type": "polarizing_mixer",
+      "provider": "builtin",
+      "parameters": {"channels": 4, "gains": [0.56, 0.56, 0.52, 0.5]}
+    },
+    {
+      "instance_id": "stab_glue",
+      "module_type": "pytheory_fx",
+      "provider": "builtin",
+      "parameters": {"effect": "saturation", "mix": 0.34, "rate_hz": 0.2, "depth": 0.4, "drive": 2.4, "brightness": 0.62}
+    },
+    {
+      "instance_id": "hook",
+      "module_type": "pytheory_score",
+      "provider": "builtin",
+      "parameters": {
+        "phrase": "r:q E5:e*6 G5:e*7 A5:q*9 r:q C6:e*8 B5:e*6 A5:q*9 E5:q*6 r:q r:q D5:e*6 E5:e*7 G5:q*8 A5:q*9 C6:q*8 B5:e*6 G#5:e*9 E5:h*8",
+        "gate_length": 0.46,
+        "octave_shift": 0,
+        "follow_clock": true,
+        "rate_hz": 2.066666666666667,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "hook_voice",
+      "module_type": "instrument_voice",
+      "provider": "builtin",
+      "parameters": {"instrument": "sync_lead_bright", "level": 0.24, "brightness": -0.12, "reference_frequency_hz": 220.0}
+    },
+    {
+      "instance_id": "warehouse",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {"space": "parking_garage", "mix": 1.0, "decay_seconds": 2.4, "width": 0.84, "pre_delay_ms": 9.0, "level": 0.8}
+    },
+    {
+      "instance_id": "dub_echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {"time_seconds": 0.3629032258064516, "feedback": 0.38, "mix": 1.0, "damping": 0.44, "drive": 1.08, "freeze": false}
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [0.72, 0.9, 0.66, 0.62, 0.8, 0.8, 0.8, 0.8],
+        "pans": [0.0, -0.04, -0.28, 0.34, 0.0, 0.0, 0.0, 0.0],
+        "sends_a": [0.06, 0.08, 0.34, 0.28, 0.0, 0.0, 0.0, 0.0],
+        "sends_b": [0.0, 0.18, 0.42, 0.48, 0.0, 0.0, 0.0, 0.0],
+        "mutes": [false, false, false, false, false, false, false, false],
+        "solos": [false, false, false, false, false, false, false, false],
+        "return_levels": [0.34, 0.3],
+        "return_mutes": [false, false],
+        "master": 0.64
+      }
+    }
+  ],
+  "cables": [
+    {"source": {"module_id": "acid_score", "port_id": "pitch"}, "target": {"module_id": "bass_vco", "port_id": "pitch"}},
+    {"source": {"module_id": "acid_score", "port_id": "gate"}, "target": {"module_id": "bass_env", "port_id": "gate"}},
+    {"source": {"module_id": "acid_score", "port_id": "trigger"}, "target": {"module_id": "bass_env", "port_id": "retrigger"}},
+    {"source": {"module_id": "bass_vco", "port_id": "saw"}, "target": {"module_id": "acid_filter", "port_id": "audio"}},
+    {"source": {"module_id": "bass_env", "port_id": "envelope"}, "target": {"module_id": "filter_motion", "port_id": "input_1"}},
+    {"source": {"module_id": "sweep", "port_id": "out"}, "target": {"module_id": "filter_motion", "port_id": "input_2"}},
+    {"source": {"module_id": "acid_score", "port_id": "accent"}, "target": {"module_id": "filter_motion", "port_id": "input_3"}},
+    {"source": {"module_id": "filter_motion", "port_id": "output"}, "target": {"module_id": "acid_filter", "port_id": "cutoff_cv"}},
+    {"source": {"module_id": "acid_filter", "port_id": "low_18"}, "target": {"module_id": "bass_vca", "port_id": "signal"}},
+    {"source": {"module_id": "bass_env", "port_id": "envelope"}, "target": {"module_id": "bass_vca", "port_id": "level_cv"}},
+    {"source": {"module_id": "chords", "port_id": "pitch"}, "target": {"module_id": "stab_1", "port_id": "pitch"}},
+    {"source": {"module_id": "chords", "port_id": "gate"}, "target": {"module_id": "stab_1", "port_id": "gate"}},
+    {"source": {"module_id": "chords", "port_id": "voice_2"}, "target": {"module_id": "stab_2", "port_id": "pitch"}},
+    {"source": {"module_id": "chords", "port_id": "gate"}, "target": {"module_id": "stab_2", "port_id": "gate"}},
+    {"source": {"module_id": "chords", "port_id": "voice_3"}, "target": {"module_id": "stab_3", "port_id": "pitch"}},
+    {"source": {"module_id": "chords", "port_id": "gate"}, "target": {"module_id": "stab_3", "port_id": "gate"}},
+    {"source": {"module_id": "chords", "port_id": "voice_4"}, "target": {"module_id": "stab_4", "port_id": "pitch"}},
+    {"source": {"module_id": "chords", "port_id": "gate"}, "target": {"module_id": "stab_4", "port_id": "gate"}},
+    {"source": {"module_id": "stab_1", "port_id": "audio"}, "target": {"module_id": "stab_mix", "port_id": "input_1"}},
+    {"source": {"module_id": "stab_2", "port_id": "audio"}, "target": {"module_id": "stab_mix", "port_id": "input_2"}},
+    {"source": {"module_id": "stab_3", "port_id": "audio"}, "target": {"module_id": "stab_mix", "port_id": "input_3"}},
+    {"source": {"module_id": "stab_4", "port_id": "audio"}, "target": {"module_id": "stab_mix", "port_id": "input_4"}},
+    {"source": {"module_id": "stab_mix", "port_id": "output"}, "target": {"module_id": "stab_glue", "port_id": "audio"}},
+    {"source": {"module_id": "hook", "port_id": "pitch"}, "target": {"module_id": "hook_voice", "port_id": "pitch"}},
+    {"source": {"module_id": "hook", "port_id": "gate"}, "target": {"module_id": "hook_voice", "port_id": "gate"}},
+    {"source": {"module_id": "hook", "port_id": "accent"}, "target": {"module_id": "hook_voice", "port_id": "brightness_cv"}},
+    {"source": {"module_id": "drums", "port_id": "audio"}, "target": {"module_id": "master", "port_id": "channel_1"}},
+    {"source": {"module_id": "bass_vca", "port_id": "output"}, "target": {"module_id": "master", "port_id": "channel_2"}},
+    {"source": {"module_id": "stab_glue", "port_id": "audio_out"}, "target": {"module_id": "master", "port_id": "channel_3"}},
+    {"source": {"module_id": "hook_voice", "port_id": "audio"}, "target": {"module_id": "master", "port_id": "channel_4"}},
+    {"source": {"module_id": "master", "port_id": "send_a"}, "target": {"module_id": "warehouse", "port_id": "audio"}},
+    {"source": {"module_id": "master", "port_id": "send_b"}, "target": {"module_id": "dub_echo", "port_id": "audio"}},
+    {"source": {"module_id": "warehouse", "port_id": "wet_left"}, "target": {"module_id": "master", "port_id": "return_a_left"}},
+    {"source": {"module_id": "warehouse", "port_id": "wet_right"}, "target": {"module_id": "master", "port_id": "return_a_right"}},
+    {"source": {"module_id": "dub_echo", "port_id": "wet"}, "target": {"module_id": "master", "port_id": "return_b_left"}},
+    {"source": {"module_id": "dub_echo", "port_id": "wet"}, "target": {"module_id": "master", "port_id": "return_b_right"}}
+  ],
+  "output_taps": [
+    {"source": {"module_id": "master", "port_id": "left"}, "gain": 1.0, "channel": "left"},
+    {"source": {"module_id": "master", "port_id": "right"}, "gain": 1.0, "channel": "right"}
+  ],
+  "system_output": {"master_gain": 0.84},
+  "transport": {"bpm": 124.0, "beats_per_bar": 4, "beat_unit": 4},
+  "view": {
+    "zoom": 0.67,
+    "rails": {"control": 150.0, "audio": 660.0},
+    "nodes": [
+      {"node_id": "clock", "position": {"x": 70.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "drums", "position": {"x": 70.0, "y": 370.0}, "collapsed": false},
+      {"node_id": "acid_score", "position": {"x": 370.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "chords", "position": {"x": 370.0, "y": 410.0}, "collapsed": true},
+      {"node_id": "hook", "position": {"x": 370.0, "y": 550.0}, "collapsed": true},
+      {"node_id": "bass_vco", "position": {"x": 690.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "bass_env", "position": {"x": 690.0, "y": 970.0}, "collapsed": true},
+      {"node_id": "sweep", "position": {"x": 940.0, "y": 970.0}, "collapsed": true},
+      {"node_id": "filter_motion", "position": {"x": 940.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "acid_filter", "position": {"x": 1210.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "bass_vca", "position": {"x": 1210.0, "y": 990.0}, "collapsed": true},
+      {"node_id": "stab_1", "position": {"x": 1480.0, "y": 680.0}, "collapsed": true},
+      {"node_id": "stab_2", "position": {"x": 1480.0, "y": 820.0}, "collapsed": true},
+      {"node_id": "stab_3", "position": {"x": 1480.0, "y": 960.0}, "collapsed": true},
+      {"node_id": "stab_4", "position": {"x": 1480.0, "y": 1100.0}, "collapsed": true},
+      {"node_id": "stab_mix", "position": {"x": 1730.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "stab_glue", "position": {"x": 1730.0, "y": 1000.0}, "collapsed": true},
+      {"node_id": "hook_voice", "position": {"x": 1980.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "warehouse", "position": {"x": 2260.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "dub_echo", "position": {"x": 2260.0, "y": 990.0}, "collapsed": true},
+      {"node_id": "master", "position": {"x": 2560.0, "y": 680.0}, "collapsed": false}
+    ],
+    "groups": [
+      {"group_id": "tempo", "name": "FOUR ON THE FLOOR", "members": ["clock", "drums"], "groups": []},
+      {"group_id": "sequencers", "name": "ACID / CHORDS", "members": ["acid_score", "chords"], "groups": []},
+      {"group_id": "acid_voice", "name": "THE SILVER BOX", "members": ["bass_vco", "bass_env", "sweep", "filter_motion", "acid_filter", "bass_vca"], "groups": []},
+      {"group_id": "stabs", "name": "MINOR SEVENTH STABS", "members": ["stab_1", "stab_2", "stab_3", "stab_4", "stab_mix", "stab_glue"], "groups": []},
+      {"group_id": "hook_line", "name": "NEON ANSWER", "members": ["hook", "hook_voice"], "groups": []},
+      {"group_id": "voices", "name": "WAREHOUSE VOICES", "members": [], "groups": ["acid_voice", "stabs", "hook_line"]},
+      {"group_id": "room", "name": "CONCRETE / TAPE / AIR", "members": ["warehouse", "dub_echo", "master"], "groups": []}
+    ]
+  }
+}

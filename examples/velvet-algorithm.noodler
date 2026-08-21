@@ -1,0 +1,527 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "Velvet Algorithm",
+  "modules": [
+    {
+      "instance_id": "clock",
+      "module_type": "clock",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 1.2,
+        "beats_per_bar": 4,
+        "trigger_ms": 6.0
+      }
+    },
+    {
+      "instance_id": "drums",
+      "module_type": "pytheory_beats",
+      "provider": "builtin",
+      "parameters": {
+        "pattern": "jazz",
+        "level": 0.38,
+        "swing": 0.0,
+        "follow_clock": true,
+        "rate_hz": 1.2
+      }
+    },
+    {
+      "instance_id": "progression",
+      "module_type": "pytheory_progression",
+      "provider": "builtin",
+      "parameters": {
+        "progression": "Dorian vamp",
+        "custom": "i IV ii v",
+        "tonic": "D",
+        "mode": "dorian",
+        "voicing": "drop2",
+        "octave": 3,
+        "style": "wander",
+        "bars_per_chord": 1,
+        "follow_clock": true,
+        "rate_hz": 0.3,
+        "gate_length": 0.82,
+        "reference_frequency_hz": 220.0,
+        "seed": 2718
+      }
+    },
+    {
+      "instance_id": "ear",
+      "module_type": "pytheory_chord_ear",
+      "provider": "builtin",
+      "parameters": {
+        "reference_frequency_hz": 220.0,
+        "hold": true
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "melody_brain",
+      "provider": "builtin",
+      "parameters": {
+        "system": "western",
+        "tonic": "D",
+        "octave": 4,
+        "scale_name": "dorian",
+        "style": "motif and answer",
+        "phrase_length": 16,
+        "octave_range": 2,
+        "density": 0.58,
+        "step_bias": 0.83,
+        "rate_hz": 2.4,
+        "gate_length": 0.48,
+        "reference_frequency_hz": 220.0,
+        "seed": 1618
+      }
+    },
+    {
+      "instance_id": "shadow",
+      "module_type": "pytheory_negative_harmony",
+      "provider": "builtin",
+      "parameters": {
+        "tonic": "D",
+        "mode": "minor",
+        "mirror": true,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "chance",
+      "module_type": "wogglebug",
+      "provider": "builtin",
+      "parameters": {
+        "clock_rate_hz": 0.3,
+        "chaos": 0.32,
+        "ego_id_balance": 0.58,
+        "woggle": 0.42,
+        "audio_level": 0.0,
+        "seed": 8088
+      }
+    },
+    {
+      "instance_id": "breath",
+      "module_type": "lfo",
+      "provider": "builtin",
+      "parameters": {
+        "rate_hz": 0.03125,
+        "shape": "smooth random",
+        "depth": 0.72,
+        "offset": 0.08,
+        "phase": 0.0,
+        "pulse_width": 0.5,
+        "unipolar": true,
+        "seed": 404
+      }
+    },
+    {
+      "instance_id": "bass",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "upright_bass",
+        "level": 0.34,
+        "release_ms": 620.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "keys_low",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.16,
+        "release_ms": 960.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "keys_mid",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "wurlitzer",
+        "level": 0.14,
+        "release_ms": 900.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "keys_high",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "electric_piano",
+        "level": 0.13,
+        "release_ms": 1080.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "sax",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "tenor_sax",
+        "level": 0.21,
+        "release_ms": 460.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "vibes",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "vibraphone",
+        "level": 0.16,
+        "release_ms": 1180.0,
+        "reference_frequency_hz": 440.0
+      }
+    },
+    {
+      "instance_id": "pad",
+      "module_type": "supersaw",
+      "provider": "builtin",
+      "parameters": {
+        "frequency": 220.0,
+        "voices": 7,
+        "detune_cents": 12.0,
+        "curve": 0.48,
+        "amplitude": 0.09
+      }
+    },
+    {
+      "instance_id": "smoke",
+      "module_type": "ladder_filter",
+      "provider": "builtin",
+      "parameters": {
+        "cutoff_hz": 640.0,
+        "resonance": 0.18,
+        "drive": 1.28,
+        "output_level": 0.7
+      }
+    },
+    {
+      "instance_id": "moon_phaser",
+      "module_type": "pytheory_fx",
+      "provider": "builtin",
+      "parameters": {
+        "effect": "phaser",
+        "mix": 0.48,
+        "rate_hz": 0.11,
+        "depth": 0.38,
+        "drive": 1.0,
+        "brightness": 0.5
+      }
+    },
+    {
+      "instance_id": "plate",
+      "module_type": "pytheory_reverb",
+      "provider": "builtin",
+      "parameters": {
+        "space": "plate",
+        "mix": 1.0,
+        "decay_seconds": 3.2,
+        "width": 0.88,
+        "pre_delay_ms": 14.0,
+        "level": 0.84
+      }
+    },
+    {
+      "instance_id": "tape_echo",
+      "module_type": "echo_delay",
+      "provider": "builtin",
+      "parameters": {
+        "time_seconds": 0.625,
+        "feedback": 0.3,
+        "mix": 1.0,
+        "damping": 0.62,
+        "drive": 0.94,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [0.54, 0.78, 0.62, 0.56, 0.5, 0.7, 0.54, 0.44],
+        "pans": [0.0, -0.05, -0.48, 0.04, 0.47, 0.3, -0.56, 0.15],
+        "sends_a": [0.12, 0.1, 0.36, 0.42, 0.47, 0.42, 0.62, 0.72],
+        "sends_b": [0.02, 0.0, 0.12, 0.16, 0.2, 0.28, 0.48, 0.18],
+        "mutes": [false, false, false, false, false, false, false, false],
+        "solos": [false, false, false, false, false, false, false, false],
+        "return_levels": [0.44, 0.25],
+        "return_mutes": [false, false],
+        "master": 0.76
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {"module_id": "clock", "port_id": "eighth"},
+      "target": {"module_id": "melody", "port_id": "clock"}
+    },
+    {
+      "source": {"module_id": "clock", "port_id": "bar"},
+      "target": {"module_id": "chance", "port_id": "external_clock"}
+    },
+    {
+      "source": {"module_id": "chance", "port_id": "burst"},
+      "target": {"module_id": "melody", "port_id": "mutate"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "position"},
+      "target": {"module_id": "chance", "port_id": "influence"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_1"},
+      "target": {"module_id": "ear", "port_id": "pitch_1"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_2"},
+      "target": {"module_id": "ear", "port_id": "pitch_2"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_3"},
+      "target": {"module_id": "ear", "port_id": "pitch_3"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_4"},
+      "target": {"module_id": "ear", "port_id": "pitch_4"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "root"},
+      "target": {"module_id": "bass", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "gate"},
+      "target": {"module_id": "bass", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_2"},
+      "target": {"module_id": "keys_low", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "gate"},
+      "target": {"module_id": "keys_low", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_3"},
+      "target": {"module_id": "keys_mid", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "gate"},
+      "target": {"module_id": "keys_mid", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_4"},
+      "target": {"module_id": "keys_high", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "gate"},
+      "target": {"module_id": "keys_high", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "melody", "port_id": "pitch"},
+      "target": {"module_id": "shadow", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "melody", "port_id": "pitch"},
+      "target": {"module_id": "sax", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "melody", "port_id": "gate"},
+      "target": {"module_id": "sax", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "shadow", "port_id": "out"},
+      "target": {"module_id": "vibes", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "melody", "port_id": "gate"},
+      "target": {"module_id": "vibes", "port_id": "gate"}
+    },
+    {
+      "source": {"module_id": "progression", "port_id": "voice_1"},
+      "target": {"module_id": "pad", "port_id": "pitch"}
+    },
+    {
+      "source": {"module_id": "pad", "port_id": "cluster"},
+      "target": {"module_id": "smoke", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "breath", "port_id": "out"},
+      "target": {"module_id": "smoke", "port_id": "cutoff_cv"}
+    },
+    {
+      "source": {"module_id": "chance", "port_id": "smooth"},
+      "target": {"module_id": "smoke", "port_id": "resonance_cv"}
+    },
+    {
+      "source": {"module_id": "smoke", "port_id": "low_24"},
+      "target": {"module_id": "moon_phaser", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "ear", "port_id": "dissonance"},
+      "target": {"module_id": "moon_phaser", "port_id": "depth_cv"}
+    },
+    {
+      "source": {"module_id": "drums", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_1"}
+    },
+    {
+      "source": {"module_id": "bass", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_2"}
+    },
+    {
+      "source": {"module_id": "keys_low", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_3"}
+    },
+    {
+      "source": {"module_id": "keys_mid", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_4"}
+    },
+    {
+      "source": {"module_id": "keys_high", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_5"}
+    },
+    {
+      "source": {"module_id": "sax", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_6"}
+    },
+    {
+      "source": {"module_id": "vibes", "port_id": "audio"},
+      "target": {"module_id": "master", "port_id": "channel_7"}
+    },
+    {
+      "source": {"module_id": "moon_phaser", "port_id": "audio_out"},
+      "target": {"module_id": "master", "port_id": "channel_8"}
+    },
+    {
+      "source": {"module_id": "master", "port_id": "send_a"},
+      "target": {"module_id": "plate", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "master", "port_id": "send_b"},
+      "target": {"module_id": "tape_echo", "port_id": "audio"}
+    },
+    {
+      "source": {"module_id": "plate", "port_id": "wet_left"},
+      "target": {"module_id": "master", "port_id": "return_a_left"}
+    },
+    {
+      "source": {"module_id": "plate", "port_id": "wet_right"},
+      "target": {"module_id": "master", "port_id": "return_a_right"}
+    },
+    {
+      "source": {"module_id": "tape_echo", "port_id": "wet"},
+      "target": {"module_id": "master", "port_id": "return_b_left"}
+    },
+    {
+      "source": {"module_id": "tape_echo", "port_id": "wet"},
+      "target": {"module_id": "master", "port_id": "return_b_right"}
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {"module_id": "master", "port_id": "left"},
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {"module_id": "master", "port_id": "right"},
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.86
+  },
+  "transport": {
+    "bpm": 72.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 0.66,
+    "rails": {
+      "control": 150.0,
+      "audio": 660.0
+    },
+    "nodes": [
+      {"node_id": "clock", "position": {"x": 70.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "drums", "position": {"x": 70.0, "y": 360.0}, "collapsed": true},
+      {"node_id": "chance", "position": {"x": 310.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "breath", "position": {"x": 310.0, "y": 390.0}, "collapsed": true},
+      {"node_id": "progression", "position": {"x": 610.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "ear", "position": {"x": 610.0, "y": 410.0}, "collapsed": false},
+      {"node_id": "melody", "position": {"x": 960.0, "y": 80.0}, "collapsed": false},
+      {"node_id": "shadow", "position": {"x": 960.0, "y": 420.0}, "collapsed": true},
+      {"node_id": "bass", "position": {"x": 630.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "keys_low", "position": {"x": 880.0, "y": 680.0}, "collapsed": true},
+      {"node_id": "keys_mid", "position": {"x": 880.0, "y": 820.0}, "collapsed": true},
+      {"node_id": "keys_high", "position": {"x": 880.0, "y": 960.0}, "collapsed": true},
+      {"node_id": "sax", "position": {"x": 1160.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "vibes", "position": {"x": 1160.0, "y": 960.0}, "collapsed": true},
+      {"node_id": "pad", "position": {"x": 1450.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "smoke", "position": {"x": 1450.0, "y": 970.0}, "collapsed": true},
+      {"node_id": "moon_phaser", "position": {"x": 1700.0, "y": 970.0}, "collapsed": true},
+      {"node_id": "plate", "position": {"x": 1960.0, "y": 680.0}, "collapsed": false},
+      {"node_id": "tape_echo", "position": {"x": 1960.0, "y": 990.0}, "collapsed": true},
+      {"node_id": "master", "position": {"x": 2250.0, "y": 680.0}, "collapsed": false}
+    ],
+    "groups": [
+      {
+        "group_id": "time_and_chance",
+        "name": "TIME / CHANCE",
+        "members": ["clock", "drums", "chance", "breath"],
+        "groups": []
+      },
+      {
+        "group_id": "harmony_system",
+        "name": "THEORY LISTENS BACK",
+        "members": ["progression", "ear"],
+        "groups": []
+      },
+      {
+        "group_id": "improvisation",
+        "name": "MOTIF AND SHADOW",
+        "members": ["melody", "shadow"],
+        "groups": []
+      },
+      {
+        "group_id": "rhythm_section",
+        "name": "RHYTHM SECTION",
+        "members": ["bass", "keys_low", "keys_mid", "keys_high"],
+        "groups": []
+      },
+      {
+        "group_id": "soloists",
+        "name": "SOLO / REFLECTION",
+        "members": ["sax", "vibes"],
+        "groups": []
+      },
+      {
+        "group_id": "electric_weather",
+        "name": "ELECTRIC WEATHER",
+        "members": ["pad", "smoke", "moon_phaser"],
+        "groups": []
+      },
+      {
+        "group_id": "ensemble",
+        "name": "THE VELVET ENSEMBLE",
+        "members": [],
+        "groups": ["rhythm_section", "soloists", "electric_weather"]
+      },
+      {
+        "group_id": "room",
+        "name": "PLATE / TAPE / NIGHT",
+        "members": ["plate", "tape_echo", "master"],
+        "groups": []
+      }
+    ]
+  }
+}
