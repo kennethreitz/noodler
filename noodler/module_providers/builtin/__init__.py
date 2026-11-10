@@ -190,6 +190,29 @@ from .wogglebug import (
     Wogglebug,
     WogglebugParameters,
 )
+from .fretboard import (
+    FRETBOARD_MANIFEST,
+    FretboardParameters,
+    FretboardVoice,
+    TUNINGS as FRETBOARD_TUNINGS,
+)
+from .sequencer import (
+    SEQUENCER_MANIFEST,
+    Sequencer,
+    SequencerParameters,
+    parse_steps,
+)
+from .chord import (
+    CHORD_MANIFEST,
+    ChordModule,
+    ChordParameters,
+    voice_chord,
+)
+from .midi_out import (
+    MIDI_OUT_MANIFEST,
+    MidiOut,
+    MidiOutParameters,
+)
 
 
 BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
@@ -232,6 +255,10 @@ BUILTIN_PROVIDER_MANIFEST = ProviderManifest(
         WOGGLEBUG_MANIFEST,
         LFO_MANIFEST,
         SCALE_GENERATOR_MANIFEST,
+        FRETBOARD_MANIFEST,
+        SEQUENCER_MANIFEST,
+        CHORD_MANIFEST,
+        MIDI_OUT_MANIFEST,
         LOW_PASS_GATE_MANIFEST,
         ECHO_DELAY_MANIFEST,
         REVERB_MANIFEST,
@@ -276,6 +303,10 @@ BUILTIN_MODULE_TYPES = MappingProxyType({
         (WOGGLEBUG_MANIFEST, Wogglebug),
         (LFO_MANIFEST, LFO),
         (SCALE_GENERATOR_MANIFEST, ScaleGenerator),
+        (FRETBOARD_MANIFEST, FretboardVoice),
+        (SEQUENCER_MANIFEST, Sequencer),
+        (CHORD_MANIFEST, ChordModule),
+        (MIDI_OUT_MANIFEST, MidiOut),
         (LOW_PASS_GATE_MANIFEST, LowPassGate),
         (ECHO_DELAY_MANIFEST, EchoDelay),
         (REVERB_MANIFEST, Reverb),
@@ -455,4 +486,19 @@ __all__ = [
     "LadderFilterParameters",
     "polarizing_mixer_manifest",
     "scale_names",
+    "FRETBOARD_MANIFEST",
+    "FretboardParameters",
+    "FretboardVoice",
+    "FRETBOARD_TUNINGS",
+    "SEQUENCER_MANIFEST",
+    "Sequencer",
+    "SequencerParameters",
+    "parse_steps",
+    "CHORD_MANIFEST",
+    "ChordModule",
+    "ChordParameters",
+    "voice_chord",
+    "MIDI_OUT_MANIFEST",
+    "MidiOut",
+    "MidiOutParameters",
 ]

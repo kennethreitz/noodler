@@ -4,68 +4,79 @@
 
 ![Noodler — a rack with a progression, a keyboard, a scope and the console](DOCS/images/noodler.png)
 
-Noodler is a macOS modular instrument in the spirit of Eurorack, written in
-Python so [PyTheory](https://github.com/kennethreitz/pytheory) can live inside
-the rack as a first-class material. Scales, chords, progressions, ragas and
-rhythms travel down cables like voltage does; a melody brain can drive an
-oscillator, a slow function can move a filter or rise into audio, chance can
-disturb harmony before harmony becomes sound. It is not a DAW with cables and
-not Eurorack behind glass — a place for exploratory instruments and coherent
-accidents.
+Noodler is a modular instrument in the spirit of Eurorack, written in Python
+so [PyTheory](https://github.com/kennethreitz/pytheory) can live in the rack.
+Scales, chords, guitar tunings and rhythms travel down cables the way voltage
+does. It is not a DAW with cables drawn on it, and not Eurorack behind glass.
 
-## Try it
+## Quickstart
 
 macOS, Python 3.14, managed with [`uv`](https://docs.astral.sh/uv/):
 
 ```console
 uv python install 3.14
 uv sync
-uv run noodler                          # a fresh rack
-uv run noodler examples/rainlight-cathedral.noodler
+uv run noodler                              # a fresh rack
+uv run noodler examples/dadgad-chapel.noodler
+uv run noodler render examples/dadgad-chapel.noodler -o chapel.wav
+uv run noodler midi examples/open-g-hymn.noodler -o hymn.mid
 ```
 
-A rack opens with the **console** along the bottom — eight strips and two
-effect strips, pinned so the camera never carries them away — with a delay
-already on send A and a hall on send B. Drag a module's output onto a strip's
-jack and that is the slot it plays through. Press **▶ PLAY** (or tap space) to
-start the audio device and the clock; nothing sounds until you do.
-**File → Open Example** has more patches; **File → Export Audio** bounces one
-to a WAV.
+Press **▶ PLAY** (or tap space) and the rack starts. Nothing sounds until you
+do. **File → Open Example** has the rest of the patches. **File → Export
+Audio** bounces one to a WAV.
 
-**Rainlight Cathedral** is the full showcase: an eight-bar chamber piece whose
-written harmony, melody and counterpoint feed a chord-following arpeggiator,
-seven PyTheory instruments, second-line percussion and a shared stereo room.
+`render` and `midi` never open a window. `check` tells you whether a document
+loads, and `modules` lists what you can patch.
 
-**Velvet Algorithm** is its generative after-hours counterpart: harmony wanders,
-theory listens back, and a saxophone improvisation casts a negative-harmony shadow.
+## Two patches
 
-**Acid Communion** patches a written 16th-note bassline through a resonant
-envelope-and-accent-driven ladder, piano stabs and a 124 BPM warehouse rhythm.
+**DADGAD Chapel** is a phrase in D major, played by a kalimba, over the open
+strings of DADGAD strummed on a guitar. The numbers in the sequencer are
+degrees of the Key beside it. A dot is a rest. The same notes leave through
+MIDI Out.
+
+**Open G, Capo 2** is the other one. `Fretboard.guitar("open g", capo=2)` is
+an A major chord — E A E A C# E — and the patch strums it while an arpeggio
+walks an A. The same document is `examples/open-g-hymn.toml`, which is the
+patch as TOML if you would rather edit it as text.
+
+A patch in Python is the same idea:
+
+```python
+from noodler.studio import Patch
+
+patch = Patch("DADGAD Chapel").at(bpm=72)
+patch.module("board", "fretboard", tuning="dadgad")
+patch.module("voice", "pytheory_voice", instrument="acoustic_guitar")
+patch.cable("board.pitch", "voice.pitch")
+patch.cable("board.gate", "voice.gate")
+patch.hear("voice.audio")
+patch.save("chapel.noodler")          # or chapel.toml
+```
+
+`.noodler` files are JSON. `.toml` is the same document. Both open in the rack.
 
 ## What's inside
 
-- **PyTheory in the rack.** *PyTheory Voice* renders any of the library's
-  eighty-four instruments live; *Beats* plays a hundred rhythm presets through
-  its drum synthesis, bar-locked; *Score* plays a phrase you write; *Raga*,
-  *Maqam* and *Tone Row* improvise the way those musics move, justly tuned;
-  *Progression* plays thirty-odd named progressions (or your numerals) a chord
-  a bar, voiced; the *Chord Ear* names what is sounding; *Negative Harmony*
-  mirrors a line about a key's axis; *Reverb* and *FX* stream the library's
-  rooms and effects. *Key / Scale* sends a whole scale down a cable in any of
-  sixteen tone systems and a *Scale Quantizer* snaps anything into it.
-- **A rack that feels like an instrument.** Cables hang and glow with their
-  signals, jacks light when patched, a *Scope* draws whatever you patch into
-  it, and *QWERTY Keys* turns the keyboard in front of you into one. Modules
-  stay where you put them; **Tidy** lays a patch out by signal flow on request.
-  Select some modules and ⌘G **groups** them so they move together — logical
-  only, nestable, saved with the patch. The outline presents those groups as
-  a nested, closed-by-default hierarchy instead of repeating a dense rack.
-- **The graph is real.** Every cable changes the executable `PatchGraph` the
-  audio callback runs; the rack and the sound are two views of one patch.
-  Feedback is a technique: a loop closes on the previous block.
-- **A patch is a document.** `.noodler` files are readable JSON: modules,
-  controls, cables, console, tempo, positions and groups. Undo covers patching,
-  adding, removing and knob sweeps (a sweep is one edit).
+Sources, a clock, filters, envelopes, a mixer and a room. And the theory,
+which is the point:
+
+| | |
+| --- | --- |
+| Key / Scale, Quantizer | A scale down a cable, and a module that snaps any voltage into it. |
+| Chord, Arpeggio | A chord by name, four voices, and a pattern that walks them. |
+| Sequencer | A phrase written as degrees: `0 2 4 3  4 . 0 .` |
+| Fretboard | `Fretboard.guitar(tuning, capo=)` — standard, drop D, DADGAD, open G, and the rest — strummed. |
+| MIDI Out | Pitch and gate in, a `.mid` file out. |
+
+Around those: melody, harmony and arpeggio brains, an LFO, PyTheory's own
+instruments, beats, scores, ragas, maqamat, tone rows, negative harmony, and
+the rooms and effects from the library. The full shelf is in
+[DOCS/MODULES.md](DOCS/MODULES.md).
+
+Cables hang. Feedback is a one-block delay, on purpose. Groups move together.
+Undo covers patching and knob sweeps.
 
 ## Rack controls
 
@@ -75,44 +86,23 @@ envelope-and-accent-driven ladder, piano stabs and a 124 BPM warehouse rhythm.
 | Pinch or − / 100% / + | Zoom · **F** frames the whole rack |
 | Space tap or ⌘↩ | Play / stop |
 | Shift + background drag | Box-select · Escape clears |
-| ⌘G / ⌘⇧G | Group the selection / ungroup · Option-drag moves one member alone |
-| Group name click / drag | Fold or open its member panels / move the whole group |
-| Module title drag / double-click / right-click | Move · fold or open · collapse, duplicate, reset, unplug, group, remove |
+| ⌘G / ⌘⇧G | Group the selection / ungroup |
+| Module title drag / double-click / right-click | Move · fold · collapse, duplicate, reset, unplug, remove |
 | Knob drag, scroll, Shift, double-click | Turn · turn without panning · fine · reset |
 | Click / double-click a cable | Pick it (Delete removes) / unpatch it |
 | ⌘K · ⌘Z · ⌘⇧Z · T · L | Search the library · undo · redo · tidy · hide the library |
-
-The outline on the left begins with a compact rack hierarchy: groups contain
-groups, and ungrouped modules have one quiet shelf. Signal Flow remains below
-it and starts closed on a complex patch. Click a module name and it glides to
-the middle of the view and opens; its detail arrow shows parameters and jacks.
-
-## Modules
-
-Thirty-eight, in four shelves:
-
-| Shelf | Modules |
-| --- | --- |
-| Compose & Modulate | Key / Scale, Scale Quantizer, Melody Brain, Harmony Brain, Arpeggio Brain, Clock, LFO, QWERTY Keys, PyTheory Beats, Score, Raga, Maqam, Progression, Chord Ear, Negative Harmony, Tone Row, Scale Generator, Function Utility, Wogglebug |
-| Generate | PyTheory Voice, Instrument Voice, Triangle Core Complex VCO, Classic VCO, FM Voice, Supersaw, Noise Source |
-| Shape & Control | State Variable Filter, Ladder Filter, ADSR Envelope, VCA, Low-Pass Gate |
-| Mix & Space | Master Mixer, Polarizing Mixer, Scope, Echo Delay, Stereo Reverb, PyTheory Reverb, PyTheory FX |
-
-Every module declares typed ports and Pydantic parameters, so one definition
-serves the panel, the document and the graph. See [DOCS/MODULES.md](DOCS/MODULES.md).
 
 ## Development
 
 ```console
 uv sync
+uv run ruff check
 uv run pytest
 ```
 
-Noodler is one Python application: Dear PyGui draws the rack, the engine owns
-the graph, history and documents, PyTheory supplies the musical primitives, and
-sounddevice feeds Core Audio stereo `float32` blocks. It is an audible
-prototype — no `.app` bundle yet, the callback still allocates, and the
-graph should stay structurally still while audio runs.
+Noodler is one Python application. Dear PyGui draws the rack, the engine owns
+the graph, PyTheory supplies the musical primitives, and sounddevice feeds
+Core Audio. `render` is the path that does not need a screen.
 
 - [Architecture](DOCS/ARCHITECTURE.md) · [Technology](DOCS/TECHNOLOGY.md) ·
   [Modules](DOCS/MODULES.md) · [Audio](DOCS/AUDIO.md)

@@ -1,8 +1,12 @@
 # Noodler patch format
 
-Noodler patches use UTF-8 JSON and the `.noodler` extension. The format is
-human-readable, diffable, and validated with Pydantic before data reaches the
-audio graph. Python pickle is deliberately not used.
+Noodler patches use UTF-8 text and are validated with Pydantic before data
+reaches the audio graph. Python pickle is deliberately not used.
+
+The native extension is `.noodler`, and those files are JSON. The same
+document can be written as `.toml` — modules, cables and the tempo as tables
+a person can edit — and either one opens in the rack. `read_patch_preset`
+chooses by the extension.
 
 Every document declares both a format identity and an integer format version:
 

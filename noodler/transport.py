@@ -12,6 +12,7 @@ sync — free-running is still a division called "free".
 """
 
 from dataclasses import dataclass
+import math
 
 
 FREE = "free"
@@ -222,6 +223,76 @@ def is_time_field(field_name: str) -> bool:
     return field_name.endswith("_seconds") or field_name.endswith("_ms")
 
 
+def block_clock(
+    transport: TransportFrame | None,
+    *,
+    free_quarters: float,
+    rate_hz: float,
+    frame_count: int,
+    sample_rate: float,
+    beats_per_bar: int = 4,
+) -> tuple[float, float, float, bool, float]:
+    """Where a block starts, for a module that can follow the clock or run free.
+
+    Returns the quarter-note position at the first sample, how many quarters
+    pass per sample, how many quarters a bar holds, whether time is moving,
+    and the free-running position to keep until the next block. With a
+    transport, the free-running position is left untouched.
+    """
+    if isinstance(transport, TransportFrame):
+        per_sample = (
+            transport.quarters_per_second / sample_rate if transport.running else 0.0
+        )
+        return (
+            transport.quarters,
+            per_sample,
+            transport.quarters_per_bar,
+            transport.running,
+            free_quarters,
+        )
+    per_sample = rate_hz / sample_rate if sample_rate > 0.0 else 0.0
+    return (
+        free_quarters,
+        per_sample,
+        float(beats_per_bar),
+        True,
+        free_quarters + frame_count * per_sample,
+    )
+
+
+def division_quarters(name: str, quarters_per_bar: float) -> float:
+    """How long one step of a named division is, in quarter notes.
+
+    ``free`` — and any name the clock does not know — is one quarter, which is
+    one step of the module's own rate.
+    """
+    if name in BAR_DIVISIONS:
+        return BAR_DIVISIONS[name] * quarters_per_bar
+    return NOTE_DIVISIONS.get(name, 1.0)
+
+
+def sample_crossings(
+    start: float,
+    per_sample: float,
+    frame_count: int,
+    period: float,
+    offset: float = 0.0,
+) -> list[int]:
+    """Sample indexes where a steady clock crosses ``offset`` modulo ``period``."""
+    if per_sample <= 0.0 or period <= 0.0 or frame_count <= 0:
+        return []
+    end = start + frame_count * per_sample
+    first = math.ceil((start - offset) / period - 1e-9)
+    hits: list[int] = []
+    at = offset + first * period
+    while at < end - 1e-12:
+        index = int(round((at - start) / per_sample))
+        if 0 <= index < frame_count and (not hits or hits[-1] != index):
+            hits.append(index)
+        at += period
+    return hits
+
+
 def clock_kind(field_name: str) -> str | None:
     """'rate', 'seconds', 'ms', or None if the clock has nothing to say."""
     if is_rate_field(field_name):
@@ -245,7 +316,10 @@ __all__ = [
     "MIN_BPM",
     "Transport",
     "TransportFrame",
+    "block_clock",
     "clock_kind",
+    "division_quarters",
     "is_rate_field",
     "is_time_field",
+    "sample_crossings",
 ]

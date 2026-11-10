@@ -195,6 +195,7 @@ from .ui.state import (
     AppRuntime,
     KnobArt,
     KnobBinding,
+    KnobInteraction,
     NodeRegistration,
     PatchBayBinding,
     RateSync,
@@ -367,7 +368,7 @@ MODULE_LIBRARY_SECTIONS = (
     ),
     (
         "MIX & SPACE",
-        ("Utilities", "Effects"),
+        ("Utilities", "Effects", "Outputs"),
     ),
 )
 ZOOM_OUT_BUTTON = "noodler.zoom_out"
@@ -4057,7 +4058,6 @@ def _tidy_rack(
     if runtime is None or _keyboard_is_captured():
         return
     depths = _module_depths(runtime.patch)
-    furthest = max(depths.values(), default=0)
     node_depth = {
         node: depths.get(instance_id, 0)
         for instance_id, node in INSTANCE_NODE_TAGS.items()
@@ -8539,6 +8539,7 @@ def _build_empty_rack_ui(
         user_data=runtime,
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".toml", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     with dpg.file_dialog(
         tag=OPEN_PATCH_DIALOG,
@@ -8551,6 +8552,7 @@ def _build_empty_rack_ui(
         user_data=runtime,
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".toml", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     with dpg.file_dialog(
         tag=EXPORT_DIALOG,
@@ -9015,6 +9017,7 @@ def build_ui(
         user_data=runtime,
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".toml", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     with dpg.file_dialog(
         tag=OPEN_PATCH_DIALOG,
@@ -9027,6 +9030,7 @@ def build_ui(
         user_data=runtime,
     ):
         dpg.add_file_extension(".noodler", color=SCALE_ACCENT)
+        dpg.add_file_extension(".toml", color=SCALE_ACCENT)
         dpg.add_file_extension(".*")
     with dpg.file_dialog(
         tag=EXPORT_DIALOG,
@@ -9062,7 +9066,17 @@ def _parse_cli_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Run the Noodler desktop application, optionally opening a patch."""
+    """Run the Noodler desktop application, optionally opening a patch.
+
+    ``render``, ``midi``, ``check`` and ``modules`` stay in the terminal.
+    Anything else opens the rack.
+    """
+    tool_argv = list(sys.argv[1:] if argv is None else argv)
+    if tool_argv and tool_argv[0] in {"render", "midi", "check", "modules"}:
+        from noodler.cli import main as tool_main
+
+        tool_main(tool_argv)
+        return
     args = _parse_cli_args(argv)
     preset: PatchPreset | None = None
     if args.patch is not None:

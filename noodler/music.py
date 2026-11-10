@@ -144,6 +144,17 @@ def build_scale(
     )
 
 
+def hz_to_volts(hertz: float, reference_hz: float) -> float:
+    """One-volt-per-octave pitch of a frequency, against a shared reference.
+
+    Every module that speaks pitch uses the same conversion, so a fretboard, a
+    sequencer and a voice agree about what zero volts means.
+    """
+    if hertz <= 0.0 or reference_hz <= 0.0:
+        return 0.0
+    return float(np.log2(hertz / reference_hz))
+
+
 def quantize(
     pitches: NDArray[np.float64],
     table: NDArray[np.float64],
@@ -173,6 +184,7 @@ __all__ = [
     "SYSTEM_NAMES",
     "ScaleField",
     "build_scale",
+    "hz_to_volts",
     "quantize",
     "scale_names_for",
     "tonics_for",

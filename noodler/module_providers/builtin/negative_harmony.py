@@ -10,7 +10,6 @@ line and its mirror at once.
 """
 
 from collections.abc import Mapping
-import math
 
 import numpy as np
 from numpy.typing import ArrayLike

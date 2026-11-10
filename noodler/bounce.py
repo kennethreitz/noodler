@@ -22,7 +22,7 @@ DEFAULT_SAMPLE_RATE = 48_000.0
 DEFAULT_BLOCK = 256
 
 
-def bounce(
+def perform(
     preset: PatchPreset,
     *,
     bars: int = 8,
@@ -30,14 +30,15 @@ def bounce(
     sample_rate: float = DEFAULT_SAMPLE_RATE,
     block_size: int = DEFAULT_BLOCK,
     progress: Callable[[int, int], None] | None = None,
-) -> np.ndarray:
-    """Play a document for some bars and a tail, and return the stereo audio.
+) -> tuple[np.ndarray, tuple[object, ...]]:
+    """Play a document and return the stereo audio plus any MIDI it recorded.
 
     The patch is built fresh from the document -- never the one that is
     playing, whose state would be disturbed -- and every module that renders
     on a worker is given time to finish before the clock starts.
     """
     from .app import build_runtime_from_preset  # the graph builder lives with the app
+    from .midi import MidiEvent
 
     if bars <= 0:
         raise ValueError("bars must be positive")
@@ -60,7 +61,7 @@ def bounce(
     tail_blocks = int(round(tail_seconds * sample_rate / block_size))
     blocks: list[np.ndarray] = []
     reported = -1
-    for index in range(total_blocks):
+    for _index in range(total_blocks):
         patch.transport = transport.tick(block_size, sample_rate)
         blocks.append(patch.render_stereo(block_size, sample_rate))
         bar = transport.bars
@@ -74,10 +75,39 @@ def bounce(
     if progress is not None:
         progress(bars, bars)
     if not blocks:
-        return np.zeros((0, 2), dtype=np.float32)
-    audio = np.concatenate(blocks).astype(np.float32)
-    audio *= float(preset.system_output.master_gain)
-    return np.clip(np.nan_to_num(audio), -1.0, 1.0)
+        audio = np.zeros((0, 2), dtype=np.float32)
+    else:
+        audio = np.concatenate(blocks).astype(np.float32)
+        audio *= float(preset.system_output.master_gain)
+        audio = np.clip(np.nan_to_num(audio), -1.0, 1.0)
+    events: list[MidiEvent] = []
+    for module in patch.modules.values():
+        recorded = getattr(module, "midi_events", None)
+        if recorded:
+            events.extend(recorded)
+    events.sort(key=lambda event: (event.quarters, event.on))
+    return audio, tuple(events)
+
+
+def bounce(
+    preset: PatchPreset,
+    *,
+    bars: int = 8,
+    tail_seconds: float = 3.0,
+    sample_rate: float = DEFAULT_SAMPLE_RATE,
+    block_size: int = DEFAULT_BLOCK,
+    progress: Callable[[int, int], None] | None = None,
+) -> np.ndarray:
+    """Play a document for some bars and a tail, and return the stereo audio."""
+    audio, _events = perform(
+        preset,
+        bars=bars,
+        tail_seconds=tail_seconds,
+        sample_rate=sample_rate,
+        block_size=block_size,
+        progress=progress,
+    )
+    return audio
 
 
 def write_wav(path: str | Path, audio: np.ndarray, sample_rate: float = DEFAULT_SAMPLE_RATE) -> Path:
@@ -109,4 +139,4 @@ def read_wav(path: str | Path) -> tuple[np.ndarray, int]:
     return values.reshape(-1, channels), rate
 
 
-__all__ = ["bounce", "read_wav", "write_wav"]
+__all__ = ["bounce", "perform", "read_wav", "write_wav"]

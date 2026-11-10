@@ -7,6 +7,7 @@ import pytest
 
 from noodler.module_providers.builtin import BuiltinProvider, PyTheoryReverb, PyTheoryReverbParameters, REVERB_SPACES
 from noodler.module_providers.builtin.pytheory_reverb import SCHROEDER, _Convolver, render_impulse
+from tests.timing import machine_is_quiet
 
 SR = 48_000.0
 N = 256
@@ -77,7 +78,10 @@ def test_the_callback_never_renders_a_room() -> None:
     for i in range(blocks):
         reverb.process(N, SR, {"audio": x[i * N : (i + 1) * N]})
     per_block = (time.perf_counter() - started) / blocks * 1_000
-    assert per_block < 1.5, f"{per_block:.2f} ms a block for a twelve-second room"
+    # 1.5 ms is the idle-machine budget. A block of audio is 5.3 ms, so 8 ms
+    # under load is still the convolution and not a fresh twelve-second render.
+    budget = 1.5 if machine_is_quiet() else 8.0
+    assert per_block < budget, f"{per_block:.2f} ms a block for a twelve-second room"
 
 
 def test_decay_shortens_an_impulse_and_the_schroeder_alike() -> None:

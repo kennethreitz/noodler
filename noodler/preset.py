@@ -1,6 +1,13 @@
-"""Versioned, human-readable Noodler patch documents."""
+"""Versioned, human-readable Noodler patch documents.
 
+``.noodler`` files are JSON. ``.toml`` files are the same document, written so
+a person can edit a tuning or a phrase without a window. Both load through
+the same validation.
+"""
+
+import json
 from pathlib import Path
+import tomllib
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -11,6 +18,8 @@ from noodler.patch import Cable, OutputTap, PatchGraph
 PATCH_FORMAT = "noodler.patch"
 PATCH_FORMAT_VERSION = 1
 PATCH_EXTENSION = ".noodler"
+TOML_EXTENSION = ".toml"
+READABLE_EXTENSIONS = {PATCH_EXTENSION, TOML_EXTENSION, ".json"}
 
 
 class Point(BaseModel):
@@ -176,26 +185,82 @@ def capture_patch_preset(
 
 
 def preset_path(path: str | Path) -> Path:
-    """Give patch documents their recognizable native extension."""
+    """Give patch documents their recognizable extension.
+
+    A path that already ends in ``.noodler``, ``.json`` or ``.toml`` is kept.
+    Anything else is a ``.noodler`` document.
+    """
     resolved = Path(path).expanduser()
-    if resolved.suffix.lower() != PATCH_EXTENSION:
-        resolved = resolved.with_name(f"{resolved.name}{PATCH_EXTENSION}")
-    return resolved
+    if resolved.suffix.lower() in READABLE_EXTENSIONS:
+        return resolved
+    return resolved.with_name(f"{resolved.name}{PATCH_EXTENSION}")
 
 
 def write_patch_preset(preset: PatchPreset, path: str | Path) -> Path:
     """Write a formatted patch document and return its normalized path."""
     destination = preset_path(path)
-    destination.write_text(
-        preset.model_dump_json(indent=2) + "\n",
-        encoding="utf-8",
-    )
+    payload = preset.model_dump(mode="json")
+    if destination.suffix.lower() == TOML_EXTENSION:
+        text = preset_to_toml(payload)
+    else:
+        text = json.dumps(payload, indent=2) + "\n"
+    destination.write_text(text, encoding="utf-8")
     return destination
 
 
 def read_patch_preset(path: str | Path) -> PatchPreset:
     """Parse and fully validate a patch document before it reaches the engine."""
-    return PatchPreset.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    document = Path(path)
+    text = document.read_text(encoding="utf-8")
+    if document.suffix.lower() == TOML_EXTENSION:
+        return PatchPreset.model_validate(tomllib.loads(text))
+    return PatchPreset.model_validate_json(text)
+
+
+def preset_to_toml(payload: dict[str, object]) -> str:
+    """Render a patch document as TOML a person can edit."""
+    lines: list[str] = []
+    _emit_table(payload, prefix="", lines=lines)
+    return "\n".join(lines).strip() + "\n"
+
+
+def _emit_table(data: dict[str, object], *, prefix: str, lines: list[str]) -> None:
+    tables: list[tuple[str, dict[str, object]]] = []
+    arrays: list[tuple[str, list[object]]] = []
+    for key, value in data.items():
+        if isinstance(value, dict):
+            if value:
+                tables.append((key, value))
+        elif isinstance(value, list) and (not value or isinstance(value[0], dict)):
+            arrays.append((key, value))
+        else:
+            lines.append(f"{key} = {_toml_literal(value)}")
+    for key, table in tables:
+        path = f"{prefix}.{key}" if prefix else key
+        lines.append("")
+        lines.append(f"[{path}]")
+        _emit_table(table, prefix=path, lines=lines)
+    for key, items in arrays:
+        path = f"{prefix}.{key}" if prefix else key
+        for item in items:
+            lines.append("")
+            lines.append(f"[[{path}]]")
+            if isinstance(item, dict):
+                _emit_table(item, prefix=path, lines=lines)
+
+
+def _toml_literal(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float):
+        return json.dumps(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_literal(item) for item in value) + "]"
+    raise TypeError(f"cannot write {type(value).__name__} into a patch")
 
 
 __all__ = [
@@ -212,6 +277,7 @@ __all__ = [
     "TransportPreset",
     "capture_patch_preset",
     "preset_path",
+    "preset_to_toml",
     "read_patch_preset",
     "write_patch_preset",
 ]
