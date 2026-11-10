@@ -118,7 +118,7 @@ class PatchPreset(BaseModel):
 
     format: Literal["noodler.patch"] = PATCH_FORMAT
     format_version: Literal[1] = PATCH_FORMAT_VERSION
-    application_version: str = "0.1.0"
+    application_version: str = "0.2.0"
     name: str = Field(default="Untitled Patch", min_length=1, max_length=120)
     modules: tuple[ModulePreset, ...]
     cables: tuple[Cable, ...] = ()
