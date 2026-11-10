@@ -24,9 +24,10 @@ SR = 48_000.0
 
 
 def test_pytheory_is_the_release_with_guitar_tunings() -> None:
-    assert pytheory.__version__.startswith("0.58")
+    assert pytheory.__version__.startswith("0.59")
     board = Fretboard.guitar("open g", capo=2)
     assert [tone.full_name for tone in board.tones] == ["E2", "A2", "E3", "A3", "C#4", "E4"]
+    assert len(board.chord("G", multiple=True, limit=4)) >= 2
 
 
 def test_fretboard_module_is_the_pytheory_guitar() -> None:
@@ -46,7 +47,27 @@ def test_fretboard_module_is_the_pytheory_guitar() -> None:
 def test_a_named_chord_is_fretted_on_that_tuning() -> None:
     voice = FretboardVoice(FretboardParameters(tuning="standard", chord="G"))
     voice.process(8, SR)
+    assert voice.parameters.voicing == 0
     assert "G2" in voice.label and "B2" in voice.label
+
+
+def test_voicing_picks_among_the_ranked_grips() -> None:
+    """Zero is the grip PyTheory ranks first. The next index is another one."""
+    board = Fretboard.guitar("open g", capo=2)
+    shapes = board.chord("G", multiple=True, limit=8)
+    assert len(shapes) >= 2
+
+    def spell(shape: object) -> str:
+        return " ".join(tone.full_name for tone in shape.tones)
+
+    assert spell(shapes[0]) != spell(shapes[1])
+    first = FretboardVoice(FretboardParameters(tuning="open g", capo=2, chord="G", voicing=0))
+    second = FretboardVoice(FretboardParameters(tuning="open g", capo=2, chord="G", voicing=1))
+    first.process(8, SR)
+    second.process(8, SR)
+    assert spell(shapes[0]) in first.label
+    assert spell(shapes[1]) in second.label
+    assert "1/" in first.label and "2/" in second.label
 
 
 def test_sequencer_degrees_follow_the_patched_scale() -> None:
