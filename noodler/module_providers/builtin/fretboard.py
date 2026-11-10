@@ -13,7 +13,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pytheory import Fretboard
-from pytheory.charts import CHARTS, Fingering
+from pytheory.charts import Fingering
 
 from noodler.module_providers import ModuleManifest, PortDirection, SignalType
 from noodler.music import hz_to_volts
@@ -33,27 +33,23 @@ STRINGS = 6
 TUNINGS: tuple[str, ...] = tuple(Fretboard.TUNINGS)
 STRUMS = ("down", "up", "together")
 DEFAULT_TUNING = "standard"
+VOICING_LIMIT = 8
+"""How many ranked grips a chord offers. The first is the one PyTheory likes best."""
 
 
-def _strings(tuning: str, capo: int, barre: int, chord: str) -> tuple[tuple[str, float] | None, ...]:
-    """Six strings, low to high. A muted string is None.
-
-    ``Fretboard.guitar(tuning, capo=)`` is the whole of the tuning. A chord
-    name, when there is one, is fretted on that board; an empty name is the
-    open strings, which in an open tuning is already a chord.
-    """
+def _board(tuning: str, capo: int, barre: int) -> Fretboard:
     board = Fretboard.guitar(tuning, capo=capo)
     if barre:
-        board = board.capo(barre)
-    if not chord:
-        return tuple((tone.full_name, float(tone.frequency)) for tone in board.tones)
+        return board.capo(barre)
+    return board
 
-    named = CHARTS["western"].get(chord)
-    if named is None:
-        raise KeyError(chord)
-    shape = named.fingering(fretboard=board)
-    if not isinstance(shape, Fingering):
-        raise TypeError(chord)
+
+def _open_strings(board: Fretboard) -> tuple[tuple[str, float] | None, ...]:
+    return tuple((tone.full_name, float(tone.frequency)) for tone in board.tones)
+
+
+def _grip(board: Fretboard, shape: Fingering) -> tuple[tuple[str, float] | None, ...]:
+    """Six strings, low to high. A muted string is None."""
     sounded: list[tuple[str, float] | None] = []
     for position, tone in zip(shape.positions, board.tones, strict=False):
         if position is None:
@@ -66,6 +62,29 @@ def _strings(tuning: str, capo: int, barre: int, chord: str) -> tuple[tuple[str,
     return tuple(sounded[:STRINGS])
 
 
+def _voicings(
+    tuning: str,
+    capo: int,
+    barre: int,
+    chord: str,
+) -> tuple[tuple[tuple[str, float] | None, ...], ...]:
+    """The grips PyTheory will actually play, best first.
+
+    An empty chord name is the open strings. ``Fretboard.chord(..., multiple=True)``
+    is the ranked list for a name, in this tuning and under this capo.
+    """
+    board = _board(tuning, capo, barre)
+    if not chord:
+        return (_open_strings(board),)
+    shapes = board.chord(chord, multiple=True, limit=VOICING_LIMIT)
+    if isinstance(shapes, Fingering):
+        shapes = (shapes,)
+    grips = tuple(_grip(board, shape) for shape in shapes)
+    if not grips:
+        raise ValueError(chord)
+    return grips
+
+
 class FretboardParameters(BaseModel):
     """Which guitar this is, and how it is strummed when nothing else clocks it."""
 
@@ -75,6 +94,8 @@ class FretboardParameters(BaseModel):
     capo: int = Field(default=0, ge=0, le=12)
     chord: str = ""
     """A chord to fret, such as G or Am7. Empty means the open strings."""
+    voicing: int = Field(default=0, ge=0, le=VOICING_LIMIT - 1)
+    """Which ranked grip to hold. Zero is the one PyTheory puts first."""
     strum: str = "down"
     division: str = "1/4"
     rate_hz: float = Field(default=2.0, gt=0.0, le=20.0)
@@ -114,8 +135,9 @@ FRETBOARD_MANIFEST = ModuleManifest(
     name="Fretboard",
     category="Musical Brains",
     description=(
-        "A guitar's tuning, capo and chord, from PyTheory. Open strings in "
-        "DADGAD or open G are the chord; a strum walks them into one voice."
+        "A guitar's tuning, capo and chord, from PyTheory. A chord name offers "
+        "its ranked voicings — the first is the one that plays unless you pick "
+        "another — and a strum walks the strings into one voice."
     ),
     ports=(
         port("strum", "Strum", PortDirection.INPUT, SignalType.GATE, "A rising edge plays the strings. Unpatched, the module strums on its own."),
@@ -141,6 +163,8 @@ class FretboardVoice:
         self._key: tuple[object, ...] | None = None
         self._barre = 0
         self._voicing: tuple[tuple[str, float] | None, ...] = ()
+        self._place = 0
+        self._available = 0
         self._failed = ""
         self._pitch = 0.0
         self._gap = 0
@@ -164,22 +188,39 @@ class FretboardVoice:
         names = " ".join(item[0] for item in self._voicing if item) or "—"
         capo = self.parameters.capo
         chord = f" · {self.parameters.chord}" if self.parameters.chord else ""
+        grip = ""
+        if self.parameters.chord and self._available > 1:
+            grip = f" · {self._place + 1}/{self._available}"
         if self._failed:
             return f"{self.parameters.tuning} · capo {capo}{chord} · {self._failed}"
-        return f"{self.parameters.tuning} · capo {capo}{chord} · {names}"
+        return f"{self.parameters.tuning} · capo {capo}{chord}{grip} · {names}"
 
     def _tune(self, barre: int) -> None:
         parameters = self.parameters
-        key = (parameters.tuning, parameters.capo, barre, parameters.chord, parameters.reference_frequency_hz)
+        key = (
+            parameters.tuning,
+            parameters.capo,
+            barre,
+            parameters.chord,
+            parameters.voicing,
+            parameters.reference_frequency_hz,
+        )
         if key == self._key:
             return
         self._key = key
         self._barre = barre
         try:
-            self._voicing = _strings(parameters.tuning, parameters.capo, barre, parameters.chord)
+            grips = _voicings(parameters.tuning, parameters.capo, barre, parameters.chord)
+            place = min(parameters.voicing, len(grips) - 1)
+            self._voicing = grips[place]
+            self._place = place
+            self._available = len(grips)
             self._failed = ""
         except (KeyError, TypeError, ValueError):
-            self._voicing = _strings(parameters.tuning, parameters.capo, barre, "")
+            board = _board(parameters.tuning, parameters.capo, barre)
+            self._voicing = _open_strings(board)
+            self._place = 0
+            self._available = 1
             self._failed = "open strings"
         sounding = [
             hz_to_volts(item[1], parameters.reference_frequency_hz)

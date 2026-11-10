@@ -124,7 +124,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.3" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'", specifier = ">=12.2.1" },
-    { name = "pytheory", specifier = ">=0.58.1,<0.59" },
+    { name = "pytheory", specifier = ">=0.59.0,<0.60" },
     { name = "setproctitle", specifier = ">=1.3" },
     { name = "sounddevice", specifier = ">=0.5.5" },
 ]
@@ -326,16 +326,16 @@ wheels = [
 
 [[package]]
 name = "pytheory"
-version = "0.58.1"
+version = "0.59.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "rich" },
     { name = "scipy" },
     { name = "sounddevice" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/40/21cb90c31681c941626e46787a00fb62e6a585d13a0aed3e61f4627b972c/pytheory-0.58.1.tar.gz", hash = "sha256:e273fa787b129497452291d1afb0d09045d869b084a3d73f66a704de9583c4ae", size = 381855, upload-time = "2026-11-09T09:37:03.496Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/43/91a6b37c29e0e2d0de0feb56d579788b118b6f8869d97eb0a59ba9cdc1fe/pytheory-0.59.0.tar.gz", hash = "sha256:246629311fbb557a78dfb13d03435c70d658f3ce25cf8dd17f69b7a3066c9c8d", size = 392936, upload-time = "2026-11-10T01:29:14.928Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/2f/511ca0f1dba2ccda7d0e12a697895a1aa6b17f4e8e3409aff4b401e3e90a/pytheory-0.58.1-py3-none-any.whl", hash = "sha256:05b200f1e5a704cd27f7f78e3e0031aed40b59c3a00631e53b4aa59224b2a49f", size = 304626, upload-time = "2026-11-09T09:37:02.278Z" },
+    { url = "https://files.pythonhosted.org/packages/05/6e/8fed5b5a6fe52e2a32b6bd10124d0b9cec49dca38200df935fd5145c415a/pytheory-0.59.0-py3-none-any.whl", hash = "sha256:701ebadc4638dc05cb83d971a3272b2fd58d28ee8dfcd25215d9d444452eb269", size = 313593, upload-time = "2026-11-10T01:29:13.456Z" },
 ]
 
 [[package]]

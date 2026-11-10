@@ -67,7 +67,7 @@ which is the point:
 | Key / Scale, Quantizer | A scale down a cable, and a module that snaps any voltage into it. |
 | Chord, Arpeggio | A chord by name, four voices, and a pattern that walks them. |
 | Sequencer | A phrase written as degrees: `0 2 4 3  4 . 0 .` |
-| Fretboard | `Fretboard.guitar(tuning, capo=)` — standard, drop D, DADGAD, open G, and the rest — strummed. |
+| Fretboard | `Fretboard.guitar(tuning, capo=)`, and a chord's ranked voicings. The first plays; the voicing control picks another. |
 | MIDI Out | Pitch and gate in, a `.mid` file out. |
 
 Around those: melody, harmony and arpeggio brains, an LFO, PyTheory's own
