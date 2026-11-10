@@ -1,0 +1,366 @@
+format = "noodler.patch"
+format_version = 1
+application_version = "0.1.0"
+name = "Open G, Capo 2"
+
+[system_output]
+master_gain = 0.9
+
+[transport]
+bpm = 84.0
+beats_per_bar = 4
+beat_unit = 4
+
+[view]
+zoom = 1.0
+
+[[view.nodes]]
+node_id = "clock"
+collapsed = false
+
+[view.nodes.position]
+x = 40.0
+y = 40.0
+
+[[view.nodes]]
+node_id = "chord"
+collapsed = false
+
+[view.nodes.position]
+x = 360.0
+y = 40.0
+
+[[view.nodes]]
+node_id = "arp"
+collapsed = false
+
+[view.nodes.position]
+x = 700.0
+y = 40.0
+
+[[view.nodes]]
+node_id = "board"
+collapsed = false
+
+[view.nodes.position]
+x = 1080.0
+y = 40.0
+
+[[view.nodes]]
+node_id = "box"
+collapsed = false
+
+[view.nodes.position]
+x = 360.0
+y = 400.0
+
+[[view.nodes]]
+node_id = "guitar"
+collapsed = false
+
+[view.nodes.position]
+x = 1080.0
+y = 400.0
+
+[[view.nodes]]
+node_id = "room"
+collapsed = false
+
+[view.nodes.position]
+x = 720.0
+y = 400.0
+
+[[view.nodes]]
+node_id = "midi"
+collapsed = false
+
+[view.nodes.position]
+x = 40.0
+y = 400.0
+
+[[modules]]
+instance_id = "master"
+module_type = "master_mixer"
+provider = "builtin"
+
+[modules.parameters]
+levels = [0.6, 0.5, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+pans = [-0.18, 0.24, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+sends_a = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+sends_b = [0.34, 0.46, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+mutes = [false, false, false, false, false, false, false, false]
+solos = [false, false, false, false, false, false, false, false]
+return_levels = [0.8, 0.5]
+return_mutes = [false, false]
+master = 0.8
+
+[[modules]]
+instance_id = "clock"
+module_type = "clock"
+provider = "builtin"
+
+[modules.parameters]
+rate_hz = 2.0
+beats_per_bar = 4
+trigger_ms = 5.0
+
+[[modules]]
+instance_id = "chord"
+module_type = "chord"
+provider = "builtin"
+
+[modules.parameters]
+name = "A"
+octave = 3
+reference_frequency_hz = 220.0
+
+[[modules]]
+instance_id = "arp"
+module_type = "arpeggio_brain"
+provider = "builtin"
+
+[modules.parameters]
+pattern = "up / down"
+octave_range = 2
+rate_hz = 4.0
+gate_length = 0.45
+fallback_pitches = [0.0, 0.3333333333333333, 0.5833333333333334, 1.0]
+reference_midi = 57.0
+seed = 0
+
+[[modules]]
+instance_id = "board"
+module_type = "fretboard"
+provider = "builtin"
+
+[modules.parameters]
+tuning = "open g"
+capo = 2
+chord = ""
+strum = "down"
+division = "1/2"
+rate_hz = 2.0
+strum_ms = 20.0
+gate_ms = 240.0
+reference_frequency_hz = 220.0
+
+[[modules]]
+instance_id = "box"
+module_type = "pytheory_voice"
+provider = "builtin"
+
+[modules.parameters]
+instrument = "music_box"
+level = 0.42
+release_ms = 760.0
+reference_frequency_hz = 220.0
+
+[[modules]]
+instance_id = "guitar"
+module_type = "pytheory_voice"
+provider = "builtin"
+
+[modules.parameters]
+instrument = "clean_guitar"
+level = 0.4
+release_ms = 420.0
+reference_frequency_hz = 220.0
+
+[[modules]]
+instance_id = "room"
+module_type = "reverb"
+provider = "builtin"
+
+[modules.parameters]
+mix = 1.0
+decay_seconds = 4.2
+damping = 0.4
+diffusion = 0.82
+pre_delay_ms = 22.0
+freeze = false
+
+[[modules]]
+instance_id = "midi"
+module_type = "midi_out"
+provider = "builtin"
+
+[modules.parameters]
+channel = 1
+velocity = 92
+reference_frequency_hz = 220.0
+
+[[cables]]
+
+[cables.source]
+module_id = "chord"
+port_id = "voice_1"
+
+[cables.target]
+module_id = "arp"
+port_id = "voice_1"
+
+[[cables]]
+
+[cables.source]
+module_id = "chord"
+port_id = "voice_2"
+
+[cables.target]
+module_id = "arp"
+port_id = "voice_2"
+
+[[cables]]
+
+[cables.source]
+module_id = "chord"
+port_id = "voice_3"
+
+[cables.target]
+module_id = "arp"
+port_id = "voice_3"
+
+[[cables]]
+
+[cables.source]
+module_id = "chord"
+port_id = "voice_4"
+
+[cables.target]
+module_id = "arp"
+port_id = "voice_4"
+
+[[cables]]
+
+[cables.source]
+module_id = "clock"
+port_id = "eighth"
+
+[cables.target]
+module_id = "arp"
+port_id = "clock"
+
+[[cables]]
+
+[cables.source]
+module_id = "arp"
+port_id = "pitch"
+
+[cables.target]
+module_id = "box"
+port_id = "pitch"
+
+[[cables]]
+
+[cables.source]
+module_id = "arp"
+port_id = "gate"
+
+[cables.target]
+module_id = "box"
+port_id = "gate"
+
+[[cables]]
+
+[cables.source]
+module_id = "arp"
+port_id = "pitch"
+
+[cables.target]
+module_id = "midi"
+port_id = "pitch"
+
+[[cables]]
+
+[cables.source]
+module_id = "arp"
+port_id = "gate"
+
+[cables.target]
+module_id = "midi"
+port_id = "gate"
+
+[[cables]]
+
+[cables.source]
+module_id = "board"
+port_id = "pitch"
+
+[cables.target]
+module_id = "guitar"
+port_id = "pitch"
+
+[[cables]]
+
+[cables.source]
+module_id = "board"
+port_id = "gate"
+
+[cables.target]
+module_id = "guitar"
+port_id = "gate"
+
+[[cables]]
+
+[cables.source]
+module_id = "box"
+port_id = "audio"
+
+[cables.target]
+module_id = "master"
+port_id = "channel_1"
+
+[[cables]]
+
+[cables.source]
+module_id = "guitar"
+port_id = "audio"
+
+[cables.target]
+module_id = "master"
+port_id = "channel_2"
+
+[[cables]]
+
+[cables.source]
+module_id = "master"
+port_id = "send_b"
+
+[cables.target]
+module_id = "room"
+port_id = "audio"
+
+[[cables]]
+
+[cables.source]
+module_id = "room"
+port_id = "left"
+
+[cables.target]
+module_id = "master"
+port_id = "return_b_left"
+
+[[cables]]
+
+[cables.source]
+module_id = "room"
+port_id = "right"
+
+[cables.target]
+module_id = "master"
+port_id = "return_b_right"
+
+[[output_taps]]
+gain = 1.0
+channel = "left"
+
+[output_taps.source]
+module_id = "master"
+port_id = "left"
+
+[[output_taps]]
+gain = 1.0
+channel = "right"
+
+[output_taps.source]
+module_id = "master"
+port_id = "right"

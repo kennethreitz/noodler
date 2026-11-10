@@ -3,7 +3,21 @@
 Open an example directly from the repository root:
 
 ```console
-uv run noodler ./examples/pelog-bell-garden.noodler
+uv run noodler examples/dadgad-chapel.noodler
+uv run noodler render examples/dadgad-chapel.noodler -o chapel.wav
+```
+
+## Guitar tunings
+
+Two patches built on PyTheory's fretboard, which is `Fretboard.guitar(tuning, capo=)`.
+
+| Patch | What you hear |
+| --- | --- |
+| `dadgad-chapel` | Open strings of DADGAD, strummed, under a kalimba phrase in D major. |
+| `open-g-hymn` | Capo on 2 in open G, which is an A major chord. An arpeggio of A, and a guitar strumming that tuning. The same patch is also `open-g-hymn.toml`. |
+
+```console
+uv run noodler examples/pelog-bell-garden.noodler
 ```
 
 The examples are ordinary, human-readable `.noodler` documents. They can be

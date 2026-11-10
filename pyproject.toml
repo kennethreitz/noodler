@@ -9,7 +9,7 @@ dependencies = [
     "pillow>=12.3",
     "pydantic>=2",
     "pyobjc-framework-Cocoa>=12.2.1; sys_platform == 'darwin'",
-    "pytheory>=0.57.13",
+    "pytheory>=0.58.1,<0.59",
     "setproctitle>=1.3",
     "sounddevice>=0.5.5",
 ]
@@ -20,11 +20,31 @@ noodler = "noodler.app:main"
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "ruff>=0.17.4",
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.25,<0.12"]
+requires = ["uv_build>=0.11.25,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+# Syntax, undefined names, and the bugbear checks that catch real mistakes.
+# Import order and line length are left alone: the rack file is large, and a
+# formatting sweep would bury the patch.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = ["E501", "E702", "E731", "B007", "B008", "B009", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+# app.py re-exports a lot of UI names the tests reach in through it.
+"noodler/app.py" = ["F401", "F841"]
+"tests/**" = ["F401", "F811", "E741", "F841"]

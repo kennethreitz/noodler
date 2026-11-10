@@ -1,0 +1,381 @@
+{
+  "format": "noodler.patch",
+  "format_version": 1,
+  "application_version": "0.1.0",
+  "name": "DADGAD Chapel",
+  "modules": [
+    {
+      "instance_id": "master",
+      "module_type": "master_mixer",
+      "provider": "builtin",
+      "parameters": {
+        "levels": [
+          0.7,
+          0.52,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8,
+          0.8
+        ],
+        "pans": [
+          -0.22,
+          0.28,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_a": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sends_b": [
+          0.4,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mutes": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "solos": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "return_levels": [
+          0.8,
+          0.52
+        ],
+        "return_mutes": [
+          false,
+          false
+        ],
+        "master": 0.8
+      }
+    },
+    {
+      "instance_id": "key",
+      "module_type": "key",
+      "provider": "builtin",
+      "parameters": {
+        "system": "western",
+        "tonic": "D",
+        "octave": 3,
+        "scale_name": "major",
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "melody",
+      "module_type": "sequencer",
+      "provider": "builtin",
+      "parameters": {
+        "steps": "0 2 4 3  4 2 0 4  5 4 2 1  0 . 4 .",
+        "division": "1/8",
+        "rate_hz": 2.0,
+        "gate_length": 0.55,
+        "octave": 1,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "board",
+      "module_type": "fretboard",
+      "provider": "builtin",
+      "parameters": {
+        "tuning": "dadgad",
+        "capo": 0,
+        "chord": "",
+        "strum": "down",
+        "division": "1/4",
+        "rate_hz": 2.0,
+        "strum_ms": 16.0,
+        "gate_ms": 180.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "box",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "kalimba",
+        "level": 0.55,
+        "release_ms": 520.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "guitar",
+      "module_type": "pytheory_voice",
+      "provider": "builtin",
+      "parameters": {
+        "instrument": "acoustic_guitar",
+        "level": 0.4,
+        "release_ms": 340.0,
+        "reference_frequency_hz": 220.0
+      }
+    },
+    {
+      "instance_id": "room",
+      "module_type": "reverb",
+      "provider": "builtin",
+      "parameters": {
+        "mix": 1.0,
+        "decay_seconds": 5.2,
+        "damping": 0.46,
+        "diffusion": 0.84,
+        "pre_delay_ms": 28.0,
+        "freeze": false
+      }
+    },
+    {
+      "instance_id": "midi",
+      "module_type": "midi_out",
+      "provider": "builtin",
+      "parameters": {
+        "channel": 1,
+        "velocity": 88,
+        "reference_frequency_hz": 220.0
+      }
+    }
+  ],
+  "cables": [
+    {
+      "source": {
+        "module_id": "key",
+        "port_id": "scale"
+      },
+      "target": {
+        "module_id": "melody",
+        "port_id": "scale"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "box",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "box",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "midi",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "melody",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "midi",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "board",
+        "port_id": "pitch"
+      },
+      "target": {
+        "module_id": "guitar",
+        "port_id": "pitch"
+      }
+    },
+    {
+      "source": {
+        "module_id": "board",
+        "port_id": "gate"
+      },
+      "target": {
+        "module_id": "guitar",
+        "port_id": "gate"
+      }
+    },
+    {
+      "source": {
+        "module_id": "box",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_1"
+      }
+    },
+    {
+      "source": {
+        "module_id": "guitar",
+        "port_id": "audio"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "channel_2"
+      }
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "send_b"
+      },
+      "target": {
+        "module_id": "room",
+        "port_id": "audio"
+      }
+    },
+    {
+      "source": {
+        "module_id": "room",
+        "port_id": "left"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_left"
+      }
+    },
+    {
+      "source": {
+        "module_id": "room",
+        "port_id": "right"
+      },
+      "target": {
+        "module_id": "master",
+        "port_id": "return_b_right"
+      }
+    }
+  ],
+  "output_taps": [
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "left"
+      },
+      "gain": 1.0,
+      "channel": "left"
+    },
+    {
+      "source": {
+        "module_id": "master",
+        "port_id": "right"
+      },
+      "gain": 1.0,
+      "channel": "right"
+    }
+  ],
+  "system_output": {
+    "master_gain": 0.9
+  },
+  "transport": {
+    "bpm": 72.0,
+    "beats_per_bar": 4,
+    "beat_unit": 4
+  },
+  "view": {
+    "zoom": 1.0,
+    "rails": {},
+    "nodes": [
+      {
+        "node_id": "key",
+        "position": {
+          "x": 40.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "melody",
+        "position": {
+          "x": 380.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "board",
+        "position": {
+          "x": 760.0,
+          "y": 40.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "box",
+        "position": {
+          "x": 380.0,
+          "y": 380.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "guitar",
+        "position": {
+          "x": 760.0,
+          "y": 380.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "room",
+        "position": {
+          "x": 1140.0,
+          "y": 380.0
+        },
+        "collapsed": false
+      },
+      {
+        "node_id": "midi",
+        "position": {
+          "x": 40.0,
+          "y": 380.0
+        },
+        "collapsed": false
+      }
+    ],
+    "groups": []
+  }
+}

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 import math
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike
 from pydantic import BaseModel, ConfigDict, Field
 
 from noodler.module_providers import ModuleManifest, PortDirection, SignalType
